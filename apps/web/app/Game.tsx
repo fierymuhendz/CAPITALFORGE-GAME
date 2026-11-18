@@ -3,12 +3,18 @@
 import { useEffect, useState } from "react";
 import { PRODUCT_IDS } from "@capitalforge/shared";
 import { clearSession, loadSession, type StoredSession } from "../lib/session";
+import { CityGrid } from "./CityGrid";
+import { CompanyPanel } from "./CompanyPanel";
+import { CompletionToasts } from "./CompletionToasts";
+import { FacilityList } from "./FacilityList";
 import { GameProvider } from "./GameProvider";
 import { LoginForm } from "./LoginForm";
 import { MarketTicker, ConnectionBadge } from "./MarketTicker";
 import { OrderForm } from "./OrderForm";
 import { Portfolio } from "./Portfolio";
 import { PriceChart } from "./PriceChart";
+import { ProductionForm } from "./ProductionForm";
+import { ReliefButton } from "./ReliefButton";
 
 export function Game() {
   const [session, setSession] = useState<StoredSession | null>(null);
@@ -27,17 +33,25 @@ export function Game() {
     setNotice(message);
   }
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4" aria-busy="true" aria-label="Yükleniyor">
+        <div className="h-8 w-40 animate-pulse rounded bg-slate-800" />
+        <div className="h-16 animate-pulse rounded-lg bg-slate-900" />
+        <div className="h-64 animate-pulse rounded-lg bg-slate-900" />
+      </main>
+    );
+  }
   if (!session) return <LoginForm notice={notice} onLogin={(s) => { setNotice(undefined); setSession(s); }} />;
 
   return (
     <GameProvider token={session.token} onUnauthorized={() => logout("Oturumunuz sona erdi, yeniden giriş yapın.")}>
-      <main className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
+      <main className="mx-auto flex max-w-6xl flex-col gap-4 p-3 sm:p-4">
         <header className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-bold">CapitalForge</h1>
+          <h1 className="text-2xl font-bold tracking-tight">CapitalForge</h1>
           <div className="flex items-center gap-3">
             <ConnectionBadge />
-            <span className="text-sm text-slate-400">{session.username}</span>
+            <span className="text-sm text-slate-300">Oyuncu: {session.username}</span>
             <button
               type="button"
               onClick={() => logout()}
@@ -48,13 +62,21 @@ export function Game() {
           </div>
         </header>
         <MarketTicker />
-        <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
-          <PriceChart productId={selected} />
-          <div className="flex flex-col gap-4">
-            <Portfolio />
+        <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <PriceChart productId={selected} />
             <OrderForm selected={selected} onSelect={setSelected} />
           </div>
+          <div className="flex min-w-0 flex-col gap-4">
+            <Portfolio />
+            <ReliefButton />
+            <CompanyPanel />
+            <FacilityList />
+            <ProductionForm />
+          </div>
         </div>
+        <CityGrid />
+        <CompletionToasts />
       </main>
     </GameProvider>
   );

@@ -1,6 +1,7 @@
-import { quoteTrade } from "@capitalforge/economy";
+import { PARAMS, executeAgainstPool, poolMaxOrder, volumeAllowed } from "@capitalforge/economy";
 import type { OrderErrorCode, OrderResult, PlaceOrder } from "@capitalforge/shared";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { currentTick } from "../actions/run";
 import type { Db } from "../db/client";
 import { accounts, inventories, products, trades } from "../db/schema";
 import { applyTransfer } from "../ledger/transfer";
@@ -15,7 +16,9 @@ class TradeError extends Error {
  * Tek transaction'da ticaret. Kilit sırası sabittir (deadlock önleme):
  * products → oyuncu hesabı → inventories. (Idempotency satırı, ürün kilidinden SONRA oluşturulur:
  * trades→products FK'sı ürün satırında KEY SHARE kilidi alır ve iki eşzamanlı işlemde
- * FOR UPDATE yükseltmesi karşılıklı beklemeye yol açardı.)
+ * FOR UPDATE yükseltmesi karşılıklı beklemeye yol açardı.) Ürün satırının FOR UPDATE kilidi aynı ürün
+ * üzerindeki tüm ticareti serileştirir; tamamlama, üretim başlatma ve ödenek ürün satırını yalnızca
+ * FOR KEY SHARE ile ve her zaman en önce aldığı için bu kilitle aynı sırada kalır.
  *
  * Fiyat, miktar, bakiye istemciden alınmaz; fiyat kilitli ürün satırından okunur, tutarlar
  * packages/economy quoteTrade ile hesaplanır. İş hataları transaction'ı geri alır ve
@@ -31,6 +34,8 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
       const [product] = await tx.select().from(products).where(eq(products.id, order.productId)).for("update");
       if (!product) throw new TradeError("UNKNOWN_PRODUCT");
 
+      const tick = await currentTick(tx);
+
       // 2. Idempotency: satırı rezerve et
       const claimed = await tx
         .insert(trades)
@@ -43,6 +48,7 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
           unitPrice: 0n,
           gross: 0n,
           tax: 0n,
+          tick,
         })
         .onConflictDoNothing({ target: [trades.playerId, trades.clientKey] })
         .returning({ id: trades.id });
@@ -84,8 +90,13 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
         .for("update");
       if (!wallet) throw new TradeError("UNAUTHORIZED");
 
-      // 4. Fiyat (kilitli satırdan) ve teklif: formül packages/economy'de
-      const quote = quoteTrade(order.side, product.price, quantity);
+
+      // 4. Ortak havuz (kilitli ürün satırından) ve teklif: formül packages/economy'de
+      const pool = { units: product.poolUnits, value: product.poolValue };
+      if (quantity > poolMaxOrder(pool)) throw new TradeError("ORDER_TOO_LARGE");
+      const quote = executeAgainstPool(order.side, pool, quantity);
+      // Çok küçük satımda brüt tutar 0 olabilir: boş bacaklı transfer yazılmaz, emir geçersizdir.
+      if (quote.gross <= 0n) throw new TradeError("INVALID");
 
       // 5. Ön kontroller (CHECK kısıtları ikinci savunma)
       if (order.side === "buy") {
@@ -98,6 +109,22 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
           .for("update");
         if (!inv || inv.quantity < quantity) throw new TradeError("INSUFFICIENT_INVENTORY");
       }
+
+      // 5b. Hacim sınırı (çok tick'li fiyat şişirmeye karşı): son volumeWindowTicks içindeki alım+satım.
+      // Cüzdan kilidi aynı oyuncunun emirlerini sıraya koyar; READ COMMITTED'da bu sorgu
+      // kilitten sonra çalıştığı için önceki emirlerin commit edilmiş satırlarını görür.
+      const [vol] = await tx
+        .select({ used: sql<string>`coalesce(sum(${trades.quantity}), 0)` })
+        .from(trades)
+        .where(
+          and(
+            eq(trades.playerId, playerId),
+            eq(trades.productId, order.productId),
+            gt(trades.tick, tick - PARAMS.volumeWindowTicks),
+            ne(trades.id, tradeId),
+          ),
+        );
+      if (!volumeAllowed(BigInt(vol?.used ?? "0"), quantity)) throw new TradeError("VOLUME_LIMIT");
 
       const sys = await tx
         .select({ id: accounts.id, code: accounts.code })
@@ -129,7 +156,7 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
       // trades satırı benzersiz olduğundan buraya ulaşılmamalı; ulaşılırsa envanter iki kez işlenmesin.
       if (transfer.status === "duplicate") throw new Error("Beklenmeyen yinelenen transfer");
 
-      // 7. Envanter ve bekleyen talep/arz
+      // 7. Envanter ve havuz (pool_units/pool_value/price aynı satırda, ürün kilidi altında)
       if (order.side === "buy") {
         await tx
           .insert(inventories)
@@ -138,20 +165,16 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
             target: [inventories.playerId, inventories.productId],
             set: { quantity: sql`${inventories.quantity} + ${quantity}` },
           });
-        await tx
-          .update(products)
-          .set({ pendingDemand: sql`${products.pendingDemand} + ${quantity}` })
-          .where(eq(products.id, order.productId));
       } else {
         await tx
           .update(inventories)
           .set({ quantity: sql`${inventories.quantity} - ${quantity}` })
           .where(and(eq(inventories.playerId, playerId), eq(inventories.productId, order.productId)));
-        await tx
-          .update(products)
-          .set({ pendingSupply: sql`${products.pendingSupply} + ${quantity}` })
-          .where(eq(products.id, order.productId));
       }
+      await tx
+        .update(products)
+        .set({ poolUnits: quote.newPool.units, poolValue: quote.newPool.value, price: quote.newPrice })
+        .where(eq(products.id, order.productId));
 
       // 8. Rezerve edilen trade satırını doldur
       await tx

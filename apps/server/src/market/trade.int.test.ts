@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { PARAMS, quoteTrade } from "@capitalforge/economy";
+import { PARAMS, executeAgainstPool, initialPool, poolMaxOrder, poolPrice, replenish, type PoolState } from "@capitalforge/economy";
 import type { OrderResult, PlaceOrder } from "@capitalforge/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { accounts, inventories, products, trades, transfers } from "../db/schema
 import { transfer } from "../ledger/transfer";
 import { assertLedgerBalanced, closeTestResources, resetTestDb, setupTestDb } from "../test/db";
 import { executeTrade } from "./trade";
-import { runTick } from "./ticker";
+import { runTick, runTickFull } from "./ticker";
 
 let db: Db;
 
@@ -51,6 +51,16 @@ const order = (over: Partial<PlaceOrder> = {}): PlaceOrder => ({
   idempotencyKey: randomUUID(),
   ...over,
 });
+
+async function poolOf(productId: string): Promise<PoolState> {
+  const [p] = await db.select({ u: products.poolUnits, v: products.poolValue }).from(products).where(eq(products.id, productId));
+  return { units: p!.u, value: p!.v };
+}
+
+/** Güncel havuza karşı alım maliyeti (kuruş, pozitif). */
+async function buyCost(productId: string, qty: bigint): Promise<bigint> {
+  return -executeAgainstPool("buy", await poolOf(productId), qty).playerDelta;
+}
 
 async function priceOf(productId: string): Promise<bigint> {
   const [p] = await db.select({ price: products.price }).from(products).where(eq(products.id, productId));
@@ -98,9 +108,16 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 describe("executeTrade: bakiye ve miktar sınırları", () => {
-  it("10 alımlık bakiyeyle 50 paralel alımda tam 10 başarılı, bakiye negatife düşmez", async () => {
-    const unitCost = -quoteTrade("buy", await priceOf("wheat"), 1n).playerDelta;
-    const playerId = await createPlayer(unitCost * 10n);
+  it("10 ardışık alımlık bakiyeyle 50 paralel alımda tam 10 başarılı, bakiye negatife düşmez", async () => {
+    // Her alım havuzu kaydırdığı için toplam maliyet havuz simülasyonuyla bulunur.
+    let pool = await poolOf("wheat");
+    let total = 0n;
+    for (let i = 0; i < 10; i++) {
+      const q = executeAgainstPool("buy", pool, 1n);
+      total += -q.playerDelta;
+      pool = q.newPool;
+    }
+    const playerId = await createPlayer(total);
 
     const results = await Promise.all(
       Array.from({ length: 50 }, () => executeTrade(db, playerId, order({ side: "buy", quantity: 1 }))),
@@ -114,8 +131,7 @@ describe("executeTrade: bakiye ve miktar sınırları", () => {
   });
 
   it("bakiye tam maliyete eşitse başarılı, bir kuruş eksikse INSUFFICIENT_FUNDS", async () => {
-    const price = await priceOf("wheat");
-    const cost = -quoteTrade("buy", price, 1n).playerDelta;
+    const cost = await buyCost("wheat", 1n);
 
     const exact = await createPlayer(cost);
     expect((await executeTrade(db, exact, order({ side: "buy", quantity: 1 }))).ok).toBe(true);
@@ -131,7 +147,7 @@ describe("executeTrade: bakiye ve miktar sınırları", () => {
 
   it("çok büyük miktar bakiyeyi aşarsa INSUFFICIENT_FUNDS, bakiye ve envanter değişmez", async () => {
     const playerId = await createPlayer(1_000n);
-    const r = await executeTrade(db, playerId, order({ side: "buy", quantity: 1_000_000 }));
+    const r = await executeTrade(db, playerId, order({ side: "buy", quantity: Number(poolMaxOrder(await poolOf("wheat"))) }));
     expect(r).toMatchObject({ ok: false, error: "INSUFFICIENT_FUNDS" });
     expect(await balanceOf(playerId)).toBe(1_000n);
     expect(await inventoryOf(playerId, "wheat")).toBe(0n);
@@ -164,7 +180,7 @@ describe("executeTrade: eşzamanlılık", () => {
   it("aynı anahtarla 20 paralel istek → 1 trade, 1 transfer, envanter bir kez", async () => {
     const playerId = await createPlayer();
     const o = order({ side: "buy", quantity: 2 });
-    const cost = -quoteTrade("buy", await priceOf("wheat"), 2n).playerDelta;
+    const cost = (await buyCost("wheat", 2n));
 
     const results = await Promise.all(Array.from({ length: 20 }, () => executeTrade(db, playerId, o)));
 
@@ -231,7 +247,7 @@ describe("executeTrade: eşzamanlılık", () => {
     expect(await inventoryOf(b, "wheat")).toBe(1n);
   });
 
-  it("paralel satışta envanter negatife düşmez, pending_supply yalnızca başarılı satışları sayar", async () => {
+  it("paralel satışta envanter negatife düşmez, havuz yalnızca başarılı satışları yansıtır", async () => {
     const playerId = await createPlayer();
     const buy = await executeTrade(db, playerId, order({ side: "buy", quantity: 5 }));
     expect(buy.ok).toBe(true);
@@ -243,8 +259,9 @@ describe("executeTrade: eşzamanlılık", () => {
     expect(results.filter((r) => r.ok)).toHaveLength(5);
     expect(results.filter((r) => !r.ok && r.error === "INSUFFICIENT_INVENTORY")).toHaveLength(15);
     expect(await inventoryOf(playerId, "wheat")).toBe(0n);
-    const [p] = await db.select({ pendingSupply: products.pendingSupply }).from(products).where(eq(products.id, "wheat"));
-    expect(p!.pendingSupply).toBe(5n);
+    // 5 alım + 5 satım sonrası havuz birimi başlangıca döner.
+    const [p] = await db.select({ units: products.poolUnits }).from(products).where(eq(products.id, "wheat"));
+    expect(p!.units).toBe(initialPool("wheat").units);
   });
 
   it("paralel alım + runTick: deadlock yok, hata yok, bakiye ve envanter tutarlı", async () => {
@@ -257,11 +274,187 @@ describe("executeTrade: eşzamanlılık", () => {
     const [results, ticks] = await withTimeout(Promise.all([trading, ticking]), 20_000);
 
     expect(results.filter((r) => !r.ok && r.error !== "INSUFFICIENT_FUNDS")).toEqual([]);
-    for (const t of ticks) expect(t).toHaveLength(3);
+    // Çit: paralel tick'lerden yalnızca biri saati artırır (5 ürün); diğerleri iptal olur ve boş döner.
+    expect(ticks.filter((t) => t.length === 5)).toHaveLength(1);
+    expect(ticks.filter((t) => t.length === 0)).toHaveLength(4);
 
     const okResults = results.filter((r): r is Extract<OrderResult, { ok: true }> => r.ok);
     const spent = okResults.reduce((s, r) => s + BigInt(r.gross) + BigInt(r.tax), 0n);
     expect(await inventoryOf(playerId, "wheat")).toBe(BigInt(okResults.length));
     expect(await balanceOf(playerId)).toBe(PARAMS.startingBalance - spent);
+  });
+});
+
+describe("executeTrade: hacim sınırı (VOLUME_LIMIT)", () => {
+  const LIMIT = PARAMS.maxPlayerVolumePerWindow;
+  const setClock = (tick: bigint) => db.execute(sql`UPDATE game_clock SET tick = ${tick} WHERE id = 1`);
+  /** Tek emir sınırı (poolMaxOrder) yüzünden pencere hacmini doğrudan commit edilmiş trade satırı olarak tohumlar. */
+  const seedVolume = (playerId: string, productId: string, qty: bigint, tick = 0n) =>
+    db.insert(trades).values({
+      playerId,
+      clientKey: randomUUID(),
+      side: "buy",
+      productId,
+      quantity: qty,
+      unitPrice: 0n,
+      gross: 0n,
+      tax: 0n,
+      tick,
+    });
+
+  it("ürün başına pencerede LIMIT adede kadar izin verir; sonraki işlem VOLUME_LIMIT", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    await seedVolume(playerId, "wheat", LIMIT - 1n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: 1 }))).ok).toBe(true);
+    const before = await tradeCount(playerId);
+
+    const r = await executeTrade(db, playerId, order({ side: "buy", quantity: 1 }));
+    expect(r).toMatchObject({ ok: false, error: "VOLUME_LIMIT" });
+    expect(await tradeCount(playerId)).toBe(before);
+    expect(await inventoryOf(playerId, "wheat")).toBe(1n);
+  });
+
+  it("satış da hacme sayılır: LIMIT-400'e kadar dolu iken 401 satış reddedilir, 400 satış geçer", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    await seedVolume(playerId, "wheat", LIMIT - 1000n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: 600 }))).ok).toBe(true);
+
+    expect(await executeTrade(db, playerId, order({ side: "sell", quantity: 401 }))).toMatchObject({
+      ok: false,
+      error: "VOLUME_LIMIT",
+    });
+    expect((await executeTrade(db, playerId, order({ side: "sell", quantity: 400 }))).ok).toBe(true);
+  });
+
+  it("sınır ürün başınadır: wheat dolu iken iron alımı serbest", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    await seedVolume(playerId, "wheat", LIMIT);
+    expect(await executeTrade(db, playerId, order({ side: "buy", quantity: 1, productId: "wheat" }))).toMatchObject({
+      ok: false,
+      error: "VOLUME_LIMIT",
+    });
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: 10, productId: "iron" }))).ok).toBe(true);
+    expect(await inventoryOf(playerId, "iron")).toBe(10n);
+  });
+
+  it("pencere kayar: 3599. tick'te hâlâ dolu (VOLUME_LIMIT), 3601. tick'te eski işlemler sayılmaz", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    await setClock(0n);
+    await seedVolume(playerId, "wheat", LIMIT, 0n);
+
+    await setClock(3599n);
+    expect(await executeTrade(db, playerId, order({ side: "buy", quantity: 1 }))).toMatchObject({
+      ok: false,
+      error: "VOLUME_LIMIT",
+    });
+
+    await setClock(PARAMS.volumeWindowTicks + 1n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: 1 }))).ok).toBe(true);
+    expect(await inventoryOf(playerId, "wheat")).toBe(1n);
+  });
+
+  it("sınıra yakın iki paralel emir sınırı aşamaz: tam 1 başarı", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    await seedVolume(playerId, "wheat", LIMIT - 2n);
+
+    const results = await Promise.all([
+      executeTrade(db, playerId, order({ side: "buy", quantity: 2 })),
+      executeTrade(db, playerId, order({ side: "buy", quantity: 2 })),
+    ]);
+
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.flatMap((r) => (r.ok ? [] : [r.error]))).toEqual(["VOLUME_LIMIT"]);
+    expect(await inventoryOf(playerId, "wheat")).toBe(2n);
+  });
+});
+
+describe("tick çiti ve küçük satım", () => {
+  it("iki paralel runTickFull saati bir kez artırır, kaybeden fiyat yazımlarını geri alır", async () => {
+    const [before] = await db.execute<{ tick: string }>(sql`SELECT tick::text FROM game_clock WHERE id = 1`);
+    const results = await withTimeout(Promise.all([runTickFull(db), runTickFull(db)]), 20_000);
+    expect(results.filter((r) => r !== null)).toHaveLength(1);
+    const [after] = await db.execute<{ tick: string }>(sql`SELECT tick::text FROM game_clock WHERE id = 1`);
+    expect(BigInt(after!.tick)).toBe(BigInt(before!.tick) + 1n);
+    const [h] = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM price_history WHERE product_id = 'wheat' AND tick = 1`);
+    expect(h!.n).toBe(1);
+  });
+
+  it("brüt tutarı 0 olan çok küçük satım INVALID döner, transfer ve envanter değişmez", async () => {
+    const playerId = await createPlayer();
+    const buy = await executeTrade(db, playerId, order({ quantity: 1 }));
+    expect(buy.ok).toBe(true);
+    // Havuzu minimum değere yakın kuran satım: 1 birimin geliri 0'a yuvarlanana kadar fiyatı düşür.
+    await db.execute(sql`UPDATE products SET pool_value = 1, price = 1 WHERE id = 'wheat'`);
+    const r = await executeTrade(db, playerId, order({ side: "sell", quantity: 1 }));
+    expect(r).toMatchObject({ ok: false, error: "INVALID" });
+    expect(await inventoryOf(playerId, "wheat")).toBe(1n);
+    expect(await tradeCount(playerId)).toBe(1);
+  });
+});
+
+describe("ortak piyasa havuzu", () => {
+  it("20 paralel alım: havuz çarpımı azalmaz, birim sayısı ve fiyat tutarlı", async () => {
+    const before = await poolOf("wheat");
+    const playerId = await createPlayer(PARAMS.startingBalance * 10n);
+    const results = await withTimeout(
+      Promise.all(Array.from({ length: 20 }, () => executeTrade(db, playerId, order({ side: "buy", quantity: 5 })))),
+      20_000,
+    );
+    expect(results.filter((r) => !r.ok)).toEqual([]);
+
+    const after = await poolOf("wheat");
+    expect(after.units).toBe(before.units - 100n);
+    expect(after.units * after.value >= before.units * before.value).toBe(true);
+    expect(await priceOf("wheat")).toBe(poolPrice(after));
+    expect(await inventoryOf(playerId, "wheat")).toBe(100n);
+    // Ödenen tutar defter kayıtlarına eşit: market'e gross girdi.
+    const gross = results.reduce((s, r) => s + (r.ok ? BigInt(r.gross) : 0n), 0n);
+    expect(after.value - before.value).toBeLessThanOrEqual(gross);
+  });
+
+  it("al-sat turu kâr yazdırmaz ve havuz çarpımı azalmaz", async () => {
+    const before = await poolOf("iron");
+    const playerId = await createPlayer();
+    const qty = Number(poolMaxOrder(before) / 2n);
+    const buy = await executeTrade(db, playerId, order({ productId: "iron", side: "buy", quantity: qty }));
+    const sell = await executeTrade(db, playerId, order({ productId: "iron", side: "sell", quantity: qty }));
+    expect(buy.ok && sell.ok).toBe(true);
+    expect(await balanceOf(playerId)).toBeLessThan(PARAMS.startingBalance);
+    const after = await poolOf("iron");
+    expect(after.units).toBe(before.units);
+    expect(after.units * after.value >= before.units * before.value).toBe(true);
+  });
+
+  it("poolMaxOrder aşan emir ORDER_TOO_LARGE, hiçbir şey değişmez; sınırdaki emir geçer", async () => {
+    const pool = await poolOf("wheat");
+    const max = poolMaxOrder(pool);
+    const playerId = await createPlayer(PARAMS.startingBalance * 10n);
+    const r = await executeTrade(db, playerId, order({ quantity: Number(max) + 1 }));
+    expect(r).toMatchObject({ ok: false, error: "ORDER_TOO_LARGE" });
+    expect(await poolOf("wheat")).toEqual(pool);
+    expect(await tradeCount(playerId)).toBe(0);
+    expect(await balanceOf(playerId)).toBe(PARAMS.startingBalance * 10n);
+
+    const ok = await executeTrade(db, playerId, order({ quantity: Number(max) }));
+    expect(ok.ok).toBe(true);
+  });
+
+  it("tick'ler havuzu referansa çeker (fiyat ve derinlik geri döner)", async () => {
+    const playerId = await createPlayer(PARAMS.startingBalance * 10n);
+    const start = await poolOf("wheat");
+    await executeTrade(db, playerId, order({ quantity: Number(poolMaxOrder(start)) }));
+    const pushed = await poolOf("wheat");
+    expect(poolPrice(pushed) > poolPrice(start)).toBe(true);
+
+    for (let i = 0; i < 50; i++) await runTick(db);
+    const healed = await poolOf("wheat");
+    const dist = (p: PoolState) => (poolPrice(p) > poolPrice(start) ? poolPrice(p) - poolPrice(start) : poolPrice(start) - poolPrice(p));
+    expect(dist(healed) < dist(pushed)).toBe(true);
+    expect(healed.units > pushed.units).toBe(true);
+    expect(await priceOf("wheat")).toBe(poolPrice(healed));
+    // Aynı sonuç saf formülle: sunucu replenish'i tick başına bir kez uygular.
+    let expected = pushed;
+    for (let i = 0; i < 50; i++) expected = replenish(expected, "wheat", 1n);
+    expect(healed).toEqual(expected);
   });
 });

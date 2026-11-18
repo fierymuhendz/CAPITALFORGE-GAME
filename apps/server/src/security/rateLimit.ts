@@ -18,6 +18,10 @@ export async function allow(redis: Redis, key: string, limit: number, windowMs: 
 
 export const LIMITS = {
   order: { limit: 5, windowMs: 1_000 },
+  /** Ticaret dışı eylemler (şirket, tesis, üretim, ödenek): 2/sn/oyuncu. */
+  action: { limit: 2, windowMs: 1_000 },
+  /** HTTP okuma uçları: IP başına ve oyuncu başına 20/sn. */
+  read: { limit: 20, windowMs: 1_000 },
   guestLogin: { limit: 5, windowMs: 60_000 },
   /** Tüm IP'ler için toplam misafir kaydı tavanı (adres döndürerek hesap fabrikasına karşı). */
   guestLoginGlobal: { limit: 60, windowMs: 60_000 },
@@ -25,6 +29,12 @@ export const LIMITS = {
 
 export const allowOrder = (redis: Redis, playerId: string) =>
   allow(redis, `order:${playerId}`, LIMITS.order.limit, LIMITS.order.windowMs);
+
+export const allowAction = (redis: Redis, playerId: string) =>
+  allow(redis, `action:${playerId}`, LIMITS.action.limit, LIMITS.action.windowMs);
+
+export const allowRead = (redis: Redis, bucket: string) =>
+  allow(redis, `read:${bucket}`, LIMITS.read.limit, LIMITS.read.windowMs);
 
 /** IPv6 adresini /64 önekine indirger; tek bir ağ içinde adres döndürmek sınırı aşmaz. */
 export function ipBucket(ip: string): string {
