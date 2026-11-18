@@ -21,6 +21,7 @@ export const ORDER_ERROR_TEXT: Record<OrderErrorCode, string> = {
   INSUFFICIENT_INVENTORY: "Yetersiz stok.",
   IDEMPOTENCY_MISMATCH: "Bu istek anahtarı farklı bir emirle kullanılmış. Emri yeniden gönderin.",
   VOLUME_LIMIT: "Bu ürün için saatlik işlem hacmi sınırına ulaştınız. Biraz sonra yeniden deneyin.",
+  ORDER_TOO_LARGE: "Emir piyasa derinliğine göre çok büyük, daha küçük parçalara bölün.",
   INTERNAL: "Sunucu hatası. Tekrar deneyebilirsiniz.",
 };
 

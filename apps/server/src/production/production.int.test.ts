@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { PARAMS, type RecipeId } from "@capitalforge/economy";
+import { PARAMS, RECIPES, type RecipeId } from "@capitalforge/economy";
 import type { ActionResult, BuyFacility, StartProduction } from "@capitalforge/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -12,6 +12,9 @@ import { transfer } from "../ledger/transfer";
 import { assertLedgerBalanced, closeTestResources, resetTestDb, setupTestDb } from "../test/db";
 import { runCompletionPhase } from "./complete";
 import { startProduction } from "./start";
+
+/** Tarif süresi sabit yazılmaz; ekonomi parametreleriyle birlikte değişir. */
+const GROW_TICKS = RECIPES.grow_wheat.durationTicks;
 
 let db: Db;
 
@@ -165,17 +168,17 @@ describe("üretim başlatma: eşzamanlılık", () => {
     await grant(p, "energy", 2n);
     expect((await start(p, farm, "grow_wheat", 2)).ok).toBe(true);
 
-    // Süre 60 tick: 59'da henüz tamamlanmamalı.
-    expect(await runCompletionPhase(db, 59n)).toEqual([]);
+    // Süre tarifin durationTicks değeri: bir önceki tick'te henüz tamamlanmamalı.
+    expect(await runCompletionPhase(db, GROW_TICKS - 1n)).toEqual([]);
 
-    const [a, b] = await Promise.all([runCompletionPhase(db, 60n), runCompletionPhase(db, 60n)]);
-    const again = await runCompletionPhase(db, 60n);
+    const [a, b] = await Promise.all([runCompletionPhase(db, GROW_TICKS), runCompletionPhase(db, GROW_TICKS)]);
+    const again = await runCompletionPhase(db, GROW_TICKS);
 
     expect(a.length + b.length + again.length).toBe(1);
-    expect(await invOf(p, "wheat")).toBe(20n);
+    expect(await invOf(p, "wheat")).toBe(RECIPES.grow_wheat.output.qty * 2n);
     const [job] = await jobsOf(farm);
     expect(job!.status).toBe("done");
-    expect(job!.completedTick).toBe(60n);
+    expect(job!.completedTick).toBe(GROW_TICKS);
   });
 
   it("tamamlanan tesis yeniden başlatılabilir (kısmi UNIQUE yalnızca running için)", async () => {
@@ -184,7 +187,7 @@ describe("üretim başlatma: eşzamanlılık", () => {
     const farm = refOf(await buy(p, "farm", 0, 0));
     await grant(p, "energy", 2n);
     expect((await start(p, farm, "grow_wheat", 1)).ok).toBe(true);
-    await runCompletionPhase(db, 60n);
+    await runCompletionPhase(db, GROW_TICKS);
     expect((await start(p, farm, "grow_wheat", 1)).ok).toBe(true);
     expect(await runningCount(farm)).toBe(1);
   });
@@ -291,9 +294,10 @@ describe("üretim tamamlama: süre ve çıktı", () => {
     expect(await invOf(p, "wheat")).toBe(0n);
     expect(await invOf(p, "energy")).toBe(0n);
 
-    const done = await runCompletionPhase(db, 60n);
+    const done = await runCompletionPhase(db, GROW_TICKS);
     expect(done).toHaveLength(1);
-    expect(done[0]!.outputQty).toBe("30");
-    expect(await invOf(p, "wheat")).toBe(30n);
+    const expected = RECIPES.grow_wheat.output.qty * 3n;
+    expect(done[0]!.outputQty).toBe(expected.toString());
+    expect(await invOf(p, "wheat")).toBe(expected);
   });
 });

@@ -1,4 +1,4 @@
-import { PARAMS, quoteTrade, volumeAllowed } from "@capitalforge/economy";
+import { PARAMS, executeAgainstPool, poolMaxOrder, volumeAllowed } from "@capitalforge/economy";
 import type { OrderErrorCode, OrderResult, PlaceOrder } from "@capitalforge/shared";
 import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import { currentTick } from "../actions/run";
@@ -91,8 +91,10 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
       if (!wallet) throw new TradeError("UNAUTHORIZED");
 
 
-      // 4. Fiyat (kilitli satırdan) ve teklif: formül packages/economy'de
-      const quote = quoteTrade(order.side, product.price, quantity);
+      // 4. Ortak havuz (kilitli ürün satırından) ve teklif: formül packages/economy'de
+      const pool = { units: product.poolUnits, value: product.poolValue };
+      if (quantity > poolMaxOrder(pool)) throw new TradeError("ORDER_TOO_LARGE");
+      const quote = executeAgainstPool(order.side, pool, quantity);
 
       // 5. Ön kontroller (CHECK kısıtları ikinci savunma)
       if (order.side === "buy") {
@@ -152,7 +154,7 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
       // trades satırı benzersiz olduğundan buraya ulaşılmamalı; ulaşılırsa envanter iki kez işlenmesin.
       if (transfer.status === "duplicate") throw new Error("Beklenmeyen yinelenen transfer");
 
-      // 7. Envanter ve bekleyen talep/arz
+      // 7. Envanter ve havuz (pool_units/pool_value/price aynı satırda, ürün kilidi altında)
       if (order.side === "buy") {
         await tx
           .insert(inventories)
@@ -161,20 +163,16 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
             target: [inventories.playerId, inventories.productId],
             set: { quantity: sql`${inventories.quantity} + ${quantity}` },
           });
-        await tx
-          .update(products)
-          .set({ pendingDemand: sql`${products.pendingDemand} + ${quantity}` })
-          .where(eq(products.id, order.productId));
       } else {
         await tx
           .update(inventories)
           .set({ quantity: sql`${inventories.quantity} - ${quantity}` })
           .where(and(eq(inventories.playerId, playerId), eq(inventories.productId, order.productId)));
-        await tx
-          .update(products)
-          .set({ pendingSupply: sql`${products.pendingSupply} + ${quantity}` })
-          .where(eq(products.id, order.productId));
       }
+      await tx
+        .update(products)
+        .set({ poolUnits: quote.newPool.units, poolValue: quote.newPool.value, price: quote.newPrice })
+        .where(eq(products.id, order.productId));
 
       // 8. Rezerve edilen trade satırını doldur
       await tx

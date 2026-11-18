@@ -28,20 +28,20 @@ export const RECIPES: Record<RecipeId, Recipe> = {
     facility: "farm",
     inputs: [{ productId: "energy", qty: 1n }],
     output: { productId: "wheat", qty: 10n },
-    durationTicks: 3_600n,
+    durationTicks: 7_200n,
   },
   mine_iron: {
     id: "mine_iron",
     facility: "mine",
     inputs: [{ productId: "energy", qty: 2n }],
     output: { productId: "iron", qty: 5n },
-    durationTicks: 5_400n,
+    durationTicks: 7_200n,
   },
   generate_energy: {
     id: "generate_energy",
     facility: "power_plant",
     inputs: [],
-    output: { productId: "energy", qty: 4n },
+    output: { productId: "energy", qty: 2n },
     durationTicks: 28_800n,
   },
   mill_flour: {

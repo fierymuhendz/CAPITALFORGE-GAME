@@ -1,3 +1,4 @@
+import { PARAMS, PRODUCT_IDS, initialPool } from "@capitalforge/economy";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
@@ -12,6 +13,8 @@ import { createRedis, type Redis } from "../redis";
  * Güvenlik: yalnızca adı "test" içeren veritabanında ve 0 dışında bir Redis db indeksinde çalışır;
  * geliştirme verisini yanlışlıkla TRUNCATE/FLUSHDB etmemek için.
  */
+
+const PRODUCT_NAMES = { wheat: "Buğday", iron: "Demir", energy: "Enerji", flour: "Un", steel: "Çelik" } as const;
 
 const MIGRATIONS_DIR = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
@@ -61,11 +64,15 @@ export async function resetTestDb(db: Db): Promise<void> {
     sql`INSERT INTO accounts (kind, code) VALUES ('system', 'system:mint'), ('system', 'system:tax'), ('system', 'system:market'), ('system', 'system:fees')`,
   );
   await db.execute(sql`INSERT INTO game_clock (id, tick) VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET tick = 0`);
-  await db.execute(
-    sql`INSERT INTO products (id, name, price) VALUES ('wheat', 'Buğday', 500), ('iron', 'Demir', 600), ('energy', 'Enerji', 500),
-        ('flour', 'Un', 900), ('steel', 'Çelik', 1500)
-        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, price = EXCLUDED.price, pending_demand = 0, pending_supply = 0, tick = 0`,
-  );
+  for (const id of PRODUCT_IDS) {
+    const pool = initialPool(id);
+    await db.execute(
+      sql`INSERT INTO products (id, name, price, pool_units, pool_value, tick)
+          VALUES (${id}, ${PRODUCT_NAMES[id]}, ${PARAMS.initialPrice[id]}, ${pool.units}, ${pool.value}, 0)
+          ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, price = EXCLUDED.price,
+            pool_units = EXCLUDED.pool_units, pool_value = EXCLUDED.pool_value, tick = 0`,
+    );
+  }
   await db.execute(sql`INSERT INTO price_history (product_id, tick, price) SELECT id, 0, price FROM products`);
 }
 

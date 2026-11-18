@@ -1,4 +1,4 @@
-import { FACILITY_TYPES, PARAMS, RECIPES, RECIPE_IDS, facilityPrice, upkeep } from "@capitalforge/economy";
+import { FACILITY_TYPES, PARAMS, RECIPES, RECIPE_IDS, facilityPrice, poolMaxOrder, upkeep } from "@capitalforge/economy";
 import {
   CITY,
   CityQuerySchema,
@@ -13,7 +13,7 @@ import {
   type HistoryResponse,
   type Me,
 } from "@capitalforge/shared";
-import { count, desc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createGuest } from "../auth/guest";
 import { createSession, getSession, type Session } from "../auth/session";
@@ -121,8 +121,14 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
       const [n] = await db.select({ n: count() }).from(facilities).where(eq(facilities.companyId, company.id));
       owned = BigInt(n?.n ?? 0);
     }
+    const productRows = await db.select().from(products).orderBy(asc(products.id));
     return {
       clockTick: Number(clock?.tick ?? 0n),
+      products: productRows.map((r) => ({
+        productId: r.id,
+        price: r.price.toString(),
+        maxOrder: poolMaxOrder({ units: r.poolUnits, value: r.poolValue }).toString(),
+      })),
       companyFoundingFee: PARAMS.companyFoundingFee.toString(),
       maxFacilitiesPerCompany: Number(PARAMS.maxFacilitiesPerCompany),
       upkeepPeriodTicks: Number(PARAMS.upkeepPeriodTicks),
@@ -131,7 +137,7 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
       facilityTypes: FACILITY_TYPES.map((type) => ({
         type,
         price: facilityPrice(type, owned).toString(),
-        upkeep: upkeep(type, 1n).toString(),
+        upkeep: upkeep(type, 1n, owned + 1n).toString(),
       })),
       recipes: RECIPE_IDS.map((id) => {
         const r = RECIPES[id];

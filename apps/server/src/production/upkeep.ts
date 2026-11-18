@@ -1,5 +1,5 @@
 import { type FacilityType, upkeep, upkeepPeriod } from "@capitalforge/economy";
-import { and, asc, eq, lt } from "drizzle-orm";
+import { and, asc, count, eq, lt } from "drizzle-orm";
 import { lockWallet, systemAccountId } from "../actions/run";
 import type { Db } from "../db/client";
 import { companies, facilities } from "../db/schema";
@@ -22,7 +22,11 @@ export async function chargeUpkeep(db: Db, facilityId: string, companyId: string
     const [f] = await tx.select().from(facilities).where(eq(facilities.id, facilityId)).for("update");
     if (!f || f.upkeepPaidPeriod >= period) return "skipped";
 
-    const amount = upkeep(f.type as FacilityType, BigInt(f.level));
+    // Bakım şirketteki tesis sayısıyla artar (çok tesisli para basmayı dengeler); şirket kilidi altında sayılır.
+    const [cnt] = await tx.select({ n: count() }).from(facilities).where(eq(facilities.companyId, companyId));
+    const ownedCount = BigInt(cnt?.n ?? 1);
+
+    const amount = upkeep(f.type as FacilityType, BigInt(f.level), ownedCount);
     const wallet = await lockWallet(tx, company.playerId);
     if (amount === 0n || wallet.balance < amount) {
       await tx

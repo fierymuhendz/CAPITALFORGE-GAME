@@ -1,5 +1,5 @@
 {
-  "id": "623dbe0b-1c8f-4511-a259-153af724c2c2",
+  "id": "469b3f49-10df-4155-a740-6e1e0485f575",
   "prevId": "6587cde7-12f0-4a0a-a47a-984c899a1fb5",
   "version": "7",
   "dialect": "postgresql",
@@ -958,19 +958,19 @@
           "primaryKey": false,
           "notNull": true
         },
-        "pending_demand": {
-          "name": "pending_demand",
+        "pool_units": {
+          "name": "pool_units",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
-          "default": "0"
+          "default": "1"
         },
-        "pending_supply": {
-          "name": "pending_supply",
+        "pool_value": {
+          "name": "pool_value",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
-          "default": "0"
+          "default": "1"
         },
         "tick": {
           "name": "tick",
@@ -990,13 +990,13 @@
           "name": "products_price_min",
           "value": "\"products\".\"price\" >= 1"
         },
-        "products_pending_demand_nn": {
-          "name": "products_pending_demand_nn",
-          "value": "\"products\".\"pending_demand\" >= 0"
+        "products_pool_units_min": {
+          "name": "products_pool_units_min",
+          "value": "\"products\".\"pool_units\" >= 1"
         },
-        "products_pending_supply_nn": {
-          "name": "products_pending_supply_nn",
-          "value": "\"products\".\"pending_supply\" >= 0"
+        "products_pool_value_min": {
+          "name": "products_pool_value_min",
+          "value": "\"products\".\"pool_value\" >= 1"
         }
       },
       "isRLSEnabled": false

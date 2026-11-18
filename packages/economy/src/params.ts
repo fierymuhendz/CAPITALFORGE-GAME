@@ -37,7 +37,9 @@ export const PARAMS = {
     steelworks: 2400000n,
   } satisfies Record<FacilityType, bigint>,
   /** Sahip olunan her tesis için sıradaki tesis fiyatının bileşik artışı (bp). */
-  facilityGrowthBps: 2_000n,
+  facilityGrowthBps: 2_500n,
+  /** Şirketteki her ek tesis, tüm tesislerin bakımını bu kadar (bp) artırır (upkeep ownedCount ile). */
+  upkeepCountGrowthBps: 200n,
   maxFacilitiesPerCompany: 20n,
   /** Bir işteki en fazla batch sayısı (shared zod şemasıyla aynı: 1..10). */
   maxBatchesPerJob: 10n,
@@ -61,11 +63,11 @@ export const PARAMS = {
   // --- Ortak piyasa havuzu (src/pool.ts) ---
   /** Ürün başına hedef havuz derinliği (birim). Büyüdükçe emir etkisi küçülür, günlük para tavanı artar. */
   poolDepth: {
-    wheat: 14000n,
-    iron: 7000n,
-    energy: 7000n,
-    flour: 9000n,
-    steel: 3500n,
+    wheat: 84000n,
+    iron: 42000n,
+    energy: 42000n,
+    flour: 54000n,
+    steel: 21000n,
   } satisfies Record<ProductId, bigint>,
   /** Tick başına yenilenme oranı (ppm): havuz her tick hedefe bu kesir kadar yaklaşır. */
   poolReplenishPpm: 150n,

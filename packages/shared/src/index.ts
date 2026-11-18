@@ -116,6 +116,7 @@ export const ORDER_ERRORS = [
   "INSUFFICIENT_FUNDS",
   "INSUFFICIENT_INVENTORY",
   "VOLUME_LIMIT",
+  "ORDER_TOO_LARGE",
   "IDEMPOTENCY_MISMATCH",
   "INTERNAL",
 ] as const;
@@ -305,6 +306,8 @@ export const CatalogSchema = z.object({
   upkeepPeriodTicks: z.number().int(),
   reliefAmount: MoneySchema,
   reliefCooldownTicks: z.number().int(),
+  /** Ürün başına güncel havuz fiyatı ve tek emirde izin verilen en büyük adet (poolMaxOrder). */
+  products: z.array(z.object({ productId: z.string(), price: MoneySchema, maxOrder: QuantityStringSchema })),
   facilityTypes: z.array(
     z.object({
       type: FacilityTypeSchema,

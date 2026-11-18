@@ -39,8 +39,9 @@ const STEP = 60; // tick
 const STEPS_PER_DAY = 86_400 / STEP;
 const HOLD_RATIO = 60n; // meşru üretici fiyat < ref%85 ise satmaz
 const BOT_HOLD = 75n; // bot ref%75'e kadar satar
+const FAC_SHARE = Number(process.env.SIM_FAC_SHARE ?? 50);
 const START_FAC = Number(process.env.SIM_START_FAC ?? 1);
-const MAX_SIM_FACILITIES = Number(process.env.SIM_MAX_FAC ?? START_FAC); // pencere sınırı ek tesisi marjinal yapar
+const MAX_SIM_FACILITIES = Number(process.env.SIM_MAX_FAC ?? 1); // pencere sınırı ek tesisi marjinal yapar
 const rng = createRng(SEED);
 
 const K = PRODUCT_IDS.length;
@@ -68,6 +69,7 @@ interface Player {
   lastReliefPeriod: bigint;
   baseline: Money; // kurulum sonrası servet
   startFacType: FacilityType | null;
+  nStart: number; // başlangıç tesis sayısı
 }
 
 const prodTypes: FacilityType[] = [
@@ -214,11 +216,24 @@ const players: Player[] = Array.from({ length: PLAYERS }, (_, i) => {
     lastReliefPeriod: -1n,
     baseline: 0n,
     startFacType: null,
+    nStart: 1,
   };
   if (kind === "producer" || kind === "bot") {
     pl.startFacType = prodTypes[Math.floor(i / 10) % prodTypes.length]!;
+    // N tesisle başlayanlara sermaye farkı verilir (başlangıç hibesi + capex farkı), böylece
+    // kurulum sonrası servet karşılaştırılabilir kalır; bu fark mint'e yazılır (kaynak).
+    // SIM_FAC_SHARE (%): üretici/botların bu payı N tesisle, kalanı 1 tesisle başlar (rastgele atama)
+    const inGroup = (((i * 2654435761) >>> 7) & 127) < (FAC_SHARE * 128) / 100;
+    pl.nStart = inGroup ? START_FAC : 1;
+    const extra = (() => {
+      let c = 0n;
+      for (let n = 1; n < pl.nStart; n++) c += facilityPrice(pl.startFacType!, BigInt(n));
+      return c;
+    })();
+    pl.balance += extra;
+    mint += extra;
     buyFacility(pl, pl.startFacType);
-    for (let n = 1; n < START_FAC; n++) buyFacility(pl, pl.startFacType);
+    for (let n = 1; n < pl.nStart; n++) buyFacility(pl, pl.startFacType);
   } else if (kind === "passive") {
     pl.startFacType = "farm";
     buyFacility(pl, "farm");
@@ -249,7 +264,7 @@ function producerStep(pl: Player, step: number): void {
     const r = Object.values(RECIPES).find((x) => x.facility === f.type)!;
     const out = idx(r.output.productId);
     if (pl.inv[out]! >= r.output.qty * PARAMS.maxBatchesPerJob * 2n) continue; // satılmamış stok sınırı
-    const reserve = upkeep(f.type, 1n) * 3n;
+    const reserve = upkeep(f.type, 1n, BigInt(pl.facs.length)) * 3n;
     // b batch için girdi maliyeti (null: hacim sınırı veya bakiye elvermiyor)
     const costOf = (b: bigint): bigint | null => {
       let cost = 0n;
@@ -294,7 +309,7 @@ function producerStep(pl: Player, step: number): void {
     f.jobDone = step + Math.ceil(Number(r.durationTicks) / STEP);
   }
   // genişle
-  if (pl.facs.length < MAX_SIM_FACILITIES && pl.startFacType) {
+  if (pl.facs.length < Math.max(MAX_SIM_FACILITIES, pl.nStart) && pl.startFacType) {
     const price = facilityPrice(pl.startFacType, BigInt(pl.facs.length));
     if (pl.balance >= price * 2n) buyFacility(pl, pl.startFacType);
   }
@@ -347,7 +362,7 @@ for (let step = 1; step <= totalSteps; step++) {
   if (upkeepPeriod(tick) > upkeepPeriod(tick - BigInt(STEP))) {
     for (const pl of players) {
       for (const f of pl.facs) {
-        const u = upkeep(f.type, 1n);
+        const u = upkeep(f.type, 1n, BigInt(pl.facs.length));
         if (pl.balance >= u) {
           pl.balance -= u;
           feeSink += u;
@@ -449,6 +464,16 @@ console.table({
   nakit_tutucu_medyan: `${formatMoney(medBase("holder"))} -> ${formatMoney(medW("holder"))}`,
   bot_medyan: `${formatMoney(medBase("bot"))} -> ${formatMoney(medW("bot"))}`,
   bot_gunluk_getiri: pct(Math.pow(Number(medW("bot")) / Math.max(1, Number(medBase("bot"))), 1 / DAYS) - 1),
+  uretici_gunluk_kazanc_TL: formatMoney((medW("producer") - medBase("producer")) / BigInt(DAYS)),
+  bot_gunluk_kazanc_TL: formatMoney((medW("bot") - medBase("bot")) / BigInt(DAYS)),
+  uretici_kazanc_N_vs_1_TL: (["producer", "bot"] as const)
+    .map((k) => {
+      const gain = (g: Player[]): string => (g.length ? formatMoney(median(g.map((p) => (wealth(p) - p.baseline) / BigInt(DAYS)))) : "-");
+      const a = grp(k).filter((p) => p.nStart === START_FAC);
+      const b = grp(k).filter((p) => p.nStart === 1);
+      return `${k}: N=${START_FAC} ${gain(a)} (n=${a.length}), N=1 ${gain(b)} (n=${b.length})`;
+    })
+    .join(" | "),
   uretici_gunluk_getiri: pct(Math.pow(Number(medW("producer")) / Math.max(1, Number(medBase("producer"))), 1 / DAYS) - 1),
   gambler_medyan: `${formatMoney(medBase("gambler"))} -> ${formatMoney(medW("gambler"))}`,
   tuccar_medyan: `${formatMoney(medBase("trader"))} -> ${formatMoney(medW("trader"))}`,

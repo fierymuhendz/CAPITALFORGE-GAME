@@ -81,14 +81,15 @@ export const products = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     price: bigintCol("price").notNull(),
-    pendingDemand: bigintCol("pending_demand").notNull().default(sql`0`),
-    pendingSupply: bigintCol("pending_supply").notNull().default(sql`0`),
+    /** Ortak piyasa havuzu: birim rezervi ve sanal değer rezervi. price = value / units (türetilmiş, tutarlı yazılır). */
+    poolUnits: bigintCol("pool_units").notNull().default(sql`1`),
+    poolValue: bigintCol("pool_value").notNull().default(sql`1`),
     tick: bigintCol("tick").notNull().default(sql`0`),
   },
   (t) => [
     check("products_price_min", sql`${t.price} >= 1`),
-    check("products_pending_demand_nn", sql`${t.pendingDemand} >= 0`),
-    check("products_pending_supply_nn", sql`${t.pendingSupply} >= 0`),
+    check("products_pool_units_min", sql`${t.poolUnits} >= 1`),
+    check("products_pool_value_min", sql`${t.poolValue} >= 1`),
   ],
 );
 

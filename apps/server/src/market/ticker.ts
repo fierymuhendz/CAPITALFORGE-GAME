@@ -1,4 +1,4 @@
-import { PARAMS, type ProductId, nextPrice, npcFlow } from "@capitalforge/economy";
+import { type ProductId, poolPrice, replenish } from "@capitalforge/economy";
 import { asc, eq, sql } from "drizzle-orm";
 import { EventEmitter } from "node:events";
 import type { Db } from "../db/client";
@@ -35,7 +35,7 @@ export const JOB_EVENT = "jobCompleted";
 
 /**
  * Fiyat fazı: ürünleri id sırasıyla kilitler (ticaret yalnızca tek ürün kilitler, deadlock yok),
- * NPC talep/arzını bekleyen talep/arza ekleyip nextPrice uygular, bekleyen değerleri sıfırlar,
+ * ortak havuzu replenish ile yeniler, fiyatı havuzdan türetir,
  * price_history yazar ve oyun saatini (game_clock) aynı transaction'da bir artırır.
  */
 export async function runTickFull(db: Db): Promise<TickBroadcast> {
@@ -43,14 +43,13 @@ export async function runTickFull(db: Db): Promise<TickBroadcast> {
     const rows = await tx.select().from(products).orderBy(asc(products.id)).for("update");
     const out: ProductTick[] = [];
     for (const p of rows) {
-      const ref = PARAMS.refPrice[p.id as ProductId];
-      const base = PARAMS.npcBase[p.id as ProductId];
-      const npc = ref !== undefined && base !== undefined ? npcFlow(p.price, ref, base) : { demand: 0n, supply: 0n };
-      const price = nextPrice(p.price, p.pendingDemand + npc.demand, p.pendingSupply + npc.supply);
+      // Havuz her tick referans derinliğe/değere doğru yenilenir (tek tick); fiyat havuzdan türetilir.
+      const pool = replenish({ units: p.poolUnits, value: p.poolValue }, p.id as ProductId, 1n);
+      const price = poolPrice(pool);
       const tick = p.tick + 1n;
       await tx
         .update(products)
-        .set({ price, tick, pendingDemand: 0n, pendingSupply: 0n })
+        .set({ price, tick, poolUnits: pool.units, poolValue: pool.value })
         .where(eq(products.id, p.id));
       await tx.insert(priceHistory).values({ productId: p.id, tick, price }).onConflictDoNothing();
       out.push({ productId: p.id, price: price.toString(), tick: Number(tick) });

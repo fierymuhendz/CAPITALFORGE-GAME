@@ -95,6 +95,8 @@ async function reliefTransferCount(playerId: string, period: bigint): Promise<nu
   return rows.length;
 }
 
+const WHEAT_PRICE = PARAMS.initialPrice.wheat;
+
 describe("asgari ödenek: dönem başına tek ödeme", () => {
   it("aynı dönemde 10 paralel istek (farklı anahtar) → 1 ödeme, 9 NOT_ELIGIBLE", async () => {
     const p = await newPlayer(0n);
@@ -155,18 +157,18 @@ describe("asgari ödenek: uygunluk", () => {
   });
 
   it("nakit + envanter değeri eşiği aşarsa NOT_ELIGIBLE; altındaysa uygun (sınır)", async () => {
-    // Fiyat sunucuda 500 (seed). Birim değer sistem lehine ölçülür.
-    const unit = inventoryValue([{ price: 500n, qty: 1n }]);
+    // Fiyat sunucuda PARAMS.initialPrice (seed). Birim değer sistem lehine ölçülür.
+    const unit = inventoryValue([{ price: WHEAT_PRICE, qty: 1n }]);
     const need = (THRESHOLD + unit - 1n) / unit;
 
     const under = await newPlayer(0n);
     await grant(under, "wheat", need - 1n);
-    expect(inventoryValue([{ price: 500n, qty: need - 1n }])).toBeLessThan(THRESHOLD);
+    expect(inventoryValue([{ price: WHEAT_PRICE, qty: need - 1n }])).toBeLessThan(THRESHOLD);
     expect((await claim(under)).ok).toBe(true);
 
     const over = await newPlayer(0n);
     await grant(over, "wheat", need);
-    expect(inventoryValue([{ price: 500n, qty: need }])).toBeGreaterThanOrEqual(THRESHOLD);
+    expect(inventoryValue([{ price: WHEAT_PRICE, qty: need }])).toBeGreaterThanOrEqual(THRESHOLD);
     expect(await claim(over)).toMatchObject({ ok: false, error: "NOT_ELIGIBLE" });
     expect(await balanceOf(over)).toBe(0n);
   });

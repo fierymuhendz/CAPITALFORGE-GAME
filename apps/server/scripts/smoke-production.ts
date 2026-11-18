@@ -3,6 +3,7 @@
  * Kullanım: DATABASE_URL=... pnpm exec tsx scripts/smoke-production.ts
  * Geliştirme veritabanına bir misafir oyuncu ekler (silmez).
  */
+import { RECIPES } from "@capitalforge/economy";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { createGuest } from "../src/auth/guest";
@@ -36,13 +37,14 @@ show("üretim", job);
 show("meşgul tesis", await startProduction(db, pid, { facilityId: plant.refId!, recipeId: "generate_energy", batches: 1, idempotencyKey: key() }));
 
 let completedAt: number | undefined;
-for (let i = 0; i < 70 && completedAt === undefined; i++) {
+const maxTicks = Number(RECIPES.generate_energy.durationTicks) + 5;
+for (let i = 0; i < maxTicks && completedAt === undefined; i++) {
   const r = await runTickCycle(db);
   if (r.completed.some((j) => j.playerId === pid)) completedAt = r.broadcast.clockTick;
 }
 show("tamamlandı, clockTick", completedAt);
 show("envanter", await getPortfolio(db, pid));
-const sell = await executeTrade(db, pid, { side: "sell", productId: "energy", quantity: 60, idempotencyKey: key() });
+const sell = await executeTrade(db, pid, { side: "sell", productId: "energy", quantity: Number(RECIPES.generate_energy.output.qty) * 3, idempotencyKey: key() });
 show("satış", sell);
 const view = await getCompanyView(db, pid);
 show("görünüm", { jobs: view.jobs.length, facilities: view.facilities.length, clockTick: view.clockTick, relief: view.reliefAvailable });

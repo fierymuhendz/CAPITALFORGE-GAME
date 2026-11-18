@@ -19,10 +19,18 @@ export function facilityPrice(type: FacilityType, ownedCount: bigint): Money {
   return price;
 }
 
-/** Bir bakım dönemi (upkeepPeriodTicks) için tesis bakımı: taban × seviye. Negatif olamaz. */
-export function upkeep(type: FacilityType, level: bigint): Money {
+/**
+ * Bir bakım dönemi (upkeepPeriodTicks) için tesis bakımı: taban x seviye. ownedCount (şirketteki
+ * toplam tesis sayısı) verilirse bakım her ek tesis için upkeepCountGrowthBps kadar artar (yukarı
+ * yuvarlı); verilmezse eski davranış (çarpan yok). Negatif olamaz.
+ */
+export function upkeep(type: FacilityType, level: bigint, ownedCount?: bigint): Money {
   if (level < 1n) throw new RangeError(`seviye en az 1 olmalı: ${level}`);
-  return PARAMS.upkeepBase[type] * level;
+  const base = PARAMS.upkeepBase[type] * level;
+  if (ownedCount === undefined) return base;
+  if (ownedCount < 1n) throw new RangeError(`tesis sayısı en az 1 olmalı: ${ownedCount}`);
+  const factor = BPS_SCALE + PARAMS.upkeepCountGrowthBps * (ownedCount - 1n);
+  return (base * factor + BPS_SCALE - 1n) / BPS_SCALE;
 }
 
 /** Bakım dönemi numarası (tick / upkeepPeriodTicks). */

@@ -71,6 +71,10 @@ CREATE TABLE "relief_claims" (
 	CONSTRAINT "relief_amount_positive" CHECK ("relief_claims"."amount" > 0)
 );
 --> statement-breakpoint
+ALTER TABLE "products" DROP CONSTRAINT "products_pending_demand_nn";--> statement-breakpoint
+ALTER TABLE "products" DROP CONSTRAINT "products_pending_supply_nn";--> statement-breakpoint
+ALTER TABLE "products" ADD COLUMN "pool_units" bigint DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "products" ADD COLUMN "pool_value" bigint DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE "trades" ADD COLUMN "tick" bigint DEFAULT 0 NOT NULL;--> statement-breakpoint
 ALTER TABLE "companies" ADD CONSTRAINT "companies_player_id_players_id_fk" FOREIGN KEY ("player_id") REFERENCES "public"."players"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "facilities" ADD CONSTRAINT "facilities_company_id_companies_id_fk" FOREIGN KEY ("company_id") REFERENCES "public"."companies"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -87,14 +91,22 @@ CREATE UNIQUE INDEX "production_jobs_one_running_idx" ON "production_jobs" USING
 CREATE INDEX "production_jobs_due_idx" ON "production_jobs" USING btree ("completes_at_tick") WHERE "production_jobs"."status" = 'running';--> statement-breakpoint
 CREATE INDEX "production_jobs_player_idx" ON "production_jobs" USING btree ("player_id");--> statement-breakpoint
 CREATE INDEX "trades_volume_idx" ON "trades" USING btree ("player_id","product_id","tick");--> statement-breakpoint
+ALTER TABLE "products" DROP COLUMN "pending_demand";--> statement-breakpoint
+ALTER TABLE "products" DROP COLUMN "pending_supply";--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "products_pool_units_min" CHECK ("products"."pool_units" >= 1);--> statement-breakpoint
+ALTER TABLE "products" ADD CONSTRAINT "products_pool_value_min" CHECK ("products"."pool_value" >= 1);--> statement-breakpoint
 -- Seed: oyun saati (tek satır)
 INSERT INTO "game_clock" ("id", "tick") VALUES (1, 0) ON CONFLICT ("id") DO NOTHING;--> statement-breakpoint
 -- Seed: ücret/bakım/tesis bedeli yutağı (bakiye alanı güncellenmez, defterden türetilir)
 INSERT INTO "accounts" ("kind", "code") VALUES ('system', 'system:fees') ON CONFLICT ("code") DO NOTHING;--> statement-breakpoint
--- Seed: yeni ürünler (fiyatlar PARAMS.initialPrice ile aynı, kuruş)
-INSERT INTO "products" ("id", "name", "price") VALUES ('flour', 'Un', 900), ('steel', 'Çelik', 1500) ON CONFLICT ("id") DO NOTHING;--> statement-breakpoint
--- Mevcut ürünlerin fiyatlarını PARAMS.initialPrice'a çek; tick bir artar, price_history'ye yeni nokta eklenir.
-UPDATE "products" p SET "price" = v."price", "tick" = p."tick" + 1, "pending_demand" = 0, "pending_supply" = 0
-  FROM (VALUES ('wheat', 500::bigint), ('iron', 600::bigint), ('energy', 500::bigint)) AS v("id", "price")
+-- Seed: yeni ürünler. Havuz = initialPool(id): units = poolDepth, value = units x initialPrice; fiyat = value / units.
+-- Değerler PARAMS.initialPrice ve PARAMS.poolDepth ile aynı olmalı (seedParams.test.ts denetler).
+INSERT INTO "products" ("id", "name", "price", "pool_units", "pool_value")
+  SELECT v."id", v."name", v."price", v."units", v."units" * v."price"
+  FROM (VALUES ('flour', 'Un', 1650::bigint, 54000::bigint), ('steel', 'Çelik', 7600::bigint, 21000::bigint)) AS v("id", "name", "price", "units")
+  ON CONFLICT ("id") DO NOTHING;--> statement-breakpoint
+-- Mevcut ürünleri havuz modeline geçir (fiyat ve havuz initialPool ile aynı); tick bir artar.
+UPDATE "products" p SET "price" = v."price", "pool_units" = v."units", "pool_value" = v."units" * v."price", "tick" = p."tick" + 1
+  FROM (VALUES ('wheat', 560::bigint, 84000::bigint), ('iron', 2300::bigint, 42000::bigint), ('energy', 4000::bigint, 42000::bigint)) AS v("id", "price", "units")
   WHERE p."id" = v."id";--> statement-breakpoint
 INSERT INTO "price_history" ("product_id", "tick", "price") SELECT "id", "tick", "price" FROM "products" ON CONFLICT DO NOTHING;

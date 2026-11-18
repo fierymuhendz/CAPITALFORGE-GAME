@@ -36,7 +36,7 @@ export async function getCompanyView(db: Db, playerId: string): Promise<CompanyV
       plotY: f.plotY,
       status: f.status,
       purchasePrice: f.purchasePrice.toString(),
-      upkeep: upkeep(f.type as FacilityType, BigInt(f.level)).toString(),
+      upkeep: upkeep(f.type as FacilityType, BigInt(f.level), BigInt(facs.length)).toString(),
     })),
     jobs: jobs.map((j) => ({
         id: j.id,

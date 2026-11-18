@@ -50,6 +50,15 @@ describe("tesis fiyatı ve bakım", () => {
     );
     expect(() => upkeep("farm", 0n)).toThrow(RangeError);
   });
+  it("bakım: ownedCount verilmezse eski davranış, verilince tesis sayısıyla tekdüze artar", () => {
+    fc.assert(
+      fc.property(ftype, fc.bigInt({ min: 1n, max: 5n }), fc.bigInt({ min: 1n, max: 20n }), (t, l, n) => {
+        const base = upkeep(t, l);
+        return upkeep(t, l, 1n) === base && upkeep(t, l, n + 1n) >= upkeep(t, l, n) && upkeep(t, l, n) >= base;
+      }),
+    );
+    expect(() => upkeep("farm", 1n, 0n)).toThrow(RangeError);
+  });
   it("bakım dönemi tick ile tekdüze", () => {
     fc.assert(
       fc.property(fc.bigInt({ min: 0n, max: 10n ** 9n }), (t) => upkeepPeriod(t + 1n) >= upkeepPeriod(t)),
