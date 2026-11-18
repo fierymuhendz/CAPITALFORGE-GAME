@@ -15,9 +15,12 @@ import {
   facilityPrice,
   formatMoney,
   inventoryValue,
-  nextPrice,
-  npcFlow,
-  quoteTrade,
+  executeAgainstPool,
+  initialPool,
+  poolMaxOrder,
+  poolPrice,
+  replenish,
+  type PoolState,
   reliefEligible,
   reliefPeriod,
   upkeep,
@@ -34,16 +37,21 @@ const SEED = Number(process.env.SIM_SEED ?? 42);
 const ATTENTION = Number(process.env.SIM_ATTENTION ?? 120); // ortalama kaç adımda bir dönüş
 const STEP = 60; // tick
 const STEPS_PER_DAY = 86_400 / STEP;
-const HOLD_RATIO = 90n; // üretici fiyat < ref%90 ise satmaz
-const MAX_SIM_FACILITIES = Number(PARAMS.maxFacilitiesPerCompany);
+const HOLD_RATIO = 60n; // meşru üretici fiyat < ref%85 ise satmaz
+const BOT_HOLD = 75n; // bot ref%75'e kadar satar
+const START_FAC = Number(process.env.SIM_START_FAC ?? 1);
+const MAX_SIM_FACILITIES = Number(process.env.SIM_MAX_FAC ?? START_FAC); // pencere sınırı ek tesisi marjinal yapar
 const rng = createRng(SEED);
 
 const K = PRODUCT_IDS.length;
 const idx = (p: string): number => PRODUCT_IDS.indexOf(p as ProductId);
-const prices: bigint[] = PRODUCT_IDS.map((p) => PARAMS.initialPrice[p]);
+const volB: bigint[] = new Array(PRODUCT_IDS.length).fill(0n);
+const volS: bigint[] = new Array(PRODUCT_IDS.length).fill(0n);
+const pools: PoolState[] = PRODUCT_IDS.map((p) => initialPool(p));
+const prices: bigint[] = pools.map((p) => poolPrice(p));
 const refs: bigint[] = PRODUCT_IDS.map((p) => PARAMS.refPrice[p]);
 
-type Kind = "producer" | "passive" | "trader" | "gambler" | "holder";
+type Kind = "producer" | "bot" | "passive" | "trader" | "gambler" | "holder";
 interface Facility {
   type: FacilityType;
   active: boolean;
@@ -63,10 +71,12 @@ interface Player {
 }
 
 const prodTypes: FacilityType[] = [
-  "power_plant", "farm", "mine", "mill", "steelworks", "farm", "mill", "farm",
+  "power_plant", "farm", "power_plant", "mine", "mill", "power_plant", "steelworks", "farm", "power_plant", "mill",
 ];
+const BOT_PCT = Number(process.env.SIM_BOT_PCT ?? 10);
 const kindOf = (i: number): Kind => {
   const m = i % 10;
+  if (m >= 10 - Math.round(BOT_PCT / 10)) return "bot";
   if (m <= 3) return "producer";
   if (m === 4) return "passive";
   if (m === 5) return "trader";
@@ -86,44 +96,80 @@ let sinkFees = 0n;
 let upkeepPaid = 0n;
 let suspensions = 0;
 let measuring = false;
-// [ürün][tick ofseti]: her işlem adım içinde rastgele bir tick'e düşer (patlamalı akış, muhafazakâr)
-const flowD: bigint[][] = Array.from({ length: K }, () => new Array<bigint>(STEP).fill(0n));
-const flowS: bigint[][] = Array.from({ length: K }, () => new Array<bigint>(STEP).fill(0n));
-const slot = (): number => Math.floor(rng() * STEP);
+/**
+ * Havuza karşı işlem: emirler poolMaxOrder'a bölünür, art arda uygulanır. commit=false: yalnız
+ * toplam oyuncu etkisi (önizleme, havuz değişmez). floor: satımda fiyat bunun altına inerse durur.
+ */
+function runTrade(
+  side: "buy" | "sell",
+  k: number,
+  q: bigint,
+  commit: boolean,
+  floor = 0n,
+): { qty: bigint; delta: bigint; gross: bigint; tax: bigint } {
+  let pool = pools[k]!;
+  let left = q;
+  let done = 0n;
+  let delta = 0n;
+  let gross = 0n;
+  let tax = 0n;
+  while (left > 0n) {
+    if (side === "sell" && floor > 0n && poolPrice(pool) < floor) break;
+    const c = left < poolMaxOrder(pool) ? left : poolMaxOrder(pool);
+    if (side === "buy" && c >= pool.units - 1n) break;
+    const r = executeAgainstPool(side, pool, c);
+    pool = r.newPool;
+    done += c;
+    left -= c;
+    delta += r.playerDelta;
+    gross += r.gross;
+    tax += r.tax;
+  }
+  if (commit) {
+    if (side === "buy") volB[k] = volB[k]! + done;
+    else volS[k] = volS[k]! + done;
+    pools[k] = pool;
+    prices[k] = poolPrice(pool);
+  }
+  return { qty: done, delta, gross, tax };
+}
+const previewBuy = (k: number, q: bigint): bigint => -runTrade("buy", k, q, false).delta;
+const previewSell = (k: number, q: bigint): bigint => runTrade("sell", k, q, false).delta;
 
 function buy(pl: Player, k: number, q: bigint): bigint {
+  const maxQ = pools[k]!.units * 3n;
+  if (q > maxQ) q = maxQ;
   if (q <= 0n) return 0n;
-  let t = quoteTrade("buy", prices[k]!, q);
-  if (-t.playerDelta > pl.balance) {
-    const unit = -quoteTrade("buy", prices[k]!, 1n).playerDelta;
-    q = pl.balance / unit;
-    if (q <= 0n) return 0n;
-    t = quoteTrade("buy", prices[k]!, q);
-    while (-t.playerDelta > pl.balance && q > 0n) {
-      q -= 1n;
-      if (q > 0n) t = quoteTrade("buy", prices[k]!, q);
+  if (previewBuy(k, q) > pl.balance) {
+    let lo = 0n;
+    let hi = q;
+    while (lo < hi) {
+      const mid = (lo + hi + 1n) / 2n;
+      if (previewBuy(k, mid) <= pl.balance) lo = mid;
+      else hi = mid - 1n;
     }
+    q = lo;
     if (q <= 0n) return 0n;
   }
-  pl.balance += t.playerDelta;
-  pl.inv[k]! += q;
-  taxSink += t.tax;
-  marketNet += t.gross;
-  if (measuring) sinkBuys += -t.playerDelta;
-  flowD[k]![slot()]! += q;
-  return q;
+  const r = runTrade("buy", k, q, true);
+  pl.balance += r.delta;
+  pl.inv[k]! += r.qty;
+  taxSink += r.tax;
+  marketNet += r.gross;
+  if (measuring) sinkBuys += -r.delta;
+  return r.qty;
 }
-function sell(pl: Player, k: number, q: bigint): bigint {
+function sell(pl: Player, k: number, q: bigint, floor = 0n): bigint {
   if (q > pl.inv[k]!) q = pl.inv[k]!;
   if (q <= 0n) return 0n;
-  const t = quoteTrade("sell", prices[k]!, q);
-  pl.balance += t.playerDelta;
-  pl.inv[k]! -= q;
-  taxSink += t.tax;
-  marketNet -= t.gross;
-  if (measuring) srcSales += t.playerDelta;
-  flowS[k]![slot()]! += q;
-  return q;
+  const r = runTrade("sell", k, q, true, floor);
+  if (r.qty <= 0n) return 0n;
+  pl.balance += r.delta;
+  pl.inv[k]! -= r.qty;
+  taxSink += r.tax;
+  marketNet -= r.gross;
+  if (measuring) srcSales += r.delta;
+  return r.qty;
 }
 function payFee(pl: Player, amount: Money): boolean {
   if (pl.balance < amount) return false;
@@ -169,9 +215,10 @@ const players: Player[] = Array.from({ length: PLAYERS }, (_, i) => {
     baseline: 0n,
     startFacType: null,
   };
-  if (kind === "producer") {
+  if (kind === "producer" || kind === "bot") {
     pl.startFacType = prodTypes[Math.floor(i / 10) % prodTypes.length]!;
     buyFacility(pl, pl.startFacType);
+    for (let n = 1; n < START_FAC; n++) buyFacility(pl, pl.startFacType);
   } else if (kind === "passive") {
     pl.startFacType = "farm";
     buyFacility(pl, "farm");
@@ -190,11 +237,11 @@ function producerStep(pl: Player, step: number): void {
       f.jobDone = -1;
     }
   }
-  if (rng() > 1 / ATTENTION) return;
+  if (pl.kind !== "bot" && rng() > 1 / ATTENTION) return; // bot her adım döner (1 dk)
   // sat: ürettiği ürünleri referansın %90'ının üstündeyse
   for (const f of pl.facs) {
     const out = idx(Object.values(RECIPES).find((r) => r.facility === f.type)!.output.productId);
-    if (prices[out]! * 100n >= refs[out]! * HOLD_RATIO) sell(pl, out, pl.inv[out]!);
+    sell(pl, out, pl.inv[out]!, (refs[out]! * (pl.kind === "bot" ? BOT_HOLD : HOLD_RATIO)) / 100n);
   }
   // iş başlat
   for (const f of pl.facs) {
@@ -202,18 +249,37 @@ function producerStep(pl: Player, step: number): void {
     const r = Object.values(RECIPES).find((x) => x.facility === f.type)!;
     const out = idx(r.output.productId);
     if (pl.inv[out]! >= r.output.qty * PARAMS.maxBatchesPerJob * 2n) continue; // satılmamış stok sınırı
-    let b = PARAMS.maxBatchesPerJob;
     const reserve = upkeep(f.type, 1n) * 3n;
-    for (; b >= 1n; b--) {
-      const io = batchIO(r, b);
+    // b batch için girdi maliyeti (null: hacim sınırı veya bakiye elvermiyor)
+    const costOf = (b: bigint): bigint | null => {
       let cost = 0n;
-      for (const l of io.inputs) {
-        const have = pl.inv[idx(l.productId)]!;
-        if (have < l.qty) cost += -quoteTrade("buy", prices[idx(l.productId)]!, l.qty - have).playerDelta;
+      for (const l of batchIO(r, b).inputs) {
+        const k = idx(l.productId);
+        const need = l.qty - pl.inv[k]!;
+        if (need <= 0n) continue;
+        if (need >= pools[k]!.units) return null;
+        cost += previewBuy(k, need);
       }
-      if (cost + reserve <= pl.balance) break;
+      return cost + reserve <= pl.balance ? cost : null;
+    };
+    let best = 0n;
+    let bestProfit = -(10n ** 30n);
+    for (let b = PARAMS.maxBatchesPerJob; b >= 1n; b--) {
+      const cost = costOf(b);
+      if (cost === null) continue;
+      {
+        // tahmini kârı en yüksek batch'i seç (ek spread dahil), kâr yoksa üretme
+        const outQ = batchIO(r, b).output.qty;
+        const rev = previewSell(out, outQ);
+        const profit = rev - cost;
+        if (profit > bestProfit) {
+          bestProfit = profit;
+          best = b;
+        }
+      }
     }
-    if (b < 1n) continue;
+    if (best < 1n || bestProfit <= 0n) continue;
+    const b = best;
     const io = batchIO(r, b);
     let ok = true;
     for (const l of io.inputs) {
@@ -240,7 +306,7 @@ function traderStep(pl: Player): void {
     // tüm bakiyeyi rastgele bir ürüne yatır, sonraki dönüşte hepsini sat (sürtünmeyle erir)
     const held = PRODUCT_IDS.findIndex((_, k) => pl.inv[k]! > 0n);
     if (held >= 0) sell(pl, held, pl.inv[held]!);
-    else buy(pl, Math.floor(rng() * K), 10n ** 9n);
+    else buy(pl, Math.floor(rng() * K), 300n);
     return;
   }
   const k = Math.floor(rng() * K);
@@ -266,6 +332,8 @@ const priceIdx = (): number => prices.reduce((a, p, k) => a + Number(p) / Number
 
 const totalSteps = DAYS * STEPS_PER_DAY;
 const dailyRows: { day: number; supply: bigint; index: number; gini: number }[] = [];
+const pMin: number[] = new Array(K).fill(Infinity);
+const pMax: number[] = new Array(K).fill(0);
 let minIdx = Infinity;
 let maxIdx = 0;
 const passiveDay: number[] = [];
@@ -275,10 +343,6 @@ const perDayWealth: bigint[] = [];
 
 for (let step = 1; step <= totalSteps; step++) {
   const tick = BigInt(step * STEP);
-  for (let k = 0; k < K; k++) {
-    flowD[k]!.fill(0n);
-    flowS[k]!.fill(0n);
-  }
   // bakım (saat başı)
   if (upkeepPeriod(tick) > upkeepPeriod(tick - BigInt(STEP))) {
     for (const pl of players) {
@@ -311,18 +375,18 @@ for (let step = 1; step <= totalSteps; step++) {
     }
   }
   for (const pl of players) {
-    if (pl.kind === "producer") producerStep(pl, step);
+    if (pl.kind === "producer" || pl.kind === "bot") producerStep(pl, step);
     else if (pl.kind === "trader" || pl.kind === "gambler") traderStep(pl);
   }
-  // fiyat: her tick
+  // havuz yenilenmesi (adım = STEP tick)
   for (let k = 0; k < K; k++) {
-    const pid = PRODUCT_IDS[k]!;
-    let p = prices[k]!;
-    for (let t = 0; t < STEP; t++) {
-      const f = npcFlow(p, refs[k]!, PARAMS.npcBase[pid]);
-      p = nextPrice(p, flowD[k]![t]! + f.demand, flowS[k]![t]! + f.supply);
-    }
-    prices[k] = p;
+    pools[k] = replenish(pools[k]!, PRODUCT_IDS[k]!, BigInt(STEP));
+    prices[k] = poolPrice(pools[k]!);
+  }
+  for (let k = 0; k < K; k++) {
+    const rr = Number(prices[k]!) / Number(refs[k]!);
+    pMin[k] = Math.min(pMin[k]!, rr);
+    pMax[k] = Math.max(pMax[k]!, rr);
   }
   const i = priceIdx();
   minIdx = Math.min(minIdx, i);
@@ -372,6 +436,8 @@ console.table({
   kaynakYutakOrani: (Number(sourceTotal) / Number(sinkTotal)).toFixed(3),
   nakitArziDegisimi: pct(supplyGrowth),
   fiyatEndeksiMinMax: `${minIdx.toFixed(3)} / ${maxIdx.toFixed(3)}`,
+  gunlukHacim_alim_satim: PRODUCT_IDS.map((p, k) => `${p}=${volB[k]! / BigInt(DAYS)}/${volS[k]! / BigInt(DAYS)}`).join(" "),
+  urunMinMax: PRODUCT_IDS.map((p, k) => `${p}=${pMin[k]!.toFixed(2)}/${pMax[k]!.toFixed(2)}`).join(" "),
   sonFiyatlar: prices.map((p, k) => `${PRODUCT_IDS[k]}=${formatMoney(p)}`).join(" "),
   askidaTesisOlayi: String(suspensions),
 });
@@ -381,6 +447,9 @@ console.table({
   pasif_gunluk_erime: pct(avgPassive),
   pasif_medyan: `${formatMoney(medBase("passive"))} -> ${formatMoney(medW("passive"))}`,
   nakit_tutucu_medyan: `${formatMoney(medBase("holder"))} -> ${formatMoney(medW("holder"))}`,
+  bot_medyan: `${formatMoney(medBase("bot"))} -> ${formatMoney(medW("bot"))}`,
+  bot_gunluk_getiri: pct(Math.pow(Number(medW("bot")) / Math.max(1, Number(medBase("bot"))), 1 / DAYS) - 1),
+  uretici_gunluk_getiri: pct(Math.pow(Number(medW("producer")) / Math.max(1, Number(medBase("producer"))), 1 / DAYS) - 1),
   gambler_medyan: `${formatMoney(medBase("gambler"))} -> ${formatMoney(medW("gambler"))}`,
   tuccar_medyan: `${formatMoney(medBase("trader"))} -> ${formatMoney(medW("trader"))}`,
   gini_nakit_envanter: gini(wealths).toFixed(3),
@@ -388,8 +457,12 @@ console.table({
   esikAltiOran: pct(poor / PLAYERS),
   odenekAlanOran: pct(claimed / PLAYERS),
 });
-const byType = FACILITY_TYPES.map((t) => {
-  const g = players.filter((p) => p.kind === "producer" && p.startFacType === t);
-  return { tur: t, n: g.length, medyanServet: formatMoney(median(g.map(wealth))), medyanTesisSayisi: median(g.map((p) => BigInt(p.facs.length))).toString() };
-});
+const byType = FACILITY_TYPES.flatMap((t) =>
+  (["producer", "bot"] as const).map((kind) => {
+    const g = players.filter((p) => p.kind === kind && p.startFacType === t);
+    const base = median(g.map((p) => p.baseline));
+    const w = median(g.map(wealth));
+    return { tur: t, tip: kind, n: g.length, medyanServet: `${formatMoney(base)} -> ${formatMoney(w)}`, gunluk: pct(Math.pow(Number(w) / Math.max(1, Number(base)), 1 / DAYS) - 1), tesisDahilGunluk: pct(Math.pow(Number(median(g.map((p) => wealth(p) + book(p)))) / Math.max(1, Number(median(g.map((p) => p.baseline + book(p))))), 1 / DAYS) - 1) };
+  }),
+);
 console.table(byType);

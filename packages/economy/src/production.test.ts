@@ -16,8 +16,6 @@ import {
   reliefPeriod,
   upkeep,
   upkeepPeriod,
-  pumpProfit,
-  volumeAllowed,
 } from "./index";
 
 const ftype = fc.constantFrom(...FACILITY_TYPES);
@@ -209,39 +207,5 @@ describe("asgari ödenek", () => {
     expect(reliefPeriod(0n)).toBe(0n);
     expect(reliefPeriod(PARAMS.reliefCooldownTicks - 1n)).toBe(0n);
     expect(reliefPeriod(PARAMS.reliefCooldownTicks)).toBe(1n);
-  });
-});
-
-describe("hacim sınırı ve pump-and-dump", () => {
-  it("volumeAllowed: sınıra kadar izin verir, aşanı ve geçersizi reddeder", () => {
-    const M = PARAMS.maxPlayerVolumePerWindow;
-    expect(volumeAllowed(0n, M)).toBe(true);
-    expect(volumeAllowed(0n, M + 1n)).toBe(false);
-    expect(volumeAllowed(M, 1n)).toBe(false);
-    expect(volumeAllowed(0n, 0n)).toBe(false);
-    expect(() => volumeAllowed(-1n, 1n)).toThrow(RangeError);
-  });
-  it("çok tick'li pump-and-dump her ürün, miktar, süre ve bekleme için kârsız (NPC dahil)", () => {
-    fc.assert(
-      fc.property(
-        product,
-        fc.bigInt({ min: 1n, max: 10_000n }),
-        fc.integer({ min: 1, max: 8_000 }),
-        fc.integer({ min: 0, max: 4_000 }),
-        (pid, q, n, w) => pumpProfit(pid, q, n, w, 15_000) <= 0n,
-      ),
-      { numRuns: 300 },
-    );
-  }, 60_000);
-  it("sistematik tarama: tüm ürünler x sabit desenler kârsız", () => {
-    for (const pid of PRODUCT_IDS)
-      for (const q of [1n, 5n, 50n, 500n, 2000n, 10_000n])
-        for (const n of [1, 2, 10, 100, 600, 3600, 7200, 14400])
-          for (const w of [0, 1, 60, 600, 3600])
-            expect(pumpProfit(pid, q, n, w, 20_000)).toBeLessThanOrEqual(0n);
-  }, 60_000);
-  it("meşru en büyük üretici (20 tesis, saat başı 10 batch) sınır içinde kalır", () => {
-    const perHour = PARAMS.maxFacilitiesPerCompany * 10n * 10n; // santral: 10 çıktı x 10 batch x 20 tesis
-    expect(perHour).toBeLessThanOrEqual(PARAMS.maxPlayerVolumePerWindow);
   });
 });

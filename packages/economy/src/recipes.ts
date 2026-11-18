@@ -28,21 +28,21 @@ export const RECIPES: Record<RecipeId, Recipe> = {
     facility: "farm",
     inputs: [{ productId: "energy", qty: 1n }],
     output: { productId: "wheat", qty: 10n },
-    durationTicks: 60n,
+    durationTicks: 3_600n,
   },
   mine_iron: {
     id: "mine_iron",
     facility: "mine",
     inputs: [{ productId: "energy", qty: 2n }],
     output: { productId: "iron", qty: 5n },
-    durationTicks: 90n,
+    durationTicks: 5_400n,
   },
   generate_energy: {
     id: "generate_energy",
     facility: "power_plant",
     inputs: [],
-    output: { productId: "energy", qty: 10n },
-    durationTicks: 60n,
+    output: { productId: "energy", qty: 4n },
+    durationTicks: 28_800n,
   },
   mill_flour: {
     id: "mill_flour",
@@ -52,7 +52,7 @@ export const RECIPES: Record<RecipeId, Recipe> = {
       { productId: "energy", qty: 1n },
     ],
     output: { productId: "flour", qty: 8n },
-    durationTicks: 120n,
+    durationTicks: 7_200n,
   },
   smelt_steel: {
     id: "smelt_steel",
@@ -62,6 +62,6 @@ export const RECIPES: Record<RecipeId, Recipe> = {
       { productId: "energy", qty: 3n },
     ],
     output: { productId: "steel", qty: 4n },
-    durationTicks: 180n,
+    durationTicks: 14_400n,
   },
 };

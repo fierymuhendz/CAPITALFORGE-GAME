@@ -1,11 +1,11 @@
-import { PARAMS, type ProductId } from "./params";
-import { nextPrice, npcFlow, quoteTrade } from "./pricing";
-import { volumeAllowed } from "./volume";
+import type { ProductId } from "./params";
+import { executeAgainstPool, initialPool, poolMaxOrder, replenish } from "./pool";
 
 /**
- * Pump-and-dump saldırgan modeli (test/sim amaçlı, saf). Saldırgan nBuyTicks boyunca her tick
- * hacim sınırının izin verdiği kadar (en çok qPerTick) alır, waitTicks bekler, sonra stoğu hacim
- * sınırı elverdiğince satar (en çok horizon tick). NPC akışı dahil. Dönüş: kâr (kuruş, negatif = zarar).
+ * Pump-and-dump saldırgan modeli (test/sim amaçlı, saf), ortak havuza karşı. Denge durumundaki
+ * havuzda nBuyTicks boyunca her tick en çok qPerTick (emir sınırıyla kırpılı) alır, waitTicks
+ * bekler, sonra stoğu tick başına bir emirle satar (en çok horizon tick; kalanı son fiyatla tasfiye
+ * edilemez, sıfır değerli sayılır). Her tick havuz yenilenir. Dönüş: kâr (kuruş, negatif = zarar).
  */
 export function pumpProfit(
   pid: ProductId,
@@ -14,43 +14,27 @@ export function pumpProfit(
   waitTicks: number,
   horizon: number,
 ): bigint {
-  const W = Number(PARAMS.volumeWindowTicks);
-  const events: { t: number; q: bigint }[] = [];
-  let used = 0n;
-  let p = PARAMS.refPrice[pid];
-  let cost = 0n;
-  let revenue = 0n;
+  let pool = initialPool(pid);
+  let cash = 0n;
   let held = 0n;
-  let head = 0;
   const end = nBuyTicks + waitTicks + horizon;
   for (let t = 0; t < end; t++) {
-    while (head < events.length && events[head]!.t <= t - W) used -= events[head++]!.q;
-    let d = 0n;
-    let s = 0n;
+    pool = replenish(pool, pid, 1n);
     if (t < nBuyTicks) {
-      let q = qPerTick;
-      while (q > 0n && !volumeAllowed(used, q)) q = q > 1n ? q / 2n : 0n;
+      const q = qPerTick < poolMaxOrder(pool) ? qPerTick : poolMaxOrder(pool);
       if (q > 0n) {
-        cost += -quoteTrade("buy", p, q).playerDelta;
+        const r = executeAgainstPool("buy", pool, q);
+        cash += r.playerDelta;
         held += q;
-        used += q;
-        events.push({ t, q });
-        d = q;
+        pool = r.newPool;
       }
     } else if (t >= nBuyTicks + waitTicks && held > 0n) {
-      let q = held;
-      while (q > 0n && !volumeAllowed(used, q)) q = q > 1n ? q / 2n : 0n;
-      if (q > 0n) {
-        revenue += quoteTrade("sell", p, q).playerDelta;
-        held -= q;
-        used += q;
-        events.push({ t, q });
-        s = q;
-      }
+      const q = held < poolMaxOrder(pool) ? held : poolMaxOrder(pool);
+      const r = executeAgainstPool("sell", pool, q);
+      cash += r.playerDelta;
+      held -= q;
+      pool = r.newPool;
     }
-    const f = npcFlow(p, PARAMS.refPrice[pid], PARAMS.npcBase[pid]);
-    p = nextPrice(p, d + f.demand, s + f.supply);
   }
-  if (held > 0n) revenue += quoteTrade("sell", p, held).playerDelta;
-  return revenue - cost;
+  return cash; // kalan stok değersiz sayılır (muhafazakâr)
 }

@@ -55,3 +55,57 @@ Saldırgan modeli `packages/economy/src/pump.ts` (`pumpProfit`): n tick'te her t
 - Aktiflik duyarlılığı: saatte bir dönen nüfusta tesis dahil Gini 0,577. Öneri: bakım tesis sayısıyla artsın veya facilityGrowthBps 2500-3000.
 - Düşük fiyatta tam sayı ölü bölgesi (NPC ref'e en fazla ~%5 yaklaşır); yeni ürün fiyatı >= 500 kuruş olmalı.
 - Ödenek: kumarbazlar 30 günde ~15'er kez aldı (toplam 1,29M TL). Çoklu misafir hesap riski için hesap açma ve hız sınırı şart. Artık askıdaki tesis sahibi de alabilir; tesisini bırakmadan ödenek döngüsü ölçülen servet kuralıyla sınırlı (test var).
+
+---
+
+# Ortak piyasa havuzu (yeni yön, bu bölüm yukarıdaki NPC/hacim sınırı bölümlerinin yerine geçer)
+
+Karar bekliyor (kullanıcı onayı), uygulama `packages/economy/src/pool.ts` içinde hazır ve testli.
+
+## Mekanizma
+Ürün başına TEK ortak havuz (sabit çarpımlı AMM): durum `{ units, value }`, fiyat = `value / units`. Alım units'i azaltıp value'yu artırır (fiyat yükselir), satım tersi; etki ANINDA ve KALICI, aynı tick'teki sonraki emir yeni fiyatı görür. Büyük emir emir içinde kayar (ortalama fiyat bozulur). Yol bağımsızdır: al-sat aynı miktarla havuza kâr bırakmaz, spread + vergi round-trip'i her zaman zarara çevirir. Yenilenme: her tick units hedef derinliğe (`poolDepth`), value hedef değere (`poolDepth x refPrice`) geometrik yaklaşır (`poolReplenishPpm`), hedefi aşmaz ve işlemi yapanın aleyhine çalışır. Toplam para girişi ürün başına yenilenme hızıyla tavanlıdır: oyuncu/bot sayısından bağımsız. Fazla satan fiyatı düşürür, gelirini kendisi ve diğerleri paylaşır (ortak kaynak).
+- `executeAgainstPool(side, pool, qty) -> { unitPrice (ortalama), gross, tax, playerDelta, newPool, newPrice }`. Alımda havuz bedeli ve brüt yukarı, satımda gelir ve brüt aşağı yuvarlanır. `qty <= poolMaxOrder(pool)` (rezervin %10'u) değilse RangeError. Büyük işlem emirlere bölünerek yapılır.
+- `replenish(pool, productId, ticks)`, `initialPool(productId)`, `poolPrice(pool)`, `poolMaxOrder(pool)`.
+- `quoteTrade`/`nextPrice`/`npcFlow` eski haliyle duruyor (geriye uyumluluk), yeni akışta kullanılmamalı. `volumeAllowed` gevşek güvenlik ağı: `maxPlayerVolumePerWindow` 50.000.
+
+## Parametreler (kuruş)
+| Parametre | Değer |
+|---|---|
+| poolDepth (birim) | wheat 14000, iron 7000, energy 7000, flour 9000, steel 3500 |
+| poolReplenishPpm | 150 (zaman sabiti ~1,8 saat) |
+| poolMaxOrderBps | 1000 |
+| spread / vergi | 150 / 50 bp |
+| refPrice = initialPrice | wheat 560, iron 2300, energy 4000, flour 1650, steel 7600 (zincir marjı ~%25-30) |
+| Tarifler | santral çıktısı 4 enerji; süreler: farm 3600, mine 5400, santral 28800, mill 7200, steelworks 14400 tick |
+| facilityBasePrice | farm 1.8M, mine 2.2M, power_plant 2.5M, mill 1.8M, steelworks 2.4M |
+| upkeepBase (saat) | farm 1800, mine 2200, power_plant 2100, mill 1800, steelworks 2300 |
+
+Süreler uzatıldı: havuz fiyatı sınırlasa da bot tesisten tesis başına en fazla `10 batch / süre` üretebilir; kısa süre (60 sn) botu fiilen sınırsız yapıyordu.
+
+## Sim (300 oyuncu, 30 gün, tek tesis/oyuncu; bot = her dakika dönen, kâr maksimize eden tam otomasyon)
+| Bot % | Kaynak/yutak | Endeks min/maks | Gini (tesis dahil) | Meşru üretici günlük | Bot günlük | Nakit arzı |
+|---|---|---|---|---|---|---|
+| 0 | 1,087 | 0,858 / 1,174 | 0,181 | +%1,14 | - | +%13 |
+| 10 (seed 42) | 1,111 | 0,838 / 1,183 | 0,210 | +%0,73 | +%2,16 | +%19 |
+| 10 (seed 7) | 1,111 | 0,833 / 1,211 | 0,210 | +%0,75 | +%2,17 | +%20 |
+| 20 | 1,128 | 0,812 / 1,216 | 0,228 | +%0,47 | +%1,49 | +%25 |
+| 30 | 1,145 | 0,793 / 1,240 | 0,239 | +%0,29 | +%1,19 | +%31 |
+Pasif farm sahibi günde %0,61 erir; nakit tutan sabit; ödenek alan %5. Tüm hedefler tuttu.
+
+Tesis sayısı (herkes N tesisle başlar, bot %10): N=1: kaynak/yutak 1,111, bot +%2,16/gün; N=2: 1,182, +%3,33; N=3: 1,237 (hedef AŞILDI), +%6,74. Meşru üretici günlüğü 0,73 -> 0,64 -> 0,42 (kapasite paylaşıldığı için azalan verim); toplam gelir artar ama sermaye ve bakım nedeniyle tesis dahil servet payı düşer.
+
+Pump-and-dump: `pumpProfit` (havuz + yenilenme) ve rastgele al/sat/bekle dizileri + tasfiye (fast-check) net kâr <= 0.
+
+## Backend'in yapması gerekenler
+1. `products` satırına `pool_units bigint NOT NULL`, `pool_value bigint NOT NULL` (CHECK >= 1) ekle; `price` sütunu `poolPrice(pool)` ile türetilmiş görüntü olarak kalsın (her işlemde ve her tick'te güncellenir). `pending_demand`, `pending_supply` ve `nextPrice`/`npcFlow` kullanımı kalkar.
+2. Seed/migration: yeni ürünlerde ve mevcutlarda `pool_units = PARAMS.poolDepth[id]`, `pool_value = poolDepth * initialPrice[id]` (`initialPool(id)`). Mevcut ürün fiyatları yeni `initialPrice` değerlerine çekilmeli.
+3. `trade.ts`: ürün satırı `FOR UPDATE` ile kilitlenip `{units: pool_units, value: pool_value}` okunur; `const r = executeAgainstPool(side, pool, quantity)`; defter bacakları `r.gross` ve `r.tax` ile (şimdiki şekil aynı); satırı `pool_units = r.newPool.units, pool_value = r.newPool.value, price = r.newPrice` ile güncelle. `quantity > poolMaxOrder(pool)` ise yeni hata kodu (örn. ORDER_TOO_LARGE; istemci emri bölsün) döndür. İşlem kaydındaki `unitPrice` = `r.unitPrice`.
+4. `ticker.ts`: her tick (kilit altında) `pool = replenish(pool, id, 1n)` ve `price = poolPrice(pool)` yaz; tick kaçırılırsa `ticks = tick - ürün.tick` ile tek çağrı. `volumeAllowed` kontrolü isteğe bağlı güvenlik ağı olarak kalabilir.
+5. Tarifler/süreler değişti (`RECIPES`); arayüz metinleri ve `/catalog` değerleri `RECIPES`'ten okunmalı.
+
+## AÇIK KONULAR (havuz)
+- Ortak kaynak: bot sayısı arttıkça meşru oyuncunun getirisi düşer (%30 botta +%0,29/gün), ama pozitif ve toplam para tavanlı. Bot oranı izlenmeli.
+- Çok tesisli oyuncular (N>=3) kaynak/yutak hedefini aşıyor; tesis fiyat büyümesi (`facilityGrowthBps` 2000) 2500-3000'e çıkarılabilir veya bakım tesis sayısıyla artırılabilir.
+- Santral hâlâ en kârlı tür (~%3/gün meşru). Enerji derinliği/santral çıktısı ile oynanabilir, sim sonucu santral oranına (burada %40 üretici) duyarlı.
+- Tekil ürünlerde geçici sapma büyük (steel maks 1,6x, wheat 0,74x); endeks ortalaması ±%25 içinde. Gerekirse `poolReplenishPpm` artırılır (kapasite de artar).
+- Ödenek istismarı için çoklu hesap riski sürüyor.
