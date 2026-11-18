@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
     "@capitalforge/economy": "workspace:*",
