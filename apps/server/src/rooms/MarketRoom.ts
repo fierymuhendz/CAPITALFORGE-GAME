@@ -1,4 +1,4 @@
-import { Room, type Client } from "colyseus";
+import { Room, type Client } from "@colyseus/core";
 import { Schema, type } from "@colyseus/schema";
 import { MSG, PlaceOrderSchema, type OrderResult } from "@capitalforge/shared";
 import { nextPrice } from "@capitalforge/economy";

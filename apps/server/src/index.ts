@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { Server } from "colyseus";
+import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { ROOMS } from "@capitalforge/shared";
 import { config } from "./config";
