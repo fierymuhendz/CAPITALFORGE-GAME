@@ -265,3 +265,68 @@ describe("executeTrade: eşzamanlılık", () => {
     expect(await balanceOf(playerId)).toBe(PARAMS.startingBalance - spent);
   });
 });
+
+describe("executeTrade: hacim sınırı (VOLUME_LIMIT)", () => {
+  const LIMIT = PARAMS.maxPlayerVolumePerWindow;
+  const setClock = (tick: bigint) => db.execute(sql`UPDATE game_clock SET tick = ${tick} WHERE id = 1`);
+
+  it("ürün başına pencerede 2000 adede kadar izin verir; 2001. işlem VOLUME_LIMIT", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: Number(LIMIT) }))).ok).toBe(true);
+    const before = await tradeCount(playerId);
+
+    const r = await executeTrade(db, playerId, order({ side: "buy", quantity: 1 }));
+    expect(r).toMatchObject({ ok: false, error: "VOLUME_LIMIT" });
+    expect(await tradeCount(playerId)).toBe(before);
+    expect(await inventoryOf(playerId, "wheat")).toBe(LIMIT);
+  });
+
+  it("satış da hacme sayılır: 1500 alım + 501 satış reddedilir, 500 satış geçer", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: 1500 }))).ok).toBe(true);
+
+    expect(await executeTrade(db, playerId, order({ side: "sell", quantity: 501 }))).toMatchObject({
+      ok: false,
+      error: "VOLUME_LIMIT",
+    });
+    expect((await executeTrade(db, playerId, order({ side: "sell", quantity: 500 }))).ok).toBe(true);
+    expect(await inventoryOf(playerId, "wheat")).toBe(1000n);
+  });
+
+  it("sınır ürün başınadır: wheat dolu iken iron alımı serbest", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: Number(LIMIT), productId: "wheat" }))).ok).toBe(true);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: Number(LIMIT), productId: "iron" }))).ok).toBe(true);
+    expect(await inventoryOf(playerId, "iron")).toBe(LIMIT);
+  });
+
+  it("pencere kayar: 3599. tick'te hâlâ dolu (VOLUME_LIMIT), 3601. tick'te eski işlemler sayılmaz", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    await setClock(0n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: Number(LIMIT) }))).ok).toBe(true);
+
+    await setClock(3599n);
+    expect(await executeTrade(db, playerId, order({ side: "buy", quantity: 1 }))).toMatchObject({
+      ok: false,
+      error: "VOLUME_LIMIT",
+    });
+
+    await setClock(PARAMS.volumeWindowTicks + 1n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: 1 }))).ok).toBe(true);
+    expect(await inventoryOf(playerId, "wheat")).toBe(LIMIT + 1n);
+  });
+
+  it("sınıra yakın iki paralel emir sınırı aşamaz: tam 1 başarı, toplam 2000", async () => {
+    const playerId = await createPlayer(10n ** 9n);
+    expect((await executeTrade(db, playerId, order({ side: "buy", quantity: 1998 }))).ok).toBe(true);
+
+    const results = await Promise.all([
+      executeTrade(db, playerId, order({ side: "buy", quantity: 2 })),
+      executeTrade(db, playerId, order({ side: "buy", quantity: 2 })),
+    ]);
+
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.flatMap((r) => (r.ok ? [] : [r.error]))).toEqual(["VOLUME_LIMIT"]);
+    expect(await inventoryOf(playerId, "wheat")).toBe(LIMIT);
+  });
+});

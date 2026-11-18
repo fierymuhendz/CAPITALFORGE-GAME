@@ -1,6 +1,7 @@
-import { quoteTrade } from "@capitalforge/economy";
+import { PARAMS, quoteTrade, volumeAllowed } from "@capitalforge/economy";
 import type { OrderErrorCode, OrderResult, PlaceOrder } from "@capitalforge/shared";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { currentTick } from "../actions/run";
 import type { Db } from "../db/client";
 import { accounts, inventories, products, trades } from "../db/schema";
 import { applyTransfer } from "../ledger/transfer";
@@ -31,6 +32,8 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
       const [product] = await tx.select().from(products).where(eq(products.id, order.productId)).for("update");
       if (!product) throw new TradeError("UNKNOWN_PRODUCT");
 
+      const tick = await currentTick(tx);
+
       // 2. Idempotency: satırı rezerve et
       const claimed = await tx
         .insert(trades)
@@ -43,6 +46,7 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
           unitPrice: 0n,
           gross: 0n,
           tax: 0n,
+          tick,
         })
         .onConflictDoNothing({ target: [trades.playerId, trades.clientKey] })
         .returning({ id: trades.id });
@@ -84,6 +88,7 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
         .for("update");
       if (!wallet) throw new TradeError("UNAUTHORIZED");
 
+
       // 4. Fiyat (kilitli satırdan) ve teklif: formül packages/economy'de
       const quote = quoteTrade(order.side, product.price, quantity);
 
@@ -98,6 +103,22 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
           .for("update");
         if (!inv || inv.quantity < quantity) throw new TradeError("INSUFFICIENT_INVENTORY");
       }
+
+      // 5b. Hacim sınırı (çok tick'li fiyat şişirmeye karşı): son volumeWindowTicks içindeki alım+satım.
+      // Cüzdan kilidi aynı oyuncunun emirlerini sıraya koyar; READ COMMITTED'da bu sorgu
+      // kilitten sonra çalıştığı için önceki emirlerin commit edilmiş satırlarını görür.
+      const [vol] = await tx
+        .select({ used: sql<string>`coalesce(sum(${trades.quantity}), 0)` })
+        .from(trades)
+        .where(
+          and(
+            eq(trades.playerId, playerId),
+            eq(trades.productId, order.productId),
+            gt(trades.tick, tick - PARAMS.volumeWindowTicks),
+            ne(trades.id, tradeId),
+          ),
+        );
+      if (!volumeAllowed(BigInt(vol?.used ?? "0"), quantity)) throw new TradeError("VOLUME_LIMIT");
 
       const sys = await tx
         .select({ id: accounts.id, code: accounts.code })
