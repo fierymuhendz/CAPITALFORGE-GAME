@@ -300,8 +300,8 @@ for (let step = 1; step <= totalSteps; step++) {
   // ödenek (günlük dönem)
   const period = reliefPeriod(tick);
   for (const pl of players) {
-    if (pl.facs.length === 0 && pl.lastReliefPeriod < period && (pl.kind === "trader" || pl.kind === "holder" || pl.kind === "gambler")) {
-      if (reliefEligible({ cash: pl.balance, inventoryValue: inventoryValue(holdings(pl)), hasFacility: false })) {
+    if (!pl.facs.some((f) => f.active) && pl.lastReliefPeriod < period) {
+      if (reliefEligible({ cash: pl.balance, inventoryValue: inventoryValue(holdings(pl)), hasActiveFacility: false })) {
         pl.balance += PARAMS.reliefAmount;
         mint += PARAMS.reliefAmount;
         srcRelief += PARAMS.reliefAmount;

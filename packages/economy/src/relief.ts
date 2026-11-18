@@ -23,15 +23,15 @@ export function inventoryValue(holdings: Holding[]): Money {
   return total;
 }
 
-/** Asgari ödenek şartı: tesisi yok ve nakit + envanter değeri eşiğin altında. */
+/** Asgari ödenek şartı: aktif (askıda olmayan) tesisi yok ve nakit + envanter değeri eşiğin altında. */
 export function reliefEligible(s: {
   cash: Money;
   inventoryValue: Money;
-  hasFacility: boolean;
+  hasActiveFacility: boolean;
 }): boolean {
   assertNonNegative(s.cash, "nakit");
   assertNonNegative(s.inventoryValue, "envanter değeri");
-  if (s.hasFacility) return false;
+  if (s.hasActiveFacility) return false;
   return s.cash + s.inventoryValue < PARAMS.reliefThreshold;
 }
 

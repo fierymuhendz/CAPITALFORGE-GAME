@@ -121,6 +121,8 @@ export const trades = pgTable(
     gross: bigintCol("gross").notNull(),
     tax: bigintCol("tax").notNull(),
     transferId: uuid("transfer_id").unique().references(() => transfers.id),
+    /** İşlemin yapıldığı oyun saati (game_clock.tick); hacim sınırı penceresi için. */
+    tick: bigintCol("tick").notNull().default(sql`0`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -129,6 +131,7 @@ export const trades = pgTable(
     check("trades_side", sql`${t.side} IN ('buy', 'sell')`),
     check("trades_amounts_non_negative", sql`${t.unitPrice} >= 0 AND ${t.gross} >= 0 AND ${t.tax} >= 0`),
     index("trades_player_created_idx").on(t.playerId, t.createdAt),
+    index("trades_volume_idx").on(t.playerId, t.productId, t.tick),
   ],
 );
 

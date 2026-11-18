@@ -10,7 +10,7 @@ export const PARAMS = {
   /** Arz-talep dengesizliğine fiyat tepkisi (bp, tick başına en fazla). */
   maxPriceStepBps: 300n,
   /** Alış/satış fiyatına her iki yönde uygulanan spread (bp). Round-trip kârını kapatır. */
-  spreadBps: 100n,
+  spreadBps: 150n,
   /** İşlem vergisi (bp). Para yutağıdır. */
   transactionTaxBps: 50n,
   /** Likidite: büyüdükçe tek bir emrin fiyata etkisi azalır (birim cinsinden). */
@@ -20,6 +20,11 @@ export const PARAMS = {
   /** Azami fiyat (kuruş). */
   maxPrice: 10n ** 12n,
 
+  /** Oyuncu başına ürün başına kayan pencerede azami işlem adedi (alım+satım). */
+  maxPlayerVolumePerWindow: 2_000n,
+  /** Hacim penceresi uzunluğu (tick). */
+  volumeWindowTicks: 3_600n,
+
   // --- Şirket ve üretim ---
   /** Şirket kuruluş ücreti (kuruş, tek sefer). Yutak: system:fees. */
   companyFoundingFee: 500_000n,
@@ -27,7 +32,7 @@ export const PARAMS = {
   facilityBasePrice: {
     farm: 5_000_000n,
     mine: 2_500_000n,
-    power_plant: 8_500_000n,
+    power_plant: 5_000_000n,
     mill: 2_000_000n,
     steelworks: 1_750_000n,
   } satisfies Record<FacilityType, bigint>,
@@ -42,7 +47,7 @@ export const PARAMS = {
   upkeepBase: {
     farm: 2_000n,
     mine: 1_000n,
-    power_plant: 3_400n,
+    power_plant: 2_000n,
     mill: 800n,
     steelworks: 700n,
   } satisfies Record<FacilityType, bigint>,

@@ -1,5 +1,5 @@
 {
-  "id": "bf99952f-0580-4e5b-bda1-584d325af65b",
+  "id": "94fc5202-2a1e-4491-8a1d-b875abdd1b74",
   "prevId": "6587cde7-12f0-4a0a-a47a-984c899a1fb5",
   "version": "7",
   "dialect": "postgresql",
@@ -1150,6 +1150,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "tick": {
+          "name": "tick",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1191,6 +1198,33 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "trades_volume_idx": {
+          "name": "trades_volume_idx",
+          "columns": [
+            {
+              "expression": "player_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tick",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

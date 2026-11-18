@@ -21,7 +21,7 @@ async function evaluate(tx: Tx | Db, playerId: string, cash: bigint, lockInvento
     .select({ n: count() })
     .from(facilities)
     .innerJoin(companies, eq(companies.id, facilities.companyId))
-    .where(eq(companies.playerId, playerId));
+    .where(and(eq(companies.playerId, playerId), eq(facilities.status, "active")));
 
   const q = tx
     .select({ productId: inventories.productId, quantity: inventories.quantity })
@@ -38,7 +38,7 @@ async function evaluate(tx: Tx | Db, playerId: string, cash: bigint, lockInvento
   const priceOf = new Map(prices.map((p) => [p.id, p.price]));
   const value = inventoryValue(held.map((h) => ({ price: priceOf.get(h.productId) ?? PARAMS.minPrice, qty: h.quantity })));
 
-  const eligible = reliefEligible({ cash, inventoryValue: value, hasFacility: (fac?.n ?? 0) > 0 });
+  const eligible = reliefEligible({ cash, inventoryValue: value, hasActiveFacility: (fac?.n ?? 0) > 0 });
   return { period, eligible: eligible && !claimed };
 }
 

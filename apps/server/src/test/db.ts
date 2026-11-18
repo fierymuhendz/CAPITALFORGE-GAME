@@ -62,8 +62,8 @@ export async function resetTestDb(db: Db): Promise<void> {
   );
   await db.execute(sql`INSERT INTO game_clock (id, tick) VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET tick = 0`);
   await db.execute(
-    sql`INSERT INTO products (id, name, price) VALUES ('wheat', 'Buğday', 10000), ('iron', 'Demir', 25000), ('energy', 'Enerji', 5000),
-        ('flour', 'Un', 720), ('steel', 'Çelik', 3300)
+    sql`INSERT INTO products (id, name, price) VALUES ('wheat', 'Buğday', 500), ('iron', 'Demir', 600), ('energy', 'Enerji', 500),
+        ('flour', 'Un', 900), ('steel', 'Çelik', 1500)
         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, price = EXCLUDED.price, pending_demand = 0, pending_supply = 0, tick = 0`,
   );
   await db.execute(sql`INSERT INTO price_history (product_id, tick, price) SELECT id, 0, price FROM products`);

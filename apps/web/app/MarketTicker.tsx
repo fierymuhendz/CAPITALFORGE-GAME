@@ -25,7 +25,7 @@ export function MarketTicker() {
   const { quotes } = useGame();
   return (
     <section aria-label="Piyasa fiyatları">
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-5">
         {PRODUCT_IDS.map((id) => {
           const q = quotes[id];
           const dir = q?.prev == null ? 0 : BigInt(q.price) > BigInt(q.prev) ? 1 : BigInt(q.price) < BigInt(q.prev) ? -1 : 0;

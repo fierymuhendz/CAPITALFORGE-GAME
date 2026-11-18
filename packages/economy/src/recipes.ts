@@ -41,7 +41,7 @@ export const RECIPES: Record<RecipeId, Recipe> = {
     id: "generate_energy",
     facility: "power_plant",
     inputs: [],
-    output: { productId: "energy", qty: 20n },
+    output: { productId: "energy", qty: 10n },
     durationTicks: 60n,
   },
   mill_flour: {
