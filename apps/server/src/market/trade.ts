@@ -16,7 +16,9 @@ class TradeError extends Error {
  * Tek transaction'da ticaret. Kilit sırası sabittir (deadlock önleme):
  * products → oyuncu hesabı → inventories. (Idempotency satırı, ürün kilidinden SONRA oluşturulur:
  * trades→products FK'sı ürün satırında KEY SHARE kilidi alır ve iki eşzamanlı işlemde
- * FOR UPDATE yükseltmesi karşılıklı beklemeye yol açardı.)
+ * FOR UPDATE yükseltmesi karşılıklı beklemeye yol açardı.) Ürün satırının FOR UPDATE kilidi aynı ürün
+ * üzerindeki tüm ticareti serileştirir; tamamlama, üretim başlatma ve ödenek ürün satırını yalnızca
+ * FOR KEY SHARE ile ve her zaman en önce aldığı için bu kilitle aynı sırada kalır.
  *
  * Fiyat, miktar, bakiye istemciden alınmaz; fiyat kilitli ürün satırından okunur, tutarlar
  * packages/economy quoteTrade ile hesaplanır. İş hataları transaction'ı geri alır ve

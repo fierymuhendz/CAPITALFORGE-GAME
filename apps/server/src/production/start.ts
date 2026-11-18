@@ -4,11 +4,11 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ActionError } from "../actions/idempotency";
 import { currentTick, runAction } from "../actions/run";
 import type { Db } from "../db/client";
-import { companies, facilities, inventories, productionJobs } from "../db/schema";
+import { companies, facilities, inventories, productionJobs, products } from "../db/schema";
 
 /**
  * Üretim başlat. Girdiler envanterden düşer (para hareketi yok). Kilit sırası:
- * facilities → production_jobs → inventories (ürün id artan). Sahiplik, kilit altında tesisin
+ * products (çıktı, KEY SHARE) → facilities → production_jobs → inventories (ürün id artan). Sahiplik, kilit altında tesisin
  * şirketinin oyuncuya ait olmasıyla doğrulanır; başkasının tesisi (veya olmayan tesis) UNAUTHORIZED.
  * Tesis başına tek çalışan iş: önce kilitli kontrol, ikinci savunma kısmi UNIQUE indeksi.
  */
@@ -22,6 +22,9 @@ export function startProduction(db: Db, playerId: string, input: StartProduction
     async (tx) => {
       const recipe = RECIPES[input.recipeId as RecipeId];
       if (!recipe) throw new ActionError("UNKNOWN_RECIPE");
+
+      // Kilit sırasının ilki: çıktı ürün satırı (FK için; ticker/ticaret FOR UPDATE ile aynı sıra).
+      await tx.select({ id: products.id }).from(products).where(eq(products.id, recipe.output.productId)).for("key share");
 
       const [facility] = await tx.select().from(facilities).where(eq(facilities.id, input.facilityId)).for("update");
       if (!facility) throw new ActionError("UNAUTHORIZED");

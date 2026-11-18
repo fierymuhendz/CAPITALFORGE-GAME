@@ -250,6 +250,8 @@ export const reliefClaims = pgTable(
     period: bigintCol("period").notNull(),
     amount: bigintCol("amount").notNull(),
     transferId: uuid("transfer_id").notNull().references(() => transfers.id),
+    /** Talebin yapıldığı oyun saati; kayan bekleme (reliefCooldownTicks) buna göre denetlenir. */
+    claimedTick: bigintCol("claimed_tick").notNull().default(sql`0`),
     claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.playerId, t.period] }), check("relief_amount_positive", sql`${t.amount} > 0`)],

@@ -1,5 +1,5 @@
 {
-  "id": "94fc5202-2a1e-4491-8a1d-b875abdd1b74",
+  "id": "623dbe0b-1c8f-4511-a259-153af724c2c2",
   "prevId": "6587cde7-12f0-4a0a-a47a-984c899a1fb5",
   "version": "7",
   "dialect": "postgresql",
@@ -1028,6 +1028,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "claimed_tick": {
+          "name": "claimed_tick",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
         },
         "claimed_at": {
           "name": "claimed_at",

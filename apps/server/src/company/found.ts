@@ -30,11 +30,11 @@ export function foundCompany(db: Db, playerId: string, input: FoundCompany): Pro
     const wallet = await lockWallet(tx, playerId);
     if (wallet.balance < fee) throw new ActionError("INSUFFICIENT_FUNDS");
     const fees = await systemAccountId(tx, "system:fees");
-    const t = await applyTransfer(tx, `company:found:${playerId}`, "company:found", [
+    const t = await applyTransfer(tx, `company:found:${playerId}:${companyId}`, "company:found", [
       { accountId: wallet.id, amount: -fee },
       { accountId: fees, amount: fee },
     ]);
-    // Şirket satırı bu transaction'da oluştuğundan transfer daha önce var olamaz.
+    // Anahtar yeni şirket kimliğini içerir (geri alma/yeniden kurulumdan kalan eski anahtarlarla çakışmaz); idempotency player_actions'tadır.
     if (t.status === "duplicate") throw new Error("Beklenmeyen yinelenen kuruluş transferi");
     return { refId: companyId, amount: -fee };
   });

@@ -86,8 +86,14 @@ export async function runTickCycle(db: Db, onPriceTick?: (b: TickBroadcast) => P
   if (onPriceTick) await onPriceTick(broadcast);
   const tick = BigInt(broadcast.clockTick);
 
+  // Her faz kendi try/catch'inde: birinin hatası diğerini durdurmaz.
   const t1 = Date.now();
-  const completed = await runCompletionPhase(db, tick);
+  let completed: CompletedJob[] = [];
+  try {
+    completed = await runCompletionPhase(db, tick);
+  } catch (err) {
+    console.error("tamamlama fazı hatası", err);
+  }
   const t2 = Date.now();
   let upkeepProcessed = 0;
   try {
@@ -96,8 +102,11 @@ export async function runTickCycle(db: Db, onPriceTick?: (b: TickBroadcast) => P
     console.error("bakım fazı hatası", err);
   }
   const t3 = Date.now();
-  if (t3 - t0 > 500) {
-    console.warn(`yavaş tick ${tick}: fiyat ${t1 - t0}ms, tamamlama ${t2 - t1}ms (${completed.length} iş), bakım ${t3 - t2}ms`);
+  // Döngü tick kilidinden uzun sürerse bir sonraki tick başka örnekte çakışabilir.
+  if (t3 - t0 > TICK_LOCK_PX) {
+    console.warn(
+      `tick ${tick} kilit süresini (${TICK_LOCK_PX}ms) aştı: toplam ${t3 - t0}ms (fiyat ${t1 - t0}, tamamlama ${t2 - t1} [${completed.length} iş], bakım ${t3 - t2})`,
+    );
   }
   return { broadcast, completed, upkeepProcessed };
 }

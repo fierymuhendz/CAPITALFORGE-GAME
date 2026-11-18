@@ -1,7 +1,7 @@
 import type { JobCompleted, RecipeIdString } from "@capitalforge/shared";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { inventories, productionJobs } from "../db/schema";
+import { inventories, productionJobs, products } from "../db/schema";
 
 export const COMPLETION_BATCH = 500;
 
@@ -14,13 +14,29 @@ export interface CompletedJob extends JobCompleted {
  * işleri `FOR UPDATE SKIP LOCKED` ile en çok 500'lük partiler halinde `done` yapar ve çıktıyı aynı
  * transaction'da envantere ekler. İki işçi ya da tekrar eden tick aynı işi iki kez tamamlayamaz:
  * kilitli satırlar atlanır, tamamlananlar artık `running` değildir.
- * Kilit sırası: production_jobs → inventories, ikisi de (ürün id, oyuncu id) artan; ticker ürünleri
- * id sırasıyla kilitlediği için deadlock oluşmaz. Tamamlanan işleri (commit sonrası bildirim için) döner.
+ * Kilit sırası: products (çıktı ürünleri id artan, FOR KEY SHARE) → production_jobs → inventories ((ürün id,
+ * oyuncu id) artan). Ticker ve ticaret ürün satırını FOR UPDATE aldığı için ürün kilidi her zaman önce gelir;
+ * envanter FK'sının örtük KEY SHARE kilidi sonradan alınıp deadlock yaratamaz. Tamamlanan işleri (commit sonrası bildirim için) döner.
  */
 export async function runCompletionPhase(db: Db, tick: bigint, maxBatches = 20): Promise<CompletedJob[]> {
   const all: CompletedJob[] = [];
   for (let i = 0; i < maxBatches; i++) {
     const batch = await db.transaction(async (tx) => {
+      // Kilit sırası products → jobs: önce adayların çıktı ürünleri (SKIP LOCKED iş seçimi ürün kilidini
+      // beklemez; aday kümesi salt okunur seçilir, sonra ürünler id sırasıyla KEY SHARE ile kilitlenir).
+      const candidates = await tx
+        .selectDistinct({ productId: productionJobs.outputProductId })
+        .from(productionJobs)
+        .where(and(eq(productionJobs.status, "running"), lte(productionJobs.completesAtTick, tick)))
+        .orderBy(asc(productionJobs.outputProductId));
+      if (candidates.length === 0) return [];
+      await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(inArray(products.id, candidates.map((c) => c.productId)))
+        .orderBy(asc(products.id))
+        .for("key share");
+
       const jobs = await tx
         .select()
         .from(productionJobs)

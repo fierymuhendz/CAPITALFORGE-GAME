@@ -59,6 +59,11 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
   static deps: MarketRoomDeps | null = null;
 
   maxClients = 200;
+  /** Oturum yeniden doğrulaması için istemci başına token (yalnızca sunucu belleğinde). */
+  private tokens = new Map<string, string>();
+  private revalidateTimer?: ReturnType<typeof setInterval>;
+  static readonly REVALIDATE_MS = 60_000;
+  static readonly CLOSE_SESSION_EXPIRED = 4002;
   private onTick = (b: TickBroadcast) => {
     for (const t of b.products) {
       const p = this.state.products.get(t.productId);
@@ -96,6 +101,7 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
       throw new ServerError(503, "INTERNAL");
     }
     if (!session) throw new ServerError(401, "UNAUTHORIZED");
+    if (typeof token === "string") this.tokens.set(_client.sessionId, token);
     return session;
   }
 
@@ -112,6 +118,7 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
     this.state.clockTick = Number(clock?.tick ?? 0n);
     tickBus.on(TICK_EVENT, this.onTick);
     tickBus.on(JOB_EVENT, this.onJobs);
+    this.revalidateTimer = setInterval(() => void this.revalidateAll(), MarketRoom.REVALIDATE_MS);
 
     this.onMessage(MSG.placeOrder, (client: AuthedClient, raw: unknown) => this.handleOrder(client, raw));
     this.onMessage(MSG.foundCompany, (c: AuthedClient, raw: unknown) =>
@@ -152,6 +159,8 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
       return reply({ ok: false, error: "INTERNAL", idempotencyKey });
     }
 
+    if (!(await this.sessionValid(client))) return reply({ ok: false, error: "UNAUTHORIZED", idempotencyKey });
+
     const parsed = schema.safeParse(raw);
     if (!parsed.success) return reply({ ok: false, error: "INVALID", idempotencyKey });
 
@@ -161,6 +170,26 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
       await this.sendPortfolio(client, auth.playerId);
       await this.sendCompany(client, auth.playerId);
     }
+  }
+
+  /**
+   * Oturum hâlâ geçerli mi. Yalnızca token Redis'te kesin olarak yoksa (çıkış/süre dolumu) false döner ve
+   * istemci 4002 ile atılır; Redis hatasında bağlantı düşürülmez (emir işleyicileri ayrıca fail-closed'dır).
+   */
+  private async sessionValid(client: AuthedClient): Promise<boolean> {
+    const token = this.tokens.get(client.sessionId);
+    try {
+      const s = token ? await getSession(this.deps.redis, token) : null;
+      if (s && client.auth && s.playerId === client.auth.playerId) return true;
+    } catch {
+      return true;
+    }
+    client.leave(MarketRoom.CLOSE_SESSION_EXPIRED);
+    return false;
+  }
+
+  private async revalidateAll(): Promise<void> {
+    for (const client of [...this.clients] as AuthedClient[]) await this.sessionValid(client);
   }
 
   private async sendCompany(client: AuthedClient, playerId: string): Promise<void> {
@@ -189,6 +218,8 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
       return reply({ ok: false, error: "INTERNAL", idempotencyKey });
     }
 
+    if (!(await this.sessionValid(client))) return reply({ ok: false, error: "UNAUTHORIZED", idempotencyKey });
+
     const parsed = PlaceOrderSchema.safeParse(raw);
     if (!parsed.success) return reply({ ok: false, error: "INVALID" });
     const order = parsed.data;
@@ -213,7 +244,12 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
     }
   }
 
+  onLeave(client: AuthedClient): void {
+    this.tokens.delete(client.sessionId);
+  }
+
   onDispose(): void {
+    if (this.revalidateTimer) clearInterval(this.revalidateTimer);
     tickBus.off(TICK_EVENT, this.onTick);
     tickBus.off(JOB_EVENT, this.onJobs);
   }

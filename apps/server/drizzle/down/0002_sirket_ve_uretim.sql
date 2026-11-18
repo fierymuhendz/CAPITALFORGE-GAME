@@ -8,6 +8,9 @@ UPDATE "products" p SET "price" = v."price", "pending_demand" = 0, "pending_supp
   WHERE p."id" = v."id";
 DROP INDEX IF EXISTS "trades_volume_idx";
 ALTER TABLE "trades" DROP COLUMN IF EXISTS "tick";
+-- Not: transfers tablosunda company:found:<oyuncu>[:<şirket>], facility:buy:*, upkeep:*, relief:* anahtarları
+-- (ve ledger_entries) para bütünlüğü için KORUNUR. Yeniden up sonrası çakışma olmaması için şirket kuruluş
+-- anahtarı yeni şirket kimliğini içerir (company:found:<oyuncu>:<şirket>); eski biçimli anahtarlar çakışmaz.
 DROP TABLE IF EXISTS "relief_claims";
 DROP TABLE IF EXISTS "player_actions";
 DROP TABLE IF EXISTS "production_jobs";

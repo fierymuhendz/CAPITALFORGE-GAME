@@ -65,6 +65,7 @@ CREATE TABLE "relief_claims" (
 	"period" bigint NOT NULL,
 	"amount" bigint NOT NULL,
 	"transfer_id" uuid NOT NULL,
+	"claimed_tick" bigint DEFAULT 0 NOT NULL,
 	"claimed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "relief_claims_player_id_period_pk" PRIMARY KEY("player_id","period"),
 	CONSTRAINT "relief_amount_positive" CHECK ("relief_claims"."amount" > 0)
