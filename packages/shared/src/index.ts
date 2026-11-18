@@ -31,7 +31,7 @@ export const UsernameSchema = z.string().regex(/^[a-zA-Z0-9_]{3,20}$/);
 
 /* ---------- HTTP ---------- */
 
-export const GuestLoginSchema = z.object({ username: UsernameSchema });
+export const GuestLoginSchema = z.object({ username: UsernameSchema }).strict();
 export type GuestLogin = z.infer<typeof GuestLoginSchema>;
 
 export const GuestLoginResponseSchema = z.object({
@@ -94,7 +94,7 @@ export const PlaceOrderSchema = z.object({
   productId: z.string().min(1).max(64),
   quantity: z.number().int().positive().max(1_000_000),
   idempotencyKey: z.string().uuid(),
-});
+}).strict();
 export type PlaceOrder = z.infer<typeof PlaceOrderSchema>;
 
 export const ORDER_ERRORS = [

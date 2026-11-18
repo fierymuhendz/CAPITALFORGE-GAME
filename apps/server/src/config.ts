@@ -12,5 +12,12 @@ export const config = {
   /** Oturum token'ının Redis'te yaşama süresi (saniye). Varsayılan 7 gün. */
   sessionTtlSeconds: Number(process.env.SESSION_TTL_SECONDS ?? 604_800),
   /** Reverse proxy arkasında istemci IP'sini X-Forwarded-For'dan almak için. */
-  trustProxy: process.env.TRUST_PROXY === "true",
+  // "true": tüm vekillere güven (sadece geliştirme). Virgüllü IP/CIDR listesi: yalnızca bunlara güven.
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
 };
+
+function parseTrustProxy(value: string | undefined): boolean | string[] {
+  if (!value || value === "false") return false;
+  if (value === "true") return true;
+  return value.split(",").map((v) => v.trim()).filter(Boolean);
+}
