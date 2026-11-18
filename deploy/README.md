@@ -32,6 +32,10 @@ Depo → Settings → Environments → `production` ortamı oluşturun, aşağı
 
 ## Sunucuda bir kez yapılacaklar
 
+> **İlk yayından önce zorunlu:** `/opt/capitalforge` klasörü root tarafından oluşturulmalı ve `deploy` kullanıcısına ait olmalıdır.
+> `deploy` kullanıcısının `/opt` altında klasör açma izni yoktur. Bu adım atlanırsa yayın
+> `mkdir: cannot create directory '/opt/capitalforge': Permission denied` hatasıyla durur.
+
 ```bash
 # root olarak
 adduser --disabled-password --gecos "" deploy
@@ -41,11 +45,32 @@ mkdir -p /home/deploy/.ssh && chmod 700 /home/deploy/.ssh
 # capitalforge_deploy.pub içeriğini aşağıdaki dosyaya ekleyin:
 nano /home/deploy/.ssh/authorized_keys
 chmod 600 /home/deploy/.ssh/authorized_keys && chown -R deploy:deploy /home/deploy/.ssh
+
+# Yayın klasörü (ZORUNLU, root olarak)
 mkdir -p /opt/capitalforge && chown deploy:deploy /opt/capitalforge
+ls -ld /opt/capitalforge   # sahibi "deploy deploy" görünmeli
 
 # Güvenlik duvarı: sadece SSH, web ve oyun sunucusu
 ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 2567/tcp && ufw enable
 ```
+
+UpCloud panelindeki güvenlik duvarı kullanılıyorsa orada da TCP 22, 80 ve 2567 için gelen trafiğe izin verilmelidir.
+
+## İlk yayın kontrol listesi
+
+1. `ls -ld /opt/capitalforge` çıktısında sahip `deploy` olmalı.
+2. `production` ortamında 6 secret ve `PUBLIC_GAME_SERVER_URL` değişkeni tanımlı olmalı.
+3. Güvenlik duvarında 22, 80 ve 2567 açık olmalı.
+4. Yayından sonra `http://SUNUCU_IP:2567/health` adresi `{"ok":true}` döndürmeli.
+5. `http://SUNUCU_IP` adresinde "Bağlantı: bağlı" ve "Fiyat: ₺100,00" görünmeli.
+
+## Sorun giderme
+
+| Belirti | Neden | Çözüm |
+|---|---|---|
+| `mkdir: cannot create directory '/opt/capitalforge': Permission denied` | Klasör hazırlanmamış | Yukarıdaki zorunlu adımı root ile çalıştırıp Actions'ta **Re-run jobs** |
+| Sağlık kontrolü zaman aşımı | 2567 portu kapalı | UpCloud ve ufw'de 2567'yi açın |
+| Sayfada "Bağlantı: koptu" | 2567 kapalı veya `PUBLIC_GAME_SERVER_URL` hatalı | Değer tam olarak `ws://SUNUCU_IP:2567` olmalı, değiştirince yeniden yayın gerekir |
 
 Not: Docker, yayınladığı portlar için ufw kurallarını atlar. PostgreSQL ve Redis bu yüzden hiç port açmaz.
 
