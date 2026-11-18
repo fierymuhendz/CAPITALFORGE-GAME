@@ -49,7 +49,7 @@ export function CityGrid() {
 
   return (
     <section aria-label="Şehir haritası" className="rounded-lg bg-slate-900 p-4">
-      <h2 className="mb-2 text-sm text-slate-400">Şehir: {city?.cityId ?? CITY.defaultId}</h2>
+      <h2 className="mb-3 text-sm font-semibold tracking-wide text-slate-300">Şehir: {city?.cityId ?? CITY.defaultId}</h2>
       <div className="flex flex-col gap-4 lg:flex-row">
         <div className="overflow-auto rounded border border-slate-800 [touch-action:pan-x_pan-y]" data-testid="city-scroll">
           <div

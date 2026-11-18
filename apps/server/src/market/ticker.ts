@@ -1,5 +1,5 @@
 import { type ProductId, poolPrice, replenish } from "@capitalforge/economy";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { EventEmitter } from "node:events";
 import type { Db } from "../db/client";
 import { gameClock, priceHistory, products } from "../db/schema";
@@ -38,8 +38,14 @@ export const JOB_EVENT = "jobCompleted";
  * ortak havuzu replenish ile yeniler, fiyatı havuzdan türetir,
  * price_history yazar ve oyun saatini (game_clock) aynı transaction'da bir artırır.
  */
-export async function runTickFull(db: Db): Promise<TickBroadcast> {
-  return db.transaction(async (tx) => {
+export async function runTickFull(db: Db): Promise<TickBroadcast | null> {
+  class Fenced extends Error {}
+  try {
+    return await db.transaction(async (tx) => {
+    // Çit (fencing): saat, ürün kilitlerinden ÖNCE okunur ve yalnızca okunan değerde artırılır. Aynı tick'i
+    // iki örnek (ör. Redis kilidi süresi dolmuş) paralel çalıştırırsa biri güncellemede 0 satır etkiler ve iptal olur.
+    const [seen] = await tx.select({ tick: gameClock.tick }).from(gameClock).where(eq(gameClock.id, 1));
+    if (!seen) throw new Error("game_clock satırı yok (seed uygulanmamış)");
     const rows = await tx.select().from(products).orderBy(asc(products.id)).for("update");
     const out: ProductTick[] = [];
     for (const p of rows) {
@@ -57,16 +63,20 @@ export async function runTickFull(db: Db): Promise<TickBroadcast> {
     const [clock] = await tx
       .update(gameClock)
       .set({ tick: sql`${gameClock.tick} + 1` })
-      .where(eq(gameClock.id, 1))
+      .where(and(eq(gameClock.id, 1), eq(gameClock.tick, seen.tick)))
       .returning({ tick: gameClock.tick });
-    if (!clock) throw new Error("game_clock satırı yok (seed uygulanmamış)");
+    if (!clock) throw new Fenced(); // başka bir işçi bu tick'i attı: fiyat yazımları dahil her şey geri alınır
     return { clockTick: Number(clock.tick), products: out };
-  });
+    });
+  } catch (err) {
+    if (err instanceof Fenced) return null;
+    throw err;
+  }
 }
 
 /** Yalnızca fiyat fazının ürün sonuçları (geriye uyumlu kısa biçim). */
 export async function runTick(db: Db): Promise<ProductTick[]> {
-  return (await runTickFull(db)).products;
+  return (await runTickFull(db))?.products ?? [];
 }
 
 export interface TickCycleResult {
@@ -79,9 +89,10 @@ export interface TickCycleResult {
  * Tam döngü: (1) fiyat + saat, (2) üretim tamamlama, (3) bakım. Fazlar ayrı transaction'lardır;
  * sonraki faz hata verirse fiyat tick'i geri alınmaz. Faz süreleri uzunsa günlüğe yazılır.
  */
-export async function runTickCycle(db: Db, onPriceTick?: (b: TickBroadcast) => Promise<void>): Promise<TickCycleResult> {
+export async function runTickCycle(db: Db, onPriceTick?: (b: TickBroadcast) => Promise<void>): Promise<TickCycleResult | null> {
   const t0 = Date.now();
   const broadcast = await runTickFull(db);
+  if (!broadcast) return null; // tick başka bir işçi tarafından atıldı
   if (onPriceTick) await onPriceTick(broadcast);
   const tick = BigInt(broadcast.clockTick);
 
@@ -122,9 +133,10 @@ export function startTicker(db: Db, redis: Redis): () => void {
     try {
       const got = await redis.set(TICK_LOCK_KEY, "1", "PX", TICK_LOCK_PX, "NX");
       if (got !== "OK") return;
-      const { completed } = await runTickCycle(db, async (b) => {
+      const cycle = await runTickCycle(db, async (b) => {
         await redis.publish(TICK_CHANNEL, JSON.stringify(b));
       });
+      const completed = cycle?.completed ?? [];
       if (completed.length > 0) await redis.publish(JOB_CHANNEL, JSON.stringify(completed));
     } catch (err) {
       console.error("tick hatası", err);

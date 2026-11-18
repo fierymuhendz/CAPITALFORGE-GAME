@@ -9,7 +9,7 @@ import { accounts, inventories, products, trades, transfers } from "../db/schema
 import { transfer } from "../ledger/transfer";
 import { assertLedgerBalanced, closeTestResources, resetTestDb, setupTestDb } from "../test/db";
 import { executeTrade } from "./trade";
-import { runTick } from "./ticker";
+import { runTick, runTickFull } from "./ticker";
 
 let db: Db;
 
@@ -274,7 +274,9 @@ describe("executeTrade: eşzamanlılık", () => {
     const [results, ticks] = await withTimeout(Promise.all([trading, ticking]), 20_000);
 
     expect(results.filter((r) => !r.ok && r.error !== "INSUFFICIENT_FUNDS")).toEqual([]);
-    for (const t of ticks) expect(t).toHaveLength(5);
+    // Çit: paralel tick'lerden yalnızca biri saati artırır (5 ürün); diğerleri iptal olur ve boş döner.
+    expect(ticks.filter((t) => t.length === 5)).toHaveLength(1);
+    expect(ticks.filter((t) => t.length === 0)).toHaveLength(4);
 
     const okResults = results.filter((r): r is Extract<OrderResult, { ok: true }> => r.ok);
     const spent = okResults.reduce((s, r) => s + BigInt(r.gross) + BigInt(r.tax), 0n);
@@ -363,6 +365,30 @@ describe("executeTrade: hacim sınırı (VOLUME_LIMIT)", () => {
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.flatMap((r) => (r.ok ? [] : [r.error]))).toEqual(["VOLUME_LIMIT"]);
     expect(await inventoryOf(playerId, "wheat")).toBe(2n);
+  });
+});
+
+describe("tick çiti ve küçük satım", () => {
+  it("iki paralel runTickFull saati bir kez artırır, kaybeden fiyat yazımlarını geri alır", async () => {
+    const [before] = await db.execute<{ tick: string }>(sql`SELECT tick::text FROM game_clock WHERE id = 1`);
+    const results = await withTimeout(Promise.all([runTickFull(db), runTickFull(db)]), 20_000);
+    expect(results.filter((r) => r !== null)).toHaveLength(1);
+    const [after] = await db.execute<{ tick: string }>(sql`SELECT tick::text FROM game_clock WHERE id = 1`);
+    expect(BigInt(after!.tick)).toBe(BigInt(before!.tick) + 1n);
+    const [h] = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM price_history WHERE product_id = 'wheat' AND tick = 1`);
+    expect(h!.n).toBe(1);
+  });
+
+  it("brüt tutarı 0 olan çok küçük satım INVALID döner, transfer ve envanter değişmez", async () => {
+    const playerId = await createPlayer();
+    const buy = await executeTrade(db, playerId, order({ quantity: 1 }));
+    expect(buy.ok).toBe(true);
+    // Havuzu minimum değere yakın kuran satım: 1 birimin geliri 0'a yuvarlanana kadar fiyatı düşür.
+    await db.execute(sql`UPDATE products SET pool_value = 1, price = 1 WHERE id = 'wheat'`);
+    const r = await executeTrade(db, playerId, order({ side: "sell", quantity: 1 }));
+    expect(r).toMatchObject({ ok: false, error: "INVALID" });
+    expect(await inventoryOf(playerId, "wheat")).toBe(1n);
+    expect(await tradeCount(playerId)).toBe(1);
   });
 });
 

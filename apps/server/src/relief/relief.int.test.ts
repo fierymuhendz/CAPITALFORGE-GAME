@@ -185,7 +185,7 @@ describe("asgari ödenek: uygunluk", () => {
     expect(await balanceOf(p)).toBe(0n);
   });
 
-  it("askıdaki tesisi olan ve nakitsiz oyuncu ödenek alabilir", async () => {
+  it("askıdaki tesisi olan nakitsiz oyuncu NOT_ELIGIBLE (askıya düşürüp ödenek alma istismarı)", async () => {
     const p = await newPlayer();
     expect((await foundCompany(db, p, { name: `Firma${uniq()}`, idempotencyKey: randomUUID() })).ok).toBe(true);
     const f = await buyFacility(db, p, { type: "farm", plotX: 0, plotY: 0, idempotencyKey: randomUUID() });
@@ -193,10 +193,9 @@ describe("asgari ödenek: uygunluk", () => {
     await db.update(facilities).set({ status: "suspended" }).where(eq(facilities.id, f.refId));
     await setBalance(p, 0n);
 
-    expect(await reliefAvailable(db, p)).toBe(true);
-    const r = await claim(p);
-    expect(r.ok).toBe(true);
-    expect(await balanceOf(p)).toBe(R);
+    expect(await reliefAvailable(db, p)).toBe(false);
+    expect(await claim(p)).toMatchObject({ ok: false, error: "NOT_ELIGIBLE" });
+    expect(await balanceOf(p)).toBe(0n);
   });
 
   it("şirketi olan ama tesisi olmayan nakitsiz oyuncu ödenek alabilir", async () => {

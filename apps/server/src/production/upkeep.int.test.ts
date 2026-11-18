@@ -9,7 +9,7 @@ import type { Db } from "../db/client";
 import { accounts, companies, facilities, ledgerEntries, transfers } from "../db/schema";
 import { transfer } from "../ledger/transfer";
 import { assertLedgerBalanced, closeTestResources, resetTestDb, setupTestDb } from "../test/db";
-import { chargeUpkeep, runUpkeepPhase } from "./upkeep";
+import { MAX_DEBT_PERIODS, SUSPENDED_RETRY_TICKS, chargeUpkeep, runUpkeepPhase } from "./upkeep";
 
 let db: Db;
 
@@ -123,14 +123,14 @@ describe("bakım: tek kesinti", () => {
 });
 
 describe("bakım: yetersiz bakiye", () => {
-  it("bakiye bakımdan azsa tesis suspended, bakiye değişmez ve negatif olmaz", async () => {
+  it("bakiye bakımdan azsa tesis suspended, ödeme dönemi ilerlemez, bakiye değişmez ve negatif olmaz", async () => {
     const { playerId, facilityId } = await setupFarm();
     await setBalance(playerId, FARM_UPKEEP - 1n);
 
     expect(await runUpkeepPhase(db, PERIOD_1_TICK)).toBe(1);
     const f = await facilityRow(facilityId);
     expect(f.status).toBe("suspended");
-    expect(f.upkeepPaidPeriod).toBe(1n);
+    expect(f.upkeepPaidPeriod).toBe(0n);
     expect(await balanceOf(playerId)).toBe(FARM_UPKEEP - 1n);
     expect(await upkeepTransferCount(facilityId, 1n)).toBe(0);
   });
@@ -146,36 +146,72 @@ describe("bakım: yetersiz bakiye", () => {
 
     expect((await facilityRow(facilityId)).status).toBe("suspended");
     expect(await balanceOf(playerId)).toBe(0n);
-    expect(await balanceOf(playerId)).toBeGreaterThanOrEqual(0n);
   });
 
-  it("askıdaki tesis için geriye dönük borç oluşmaz: dönem atlanır", async () => {
+  it("askıdaki tesis ödenecek bakiye gelince aynı dönemde yeniden denenir ve aktif olur", async () => {
     const { playerId, companyId, facilityId } = await setupFarm();
     await setBalance(playerId, 0n);
     await runUpkeepPhase(db, PERIOD_1_TICK);
     expect((await facilityRow(facilityId)).status).toBe("suspended");
 
-    await setBalance(playerId, 10_000n);
-    expect(await chargeUpkeep(db, facilityId, companyId, 1n)).toBe("skipped");
-    expect(await balanceOf(playerId)).toBe(10_000n);
+    await setBalance(playerId, FARM_UPKEEP + 5n);
+    expect(await chargeUpkeep(db, facilityId, companyId, 1n)).toBe("paid");
+    const f = await facilityRow(facilityId);
+    expect(f.status).toBe("active");
+    expect(f.upkeepPaidPeriod).toBe(1n);
+    expect(await balanceOf(playerId)).toBe(5n);
   });
-});
 
-describe("bakım: sonraki dönemde ödeme", () => {
-  it("dönem 1'de askıya alınan tesis, dönem 2'de ödenince active olur", async () => {
+  it("askıdaki tesis yalnızca SUSPENDED_RETRY_TICKS katı tick'lerde faz tarafından denenir", async () => {
     const { playerId, facilityId } = await setupFarm();
     await setBalance(playerId, 0n);
     await runUpkeepPhase(db, PERIOD_1_TICK);
-    expect((await facilityRow(facilityId)).status).toBe("suspended");
+    await setBalance(playerId, 10n ** 7n);
 
-    await setBalance(playerId, 10_000n);
-    expect(await runUpkeepPhase(db, PERIOD_2_TICK)).toBe(1);
+    expect(await runUpkeepPhase(db, PERIOD_1_TICK + 1n)).toBe(0);
+    expect((await facilityRow(facilityId)).status).toBe("suspended");
+    expect(await runUpkeepPhase(db, PERIOD_1_TICK + SUSPENDED_RETRY_TICKS)).toBe(1);
+    expect((await facilityRow(facilityId)).status).toBe("active");
+  });
+});
+
+describe("bakım: birikmiş borç", () => {
+  it("3 dönem askıda kalan tesis, ödenince 3 dönemin TÜMÜ tek transferle tahsil edilir ve aktif olur", async () => {
+    const { playerId, facilityId } = await setupFarm();
+    await setBalance(playerId, 0n);
+    for (const p of [1n, 2n, 3n]) await runUpkeepPhase(db, PARAMS.upkeepPeriodTicks * p);
+    expect((await facilityRow(facilityId)).upkeepPaidPeriod).toBe(0n);
+
+    await setBalance(playerId, FARM_UPKEEP * 3n + 7n);
+    expect(await runUpkeepPhase(db, PARAMS.upkeepPeriodTicks * 3n)).toBe(1);
 
     const f = await facilityRow(facilityId);
     expect(f.status).toBe("active");
-    expect(f.upkeepPaidPeriod).toBe(2n);
-    expect(await upkeepTransferCount(facilityId, 2n)).toBe(1);
-    // Yalnızca dönem 2 bakımı düşer; dönem 1 geriye dönük ücretlendirilmez.
-    expect(await balanceOf(playerId)).toBe(10_000n - FARM_UPKEEP);
+    expect(f.upkeepPaidPeriod).toBe(3n);
+    expect(await upkeepTransferCount(facilityId, 3n)).toBe(1);
+    expect(await balanceOf(playerId)).toBe(7n);
+  });
+
+  it("kısmi ödeme yok: borcun tamamına yetmezse hiçbir şey kesilmez", async () => {
+    const { playerId, facilityId } = await setupFarm();
+    await setBalance(playerId, 0n);
+    await runUpkeepPhase(db, PERIOD_2_TICK);
+    await setBalance(playerId, FARM_UPKEEP * 2n - 1n);
+    await runUpkeepPhase(db, PERIOD_2_TICK + SUSPENDED_RETRY_TICKS * 60n);
+    expect((await facilityRow(facilityId)).status).toBe("suspended");
+    expect(await balanceOf(playerId)).toBe(FARM_UPKEEP * 2n - 1n);
+  });
+
+  it("borç en çok MAX_DEBT_PERIODS dönem tahsil edilir; fazlası affedilir", async () => {
+    const { playerId, facilityId } = await setupFarm();
+    const late = MAX_DEBT_PERIODS + 10n;
+    await setBalance(playerId, FARM_UPKEEP * MAX_DEBT_PERIODS + 3n);
+    await db.update(facilities).set({ status: "suspended" }).where(eq(facilities.id, facilityId));
+
+    expect(await runUpkeepPhase(db, PARAMS.upkeepPeriodTicks * late)).toBe(1);
+    expect(await balanceOf(playerId)).toBe(3n);
+    const f = await facilityRow(facilityId);
+    expect(f.status).toBe("active");
+    expect(f.upkeepPaidPeriod).toBe(late);
   });
 });

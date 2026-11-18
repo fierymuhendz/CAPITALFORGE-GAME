@@ -1,19 +1,28 @@
 import { type FacilityType, upkeep, upkeepPeriod } from "@capitalforge/economy";
-import { and, asc, count, eq, lt } from "drizzle-orm";
+import { and, asc, count, eq, gt, lt } from "drizzle-orm";
 import { lockWallet, systemAccountId } from "../actions/run";
 import type { Db } from "../db/client";
 import { companies, facilities } from "../db/schema";
 import { applyTransfer } from "../ledger/transfer";
 
 export const UPKEEP_BATCH = 200;
+/** Askıdaki tesis bu kadar tick'te bir yeniden denenir (her tick denemek gereksiz yük olur). */
+export const SUSPENDED_RETRY_TICKS = 60n;
+/**
+ * Birikebilecek azami bakım borcu (dönem). Daha eski dönemler affedilir; böylece uzun süre
+ * girmeyen yeni oyuncu ezilmez. Affedilen dönemler tahsil edilmez; ödemeden sonra tesis aktif olur.
+ */
+export const MAX_DEBT_PERIODS = 24n;
 
 export type UpkeepOutcome = "paid" | "suspended" | "skipped";
 
 /**
- * Tek tesisin o dönemki bakımı, küçük bir transaction'da. Kilit sırası: companies → facilities → oyuncu hesabı.
- * `upkeep_paid_period < dönem` koşulu kilit altında yeniden denetlenir; aynı dönem iki kez kesilmez
- * (ayrıca transfer anahtarı `upkeep:<tesis>:<dönem>` benzersizdir). Bakiye yetmezse tesis `suspended`
- * olur, borç oluşmaz, dönem ödenmiş sayılır; sonraki dönemde ödenirse yeniden `active` olur.
+ * Tek tesisin bakımı, küçük bir transaction'da. Kilit sırası: companies → facilities → oyuncu hesabı.
+ * `upkeep_paid_period < dönem` koşulu kilit altında yeniden denetlenir. Ödenmemiş dönem sayısı
+ * (dönem − upkeep_paid_period, en çok MAX_DEBT_PERIODS) × dönem bakımı TEK transferde tahsil edilir
+ * (anahtar `upkeep:<tesis>:<dönem>` benzersiz). Bakiye bunun tamamına yetmezse hiçbir şey kesilmez (kısmi ödeme
+ * yok), tesis `suspended` olur ve upkeep_paid_period İLERLEMEZ: borç birikir, bakım fazı tesisi yeniden dener;
+ * ödenince tesis yeniden `active` olur. Bakiye hiçbir zaman negatife düşmez.
  */
 export async function chargeUpkeep(db: Db, facilityId: string, companyId: string, period: bigint): Promise<UpkeepOutcome> {
   return db.transaction(async (tx) => {
@@ -26,14 +35,18 @@ export async function chargeUpkeep(db: Db, facilityId: string, companyId: string
     const [cnt] = await tx.select({ n: count() }).from(facilities).where(eq(facilities.companyId, companyId));
     const ownedCount = BigInt(cnt?.n ?? 1);
 
-    const amount = upkeep(f.type as FacilityType, BigInt(f.level), ownedCount);
+    const owed = period - f.upkeepPaidPeriod;
+    const billed = owed > MAX_DEBT_PERIODS ? MAX_DEBT_PERIODS : owed;
+    const perPeriod = upkeep(f.type as FacilityType, BigInt(f.level), ownedCount);
+    const amount = perPeriod * billed;
+    if (amount === 0n) {
+      await tx.update(facilities).set({ status: "active", upkeepPaidPeriod: period }).where(eq(facilities.id, f.id));
+      return "paid";
+    }
     const wallet = await lockWallet(tx, company.playerId);
-    if (amount === 0n || wallet.balance < amount) {
-      await tx
-        .update(facilities)
-        .set({ status: amount === 0n ? "active" : "suspended", upkeepPaidPeriod: period })
-        .where(eq(facilities.id, f.id));
-      return amount === 0n ? "paid" : "suspended";
+    if (wallet.balance < amount) {
+      if (f.status !== "suspended") await tx.update(facilities).set({ status: "suspended" }).where(eq(facilities.id, f.id));
+      return "suspended";
     }
     const fees = await systemAccountId(tx, "system:fees");
     await applyTransfer(tx, `upkeep:${f.id}:${period}`, "upkeep", [
@@ -45,15 +58,26 @@ export async function chargeUpkeep(db: Db, facilityId: string, companyId: string
   });
 }
 
-/** Bakım fazı: vadesi gelen tesisleri partiler halinde, tesis başına ayrı transaction ile işler. */
+/**
+ * Bakım fazı: vadesi gelen tesisleri id anahtarlı sayfalarla, tesis başına ayrı transaction ile işler.
+ * Askıdaki tesisler yalnızca SUSPENDED_RETRY_TICKS'te bir denenir.
+ */
 export async function runUpkeepPhase(db: Db, tick: bigint, maxBatches = 10): Promise<number> {
   const period = upkeepPeriod(tick);
+  const retrySuspended = tick % SUSPENDED_RETRY_TICKS === 0n;
   let processed = 0;
+  let lastId: string | null = null;
   for (let i = 0; i < maxBatches; i++) {
-    const due = await db
+    const due: { id: string; companyId: string }[] = await db
       .select({ id: facilities.id, companyId: facilities.companyId })
       .from(facilities)
-      .where(and(lt(facilities.upkeepPaidPeriod, period)))
+      .where(
+        and(
+          lt(facilities.upkeepPaidPeriod, period),
+          retrySuspended ? undefined : eq(facilities.status, "active"),
+          lastId ? gt(facilities.id, lastId) : undefined,
+        ),
+      )
       .orderBy(asc(facilities.id))
       .limit(UPKEEP_BATCH);
     if (due.length === 0) break;
@@ -66,6 +90,7 @@ export async function runUpkeepPhase(db: Db, tick: bigint, maxBatches = 10): Pro
       }
     }
     if (due.length < UPKEEP_BATCH) break;
+    lastId = due[due.length - 1]!.id;
   }
   return processed;
 }

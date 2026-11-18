@@ -81,3 +81,22 @@ export const ACTION_ERROR_TEXT: Record<ActionErrorCode, string> = {
 };
 
 export const ACTION_RETRYABLE: ReadonlySet<ActionErrorCode> = new Set(["RATE_LIMITED", "INTERNAL"]);
+
+/** Sunucu oyun saati: 1 tick = 1 saniye (sunucu sabitiyle aynı tutulmalı). Süre gösterimi tek yerden geçer. */
+export const TICK_SECONDS = 1;
+
+/** Tick sayısını okunur süreye çevirir: "2 sa 0 dk", "5 dk 30 sn", "45 sn". */
+export function formatDuration(ticks: number): string {
+  const total = Math.max(0, Math.floor(ticks * TICK_SECONDS));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h} sa ${m} dk`;
+  if (m > 0) return `${m} dk ${s} sn`;
+  return `${s} sn`;
+}
+
+/** Sunucudan gelen tam sayı dizgesini binlik ayraçla gösterir (hesap yapmaz). */
+export function formatQuantity(q: string): string {
+  return BigInt(q).toLocaleString("tr-TR");
+}

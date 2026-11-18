@@ -85,7 +85,12 @@ jobs:
             echo "JWT_SECRET=$JWT_SECRET"
           } | $SSH 'umask 077 && cat > /opt/capitalforge/.env'
           echo "$GHCR_TOKEN" | $SSH "docker login $REGISTRY -u ${{ github.actor }} --password-stdin"
-          $SSH 'cd /opt/capitalforge && docker compose pull && docker compose up -d --remove-orphans && docker image prune -f'
+          # Migration veya başlatma başarısız olursa nedenini CI günlüğünde göster.
+          if ! $SSH 'cd /opt/capitalforge && docker compose pull && docker compose up -d --remove-orphans'; then
+            $SSH 'cd /opt/capitalforge && docker compose ps -a; docker compose logs --no-color --tail=200 migrate server' || true
+            exit 1
+          fi
+          $SSH 'docker image prune -f'
           $SSH "docker logout $REGISTRY"
 
       - name: Sağlık kontrolü

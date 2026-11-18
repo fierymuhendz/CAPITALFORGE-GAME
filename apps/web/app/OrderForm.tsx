@@ -3,13 +3,14 @@
 import { useRef, useState, type FormEvent } from "react";
 import { formatMoney } from "@capitalforge/economy";
 import { PRODUCT_IDS, PlaceOrderSchema, type OrderResult, type PlaceOrder } from "@capitalforge/shared";
-import { ORDER_ERROR_TEXT, RETRYABLE, productLabel } from "../lib/labels";
+import { ORDER_ERROR_TEXT, RETRYABLE, formatQuantity, productLabel } from "../lib/labels";
 import { useGame } from "./GameProvider";
 
 type Side = "buy" | "sell";
 
 export function OrderForm({ selected, onSelect }: { selected: string; onSelect: (id: string) => void }) {
-  const { sendOrder, status } = useGame();
+  const { sendOrder, status, catalog } = useGame();
+  const maxOrder = catalog?.products.find((p) => p.productId === selected)?.maxOrder;
   const [side, setSide] = useState<Side>("buy");
   const [qty, setQty] = useState("1");
   const [busy, setBusy] = useState(false);
@@ -57,8 +58,8 @@ export function OrderForm({ selected, onSelect }: { selected: string; onSelect: 
 
   const focus = "focus-visible:ring-2 focus-visible:ring-white outline-none";
   return (
-    <form onSubmit={submit} aria-label="Emir ver" className="flex flex-col gap-3 rounded-lg bg-slate-900 p-4">
-      <h2 className="text-sm text-slate-400">Emir</h2>
+    <form onSubmit={submit} noValidate aria-label="Emir ver" className="flex flex-col gap-3 rounded-lg bg-slate-900 p-4">
+      <h2 className="text-sm font-semibold tracking-wide text-slate-300">Emir</h2>
       <label className="flex flex-col gap-1 text-sm">
         Ürün
         <select value={selected} onChange={(e) => onSelect(e.target.value)} className={`rounded bg-slate-800 p-3 ${focus}`}>
@@ -86,11 +87,16 @@ export function OrderForm({ selected, onSelect }: { selected: string; onSelect: 
           type="number"
           inputMode="numeric"
           min={1}
+          max={maxOrder}
           step={1}
           value={qty}
           onChange={(e) => setQty(e.target.value)}
+          aria-describedby="max-order"
           className={`rounded bg-slate-800 p-3 ${focus}`}
         />
+        <span id="max-order" data-testid="max-order" className="text-xs text-slate-400">
+          {maxOrder ? `En büyük emir: ${formatQuantity(maxOrder)}` : "En büyük emir: …"}
+        </span>
       </label>
       <button
         type="submit"

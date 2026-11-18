@@ -1,7 +1,7 @@
 import type { JobCompleted, RecipeIdString } from "@capitalforge/shared";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { inventories, productionJobs, products } from "../db/schema";
+import { facilities, inventories, productionJobs, products } from "../db/schema";
 
 export const COMPLETION_BATCH = 500;
 
@@ -27,7 +27,8 @@ export async function runCompletionPhase(db: Db, tick: bigint, maxBatches = 20):
       const candidates = await tx
         .selectDistinct({ productId: productionJobs.outputProductId })
         .from(productionJobs)
-        .where(and(eq(productionJobs.status, "running"), lte(productionJobs.completesAtTick, tick)))
+        .innerJoin(facilities, eq(facilities.id, productionJobs.facilityId))
+        .where(and(eq(productionJobs.status, "running"), lte(productionJobs.completesAtTick, tick), eq(facilities.status, "active")))
         .orderBy(asc(productionJobs.outputProductId));
       if (candidates.length === 0) return [];
       await tx
@@ -37,13 +38,16 @@ export async function runCompletionPhase(db: Db, tick: bigint, maxBatches = 20):
         .orderBy(asc(products.id))
         .for("key share");
 
+      // Askıdaki (bakımı ödenmemiş) tesisin işi tamamlanmaz; tesis yeniden aktif olunca sonraki tick'te biter.
       const jobs = await tx
-        .select()
+        .select({ job: productionJobs })
         .from(productionJobs)
-        .where(and(eq(productionJobs.status, "running"), lte(productionJobs.completesAtTick, tick)))
+        .innerJoin(facilities, eq(facilities.id, productionJobs.facilityId))
+        .where(and(eq(productionJobs.status, "running"), lte(productionJobs.completesAtTick, tick), eq(facilities.status, "active")))
         .orderBy(asc(productionJobs.outputProductId), asc(productionJobs.playerId), asc(productionJobs.id))
         .limit(COMPLETION_BATCH)
-        .for("update", { skipLocked: true });
+        .for("update", { of: productionJobs, skipLocked: true })
+        .then((rows) => rows.map((r) => r.job));
       if (jobs.length === 0) return [];
 
       // (ürün, oyuncu) başına topla; jobs zaten bu sırayla sıralı.

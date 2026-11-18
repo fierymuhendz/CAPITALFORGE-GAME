@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { MAX_BATCHES, StartProductionSchema, type RecipeIdString } from "@capitalforge/shared";
-import { ACTION_ERROR_TEXT, facilityLabel, productLabel, recipeLabel } from "../lib/labels";
+import { ACTION_ERROR_TEXT, facilityLabel, formatDuration, productLabel, recipeLabel } from "../lib/labels";
 import { useGame } from "./GameProvider";
 import { Feedback, useAction } from "./useAction";
 
@@ -45,7 +45,7 @@ export function ProductionForm() {
 
   return (
     <form onSubmit={submit} aria-label="Üretim başlat" className="flex flex-col gap-3 rounded-lg bg-slate-900 p-4">
-      <h2 className="text-sm text-slate-400">Üretim</h2>
+      <h2 className="text-sm font-semibold tracking-wide text-slate-300">Üretim</h2>
       <label className="flex flex-col gap-1 text-sm">
         Tesis
         <select
@@ -85,7 +85,7 @@ export function ProductionForm() {
           <dt className="text-slate-400">Çıktı (parti başına)</dt>
           <dd>{line(recipe.output)}</dd>
           <dt className="text-slate-400">Süre</dt>
-          <dd>{recipe.durationTicks} tick</dd>
+          <dd>{formatDuration(recipe.durationTicks)}</dd>
         </dl>
       )}
       <label className="flex flex-col gap-1 text-sm">

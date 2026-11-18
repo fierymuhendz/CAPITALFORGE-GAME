@@ -95,6 +95,8 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
       const pool = { units: product.poolUnits, value: product.poolValue };
       if (quantity > poolMaxOrder(pool)) throw new TradeError("ORDER_TOO_LARGE");
       const quote = executeAgainstPool(order.side, pool, quantity);
+      // Çok küçük satımda brüt tutar 0 olabilir: boş bacaklı transfer yazılmaz, emir geçersizdir.
+      if (quote.gross <= 0n) throw new TradeError("INVALID");
 
       // 5. Ön kontroller (CHECK kısıtları ikinci savunma)
       if (order.side === "buy") {

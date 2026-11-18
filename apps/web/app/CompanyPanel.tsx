@@ -16,8 +16,10 @@ export function CompanyPanel() {
 
   if (!company) {
     return (
-      <section aria-label="Şirket" className="rounded-lg bg-slate-900 p-4 text-sm text-slate-400">
-        Şirket bilgisi yükleniyor…
+      <section aria-label="Şirket" aria-busy="true" className="flex flex-col gap-2 rounded-lg bg-slate-900 p-4">
+        <div className="h-4 w-20 animate-pulse rounded bg-slate-800" />
+        <div className="h-6 w-40 animate-pulse rounded bg-slate-800" />
+        <span className="sr-only">Şirket bilgisi yükleniyor…</span>
       </section>
     );
   }
@@ -34,9 +36,9 @@ export function CompanyPanel() {
     };
     return (
       <form onSubmit={submit} aria-label="Şirket kur" className="flex flex-col gap-3 rounded-lg bg-slate-900 p-4">
-        <h2 className="text-sm text-slate-400">Şirket kur</h2>
-        <p className="text-sm">
-          Üretim yapmak için bir şirket kurun.
+        <h2 className="text-sm font-semibold tracking-wide text-slate-300">Şirket kur</h2>
+        <p className="text-sm text-slate-300">
+          Henüz şirketiniz yok. Tesis almak ve üretim yapmak için bir şirket kurun.
           {catalog && (
             <>
               {" "}Kuruluş ücreti: <strong data-testid="founding-fee">{formatMoney(BigInt(catalog.companyFoundingFee))}</strong>
@@ -67,7 +69,7 @@ export function CompanyPanel() {
 
   return (
     <section aria-label="Şirket" className="rounded-lg bg-slate-900 p-4">
-      <h2 className="text-sm text-slate-400">Şirket</h2>
+      <h2 className="text-sm font-semibold tracking-wide text-slate-300">Şirket</h2>
       <p data-testid="company-name" className="text-xl font-bold">{company.company.name}</p>
       <p className="mt-1 text-sm text-slate-400">
         Tesis: <span className="tabular-nums text-slate-100">{company.facilities.length}</span>

@@ -1,18 +1,27 @@
 "use client";
 
 import { formatMoney } from "@capitalforge/economy";
-import { FACILITY_GLYPH, facilityLabel, productLabel, recipeLabel } from "../lib/labels";
+import { FACILITY_GLYPH, facilityLabel, formatDuration, productLabel, recipeLabel } from "../lib/labels";
 import { useGame } from "./GameProvider";
 
 export function FacilityList() {
   const { company, clockTick } = useGame();
-  if (!company?.company) return null;
+  if (!company?.company) {
+    return (
+      <section aria-label="Tesisler" className="rounded-lg bg-slate-900 p-4">
+        <h2 className="text-sm font-semibold tracking-wide text-slate-300">Tesisler</h2>
+        <p className="mt-2 text-sm text-slate-400" data-testid="facilities-empty">
+          {company ? "Tesis almak için önce şirket kurun." : "Yükleniyor…"}
+        </p>
+      </section>
+    );
+  }
   // İlerleme yalnızca sunucu oyun saatiyle ölçülür; istemci saati kullanılmaz.
   const now = clockTick ?? company.clockTick;
 
   return (
     <section aria-label="Tesisler" className="rounded-lg bg-slate-900 p-4">
-      <h2 className="text-sm text-slate-400">Tesisler</h2>
+      <h2 className="text-sm font-semibold tracking-wide text-slate-300">Tesisler</h2>
       {company.facilities.length === 0 ? (
         <p className="mt-2 text-sm text-slate-400">Henüz tesisiniz yok. Haritadan bir arsa seçin.</p>
       ) : (
@@ -54,7 +63,7 @@ export function FacilityList() {
                       <div className="h-full bg-emerald-500" style={{ width: `${pct}%` }} />
                     </div>
                     <p className="mt-1 text-xs text-slate-400" data-testid="job-progress">
-                      %{pct} · kalan {left} tick
+                      %{pct} · kalan {formatDuration(left)}
                     </p>
                   </div>
                 ) : (

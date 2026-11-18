@@ -193,6 +193,25 @@ describe("üretim başlatma: eşzamanlılık", () => {
   });
 });
 
+describe("üretim tamamlama: askıdaki tesis", () => {
+  it("askıdaki tesisin işi tamamlanmaz; tesis yeniden aktif olunca tamamlanır", async () => {
+    const p = await newPlayer();
+    await newCompany(p);
+    const farm = refOf(await buy(p, "farm", 0, 0));
+    await grant(p, "energy", 1n);
+    expect((await start(p, farm, "grow_wheat", 1)).ok).toBe(true);
+    await db.update(facilities).set({ status: "suspended" }).where(eq(facilities.id, farm));
+
+    expect(await runCompletionPhase(db, GROW_TICKS + 5n)).toEqual([]);
+    expect(await invOf(p, "wheat")).toBe(0n);
+    expect((await jobsOf(farm))[0]!.status).toBe("running");
+
+    await db.update(facilities).set({ status: "active" }).where(eq(facilities.id, farm));
+    expect(await runCompletionPhase(db, GROW_TICKS + 6n)).toHaveLength(1);
+    expect(await invOf(p, "wheat")).toBe(RECIPES.grow_wheat.output.qty);
+  });
+});
+
 describe("üretim başlatma: yetki ve durum", () => {
   it("başkasının tesisinde üretim UNAUTHORIZED; kimse envanter kaybetmez", async () => {
     const owner = await newPlayer();

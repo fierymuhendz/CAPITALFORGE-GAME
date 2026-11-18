@@ -14,7 +14,7 @@ const lockProducts = (tx: Tx): Promise<ProductPrice[]> =>
   tx.select({ id: products.id, price: products.price }).from(products).orderBy(asc(products.id)).for("key share");
 
 /**
- * Ödenek durumu: bakiye/envanterle eşik, aktif tesis ve kayan bekleme (son talepten itibaren en az
+ * Ödenek durumu: bakiye/envanterle eşik, tesis yokluğu (askıdaki tesis de tesistir: bilerek askıya düşürüp ödenek almak engellenir) ve kayan bekleme (son talepten itibaren en az
  * reliefCooldownTicks tick) kontrolü. lockInventory=true iken envanter satırları kilitlenir.
  */
 async function evaluate(tx: Tx | Db, playerId: string, cash: bigint, lockInventory: boolean, productRows: ProductPrice[]) {
@@ -33,7 +33,7 @@ async function evaluate(tx: Tx | Db, playerId: string, cash: bigint, lockInvento
     .select({ n: count() })
     .from(facilities)
     .innerJoin(companies, eq(companies.id, facilities.companyId))
-    .where(and(eq(companies.playerId, playerId), eq(facilities.status, "active")));
+    .where(eq(companies.playerId, playerId));
 
   const q = tx
     .select({ productId: inventories.productId, quantity: inventories.quantity })

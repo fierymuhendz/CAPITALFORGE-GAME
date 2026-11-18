@@ -33,17 +33,25 @@ export function Game() {
     setNotice(message);
   }
 
-  if (!ready) return null;
+  if (!ready) {
+    return (
+      <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4" aria-busy="true" aria-label="Yükleniyor">
+        <div className="h-8 w-40 animate-pulse rounded bg-slate-800" />
+        <div className="h-16 animate-pulse rounded-lg bg-slate-900" />
+        <div className="h-64 animate-pulse rounded-lg bg-slate-900" />
+      </main>
+    );
+  }
   if (!session) return <LoginForm notice={notice} onLogin={(s) => { setNotice(undefined); setSession(s); }} />;
 
   return (
     <GameProvider token={session.token} onUnauthorized={() => logout("Oturumunuz sona erdi, yeniden giriş yapın.")}>
-      <main className="mx-auto flex max-w-6xl flex-col gap-4 p-4">
+      <main className="mx-auto flex max-w-6xl flex-col gap-4 p-3 sm:p-4">
         <header className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-bold">CapitalForge</h1>
+          <h1 className="text-2xl font-bold tracking-tight">CapitalForge</h1>
           <div className="flex items-center gap-3">
             <ConnectionBadge />
-            <span className="text-sm text-slate-400">{session.username}</span>
+            <span className="text-sm text-slate-300">Oyuncu: {session.username}</span>
             <button
               type="button"
               onClick={() => logout()}

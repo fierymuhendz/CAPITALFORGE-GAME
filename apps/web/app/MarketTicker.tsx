@@ -30,10 +30,10 @@ export function MarketTicker() {
           const q = quotes[id];
           const dir = q?.prev == null ? 0 : BigInt(q.price) > BigInt(q.prev) ? 1 : BigInt(q.price) < BigInt(q.prev) ? -1 : 0;
           return (
-            <li key={id} className="flex items-center justify-between rounded-lg bg-slate-900 p-3">
+            <li key={id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-900 p-3 text-sm">
               <span>{productLabel(id)}</span>
               <span className="tabular-nums">
-                {q ? formatMoney(BigInt(q.price)) : "…"}{" "}
+                {q ? formatMoney(BigInt(q.price)) : <span className="inline-block h-4 w-16 animate-pulse rounded bg-slate-800 align-middle" aria-label="Yükleniyor" />}{" "}
                 <span className={dir > 0 ? "text-emerald-400" : dir < 0 ? "text-red-400" : "text-slate-500"}>
                   {dir > 0 ? "▲ yükseldi" : dir < 0 ? "▼ düştü" : "–"}
                 </span>
