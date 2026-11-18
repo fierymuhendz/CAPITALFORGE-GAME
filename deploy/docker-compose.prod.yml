@@ -59,6 +59,8 @@ networks:
     ipam:
       config:
         - subnet: 172.30.0.0/24
+          # Dinamik adresler .128-.255 arasından verilir, web'in sabit .10 adresiyle çakışmaz.
+          ip_range: 172.30.0.128/25
 
 volumes:
   pgdata:

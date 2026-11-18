@@ -83,18 +83,21 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
     const auth = client.auth;
     if (!auth) return reply({ ok: false, error: "UNAUTHORIZED" });
 
-    const parsed = PlaceOrderSchema.safeParse(raw);
-    if (!parsed.success) return reply({ ok: false, error: "INVALID" });
-    const order = parsed.data;
-
+    // Hız sınırı ayrıştırmadan önce: geçersiz mesaj seli de sınıra takılır.
+    const key = PlaceOrderSchema.shape.idempotencyKey.safeParse((raw as { idempotencyKey?: unknown } | null)?.idempotencyKey);
+    const idempotencyKey = key.success ? key.data : undefined;
     try {
       if (!(await allowOrder(this.deps.redis, auth.playerId))) {
-        return reply({ ok: false, error: "RATE_LIMITED", idempotencyKey: order.idempotencyKey });
+        return reply({ ok: false, error: "RATE_LIMITED", idempotencyKey });
       }
     } catch {
       // Redis hatasında emir reddedilir (fail closed).
-      return reply({ ok: false, error: "INTERNAL", idempotencyKey: order.idempotencyKey });
+      return reply({ ok: false, error: "INTERNAL", idempotencyKey });
     }
+
+    const parsed = PlaceOrderSchema.safeParse(raw);
+    if (!parsed.success) return reply({ ok: false, error: "INVALID" });
+    const order = parsed.data;
 
     const result = await executeTrade(this.deps.db, auth.playerId, order);
     reply(result);

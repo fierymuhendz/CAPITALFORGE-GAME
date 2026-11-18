@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client";
 import { accounts, ledgerEntries, transfers } from "../db/schema";
 import { type Leg, lockOrder, validateLegs } from "./plan";
@@ -33,14 +33,16 @@ export async function applyTransfer(tx: Tx, idempotencyKey: string, reason: stri
   const transferId = inserted[0]!.id;
 
   const ids = lockOrder(legs);
+  const known = await tx.select({ id: accounts.id, kind: accounts.kind }).from(accounts).where(inArray(accounts.id, ids));
+  if (known.length !== ids.length) throw new Error("Bilinmeyen hesap");
+  // Yalnızca oyuncu hesapları kilitlenir (id sırasıyla); sistem hesapları kilitlenmez ve güncellenmez.
   const locked = await tx
-    .select({ id: accounts.id, kind: accounts.kind })
+    .select({ id: accounts.id })
     .from(accounts)
-    .where(inArray(accounts.id, ids))
+    .where(and(inArray(accounts.id, ids), eq(accounts.kind, "player")))
     .orderBy(accounts.id)
     .for("update");
-  if (locked.length !== ids.length) throw new Error("Bilinmeyen hesap");
-  const playerIds = new Set(locked.filter((a) => a.kind === "player").map((a) => a.id));
+  const playerIds = new Set(locked.map((a) => a.id));
 
   for (const leg of legs) {
     if (!playerIds.has(leg.accountId)) continue;

@@ -126,6 +126,8 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
         `trade:${order.side}:${order.productId}`,
         legs.filter((l) => l.amount !== 0n),
       );
+      // trades satırı benzersiz olduğundan buraya ulaşılmamalı; ulaşılırsa envanter iki kez işlenmesin.
+      if (transfer.status === "duplicate") throw new Error("Beklenmeyen yinelenen transfer");
 
       // 7. Envanter ve bekleyen talep/arz
       if (order.side === "buy") {

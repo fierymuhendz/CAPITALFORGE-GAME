@@ -19,10 +19,25 @@ export async function allow(redis: Redis, key: string, limit: number, windowMs: 
 export const LIMITS = {
   order: { limit: 5, windowMs: 1_000 },
   guestLogin: { limit: 5, windowMs: 60_000 },
+  /** Tüm IP'ler için toplam misafir kaydı tavanı (adres döndürerek hesap fabrikasına karşı). */
+  guestLoginGlobal: { limit: 60, windowMs: 60_000 },
 } as const;
 
 export const allowOrder = (redis: Redis, playerId: string) =>
   allow(redis, `order:${playerId}`, LIMITS.order.limit, LIMITS.order.windowMs);
 
-export const allowGuestLogin = (redis: Redis, ip: string) =>
-  allow(redis, `guest:${ip}`, LIMITS.guestLogin.limit, LIMITS.guestLogin.windowMs);
+/** IPv6 adresini /64 önekine indirger; tek bir ağ içinde adres döndürmek sınırı aşmaz. */
+export function ipBucket(ip: string): string {
+  if (!ip.includes(":") || ip.startsWith("::ffff:")) return ip.replace(/^::ffff:/, "");
+  const [head = "", tail = ""] = ip.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = ip.includes("::") ? [...h, ...Array(8 - h.length - t.length).fill("0"), ...t] : h;
+  return groups.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, "")).join(":") + "::/64";
+}
+
+export async function allowGuestLogin(redis: Redis, ip: string): Promise<boolean> {
+  const perIp = await allow(redis, `guest:${ipBucket(ip)}`, LIMITS.guestLogin.limit, LIMITS.guestLogin.windowMs);
+  if (!perIp) return false;
+  return allow(redis, "guest:all", LIMITS.guestLoginGlobal.limit, LIMITS.guestLoginGlobal.windowMs);
+}

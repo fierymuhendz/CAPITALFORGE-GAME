@@ -29,7 +29,11 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
   const { db, redis } = deps;
 
   // Beklenmeyen hatalar: iç ayrıntı (SQL, stack) istemciye gitmez, sadece sunucu günlüğüne.
-  app.setErrorHandler((err, req, reply) => {
+  app.setErrorHandler((err: { statusCode?: number }, req, reply) => {
+    // İstemci hataları (bozuk JSON, büyük gövde): 400, günlüğü şişirmez.
+    if (typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode < 500) {
+      return send(reply, 400, "INVALID");
+    }
     req.log.error(err);
     return send(reply, 500, "INTERNAL");
   });
