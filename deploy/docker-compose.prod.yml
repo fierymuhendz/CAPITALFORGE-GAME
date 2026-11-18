@@ -1,0 +1,54 @@
+# Üretim: sunucuda /opt/capitalforge altında çalışır.
+# Değerler aynı klasördeki .env dosyasından gelir (GitHub Actions yazar, elle düzenlemeyin).
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: capitalforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD gerekli}
+      POSTGRES_DB: capitalforge
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U capitalforge"]
+      interval: 5s
+      retries: 20
+    # Dışarıya port açılmaz: sadece iç ağdan erişilir.
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+
+  migrate:
+    image: ${SERVER_IMAGE:?SERVER_IMAGE gerekli}
+    environment:
+      DATABASE_URL: postgres://capitalforge:${POSTGRES_PASSWORD}@postgres:5432/capitalforge
+    command: ["node_modules/.bin/drizzle-kit", "migrate"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  server:
+    image: ${SERVER_IMAGE}
+    restart: unless-stopped
+    environment:
+      PORT: "2567"
+      DATABASE_URL: postgres://capitalforge:${POSTGRES_PASSWORD}@postgres:5432/capitalforge
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET gerekli}
+    ports: ["2567:2567"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_started }
+
+  web:
+    image: ${WEB_IMAGE:?WEB_IMAGE gerekli}
+    restart: unless-stopped
+    ports: ["80:3000"]
+    depends_on: [server]
+
+volumes:
+  pgdata:
+  redisdata:
