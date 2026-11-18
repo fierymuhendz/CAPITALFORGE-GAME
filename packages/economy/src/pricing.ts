@@ -1,25 +1,70 @@
 import { type Money, BPS_SCALE, applyBpsCeil, assertNonNegative } from "./money";
 import { PARAMS } from "./params";
 
+export type TradeSide = "buy" | "sell";
+
+export interface TradeQuote {
+  unitPrice: Money;
+  gross: Money;
+  tax: Money;
+  /** Oyuncu bakiyesine etkisi: alımda negatif (-(gross+tax)), satımda pozitif (gross-tax). */
+  playerDelta: Money;
+}
+
+function clampPrice(p: Money): Money {
+  if (p < PARAMS.minPrice) return PARAMS.minPrice;
+  if (p > PARAMS.maxPrice) return PARAMS.maxPrice;
+  return p;
+}
+
 /**
  * Bir sonraki tick fiyatı. Talep arzı aşarsa fiyat artar, tersi azalır.
- * Değişim, dengesizlik oranıyla orantılıdır ve maxPriceStepBps ile sınırlanır.
+ * imbalanceBps = (d - s) * maxStep / (d + s + L). Payda likiditeyi içerir, bu yüzden
+ * küçük hacim fiyatı az oynatır ve |adım| < maxStep olur.
+ * Bölmeler sıfıra doğru keser. Sonuç [minPrice, maxPrice] aralığındadır.
  * Saf fonksiyon: zaman ve rastgelelik kullanmaz.
  */
-export function nextPrice(price: Money, demand: bigint, supply: bigint): Money {
+export function nextPrice(
+  price: Money,
+  demand: bigint,
+  supply: bigint,
+  liquidity: bigint = PARAMS.liquidity,
+): Money {
   assertNonNegative(price, "fiyat");
   assertNonNegative(demand, "talep");
   assertNonNegative(supply, "arz");
-  const total = demand + supply;
-  if (total === 0n) return price < PARAMS.minPrice ? PARAMS.minPrice : price;
-
-  // (talep - arz) / (talep + arz) ∈ [-1, 1], bp cinsinden ölçeklenir
-  const imbalanceBps = ((demand - supply) * PARAMS.maxPriceStepBps) / total;
-  const next = price + (price * imbalanceBps) / BPS_SCALE;
-  return next < PARAMS.minPrice ? PARAMS.minPrice : next;
+  assertNonNegative(liquidity, "likidite");
+  const base = clampPrice(price);
+  const denom = demand + supply + liquidity;
+  if (denom === 0n) return base;
+  const imbalanceBps = ((demand - supply) * PARAMS.maxPriceStepBps) / denom;
+  return clampPrice(base + (base * imbalanceBps) / BPS_SCALE);
 }
 
 /** Alım/satım tutarından alınacak işlem vergisi (yukarı yuvarlanır). */
 export function transactionTax(gross: Money): Money {
   return applyBpsCeil(gross, PARAMS.transactionTaxBps);
+}
+
+/**
+ * İşlem teklifi. Alımda birim fiyat = fiyat + ceil(spread) (oyuncu fazla öder),
+ * satımda = max(minPrice, fiyat - ceil(spread)) (oyuncu az alır). Vergi yukarı yuvarlanır;
+ * satımda vergi brüt tutarı aşamaz. Yuvarlama hep sistemin lehinedir.
+ */
+export function quoteTrade(side: TradeSide, price: Money, quantity: bigint): TradeQuote {
+  if (price < PARAMS.minPrice) throw new RangeError(`fiyat asgarinin altında: ${price}`);
+  if (quantity <= 0n) throw new RangeError(`miktar pozitif olmalı: ${quantity}`);
+  const spread = applyBpsCeil(price, PARAMS.spreadBps);
+  let unitPrice: Money;
+  if (side === "buy") {
+    unitPrice = price + spread;
+  } else {
+    unitPrice = price - spread;
+    if (unitPrice < PARAMS.minPrice) unitPrice = PARAMS.minPrice;
+  }
+  const gross = unitPrice * quantity;
+  const rawTax = transactionTax(gross);
+  const tax = rawTax > gross ? gross : rawTax;
+  const playerDelta = side === "buy" ? -(gross + tax) : gross - tax;
+  return { unitPrice, gross, tax, playerDelta };
 }

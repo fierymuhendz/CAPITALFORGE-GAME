@@ -1,10 +1,5 @@
-import { MarketTicker } from "./MarketTicker";
+import { Game } from "./Game";
 
 export default function Home() {
-  return (
-    <main>
-      <h1>CapitalForge</h1>
-      <MarketTicker />
-    </main>
-  );
+  return <Game />;
 }

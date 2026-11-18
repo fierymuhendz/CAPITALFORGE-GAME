@@ -5,7 +5,9 @@ WORKDIR /app
 RUN npm install -g pnpm@10.28.0
 COPY . .
 ARG NEXT_PUBLIC_GAME_SERVER_URL
-ENV NEXT_PUBLIC_GAME_SERVER_URL=$NEXT_PUBLIC_GAME_SERVER_URL NEXT_TELEMETRY_DISABLED=1
+# /api yönlendirmesi build sırasında sabitlenir; compose ağındaki sunucu servisi
+ARG GAME_SERVER_HTTP_URL=http://server:2567
+ENV NEXT_PUBLIC_GAME_SERVER_URL=$NEXT_PUBLIC_GAME_SERVER_URL GAME_SERVER_HTTP_URL=$GAME_SERVER_HTTP_URL NEXT_TELEMETRY_DISABLED=1
 RUN pnpm install --frozen-lockfile --filter @capitalforge/web... \
  && pnpm --filter @capitalforge/web build
 
