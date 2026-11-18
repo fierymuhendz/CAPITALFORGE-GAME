@@ -68,3 +68,25 @@ export function quoteTrade(side: TradeSide, price: Money, quantity: bigint): Tra
   const playerDelta = side === "buy" ? -(gross + tax) : gross - tax;
   return { unitPrice, gross, tax, playerDelta };
 }
+
+/**
+ * NPC talep/arz akışı (tick başına birim). Referans fiyatta ikisi de base. Fiyat referansın
+ * altındaysa talep artar/arz azalır, üstündeyse tersi; böylece üretilen malın hep alıcısı olur
+ * ve fiyat sıfıra kaymaz. Sapma ±%100'e kırpılır; kaydırma sıfıra doğru kesilir (simetrik).
+ */
+export function npcFlow(
+  price: Money,
+  refPrice: Money,
+  base: bigint,
+): { demand: bigint; supply: bigint } {
+  if (price < 0n) throw new RangeError(`fiyat negatif olamaz: ${price}`);
+  if (refPrice < 1n) throw new RangeError(`referans fiyat pozitif olmalı: ${refPrice}`);
+  if (base < 0n) throw new RangeError(`base negatif olamaz: ${base}`);
+  let devBps = ((refPrice - price) * BPS_SCALE) / refPrice;
+  if (devBps > BPS_SCALE) devBps = BPS_SCALE;
+  if (devBps < -BPS_SCALE) devBps = -BPS_SCALE;
+  const shift = (base * PARAMS.npcSlopeBps * devBps) / (BPS_SCALE * BPS_SCALE);
+  const demand = base + shift;
+  const supply = base - shift;
+  return { demand: demand < 0n ? 0n : demand, supply: supply < 0n ? 0n : supply };
+}

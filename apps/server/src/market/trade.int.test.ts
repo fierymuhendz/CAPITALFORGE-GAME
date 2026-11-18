@@ -257,7 +257,7 @@ describe("executeTrade: eşzamanlılık", () => {
     const [results, ticks] = await withTimeout(Promise.all([trading, ticking]), 20_000);
 
     expect(results.filter((r) => !r.ok && r.error !== "INSUFFICIENT_FUNDS")).toEqual([]);
-    for (const t of ticks) expect(t).toHaveLength(3);
+    for (const t of ticks) expect(t).toHaveLength(5);
 
     const okResults = results.filter((r): r is Extract<OrderResult, { ok: true }> => r.ok);
     const spent = okResults.reduce((s, r) => s + BigInt(r.gross) + BigInt(r.tax), 0n);

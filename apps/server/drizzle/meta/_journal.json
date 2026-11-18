@@ -15,6 +15,13 @@
       "when": 1795010795444,
       "tag": "0001_fixed_living_mummy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795012593957,
+      "tag": "0002_sirket_ve_uretim",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,18 @@
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, check, index, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  bigserial,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const players = pgTable("players", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -129,4 +142,112 @@ export const priceHistory = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.productId, t.tick] })],
+);
+
+/** Oyun saati: tek satır (id=1). Fiyat tick'iyle aynı transaction'da artar; üretim süreleri buna göre ölçülür. */
+export const gameClock = pgTable(
+  "game_clock",
+  {
+    id: integer("id").primaryKey().default(1),
+    tick: bigintCol("tick").notNull().default(sql`0`),
+  },
+  (t) => [check("game_clock_single_row", sql`${t.id} = 1`), check("game_clock_tick_nn", sql`${t.tick} >= 0`)],
+);
+
+/** Şirketler. v1'de oyuncu başına bir şirket (player_id UNIQUE); ad büyük/küçük harf duyarsız benzersizdir. */
+export const companies = pgTable(
+  "companies",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    playerId: uuid("player_id").notNull().unique().references(() => players.id),
+    name: text("name").notNull(),
+    cityId: text("city_id").notNull().default("merkez"),
+    foundedAt: timestamp("founded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("companies_name_lower_idx").on(sql`lower(${t.name})`)],
+);
+
+/** Tesisler. (city_id, plot_x, plot_y) benzersiz: aynı arsa iki kez satılamaz. */
+export const facilities = pgTable(
+  "facilities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    companyId: uuid("company_id").notNull().references(() => companies.id),
+    type: text("type").notNull(),
+    level: integer("level").notNull().default(1),
+    cityId: text("city_id").notNull().default("merkez"),
+    plotX: integer("plot_x").notNull(),
+    plotY: integer("plot_y").notNull(),
+    status: text("status", { enum: ["active", "suspended"] }).notNull().default("active"),
+    purchasePrice: bigintCol("purchase_price").notNull(),
+    /** Bakımı ödenmiş son dönem (upkeepPeriodTicks cinsinden dönem numarası). */
+    upkeepPaidPeriod: bigintCol("upkeep_paid_period").notNull().default(sql`0`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("facilities_plot_idx").on(t.cityId, t.plotX, t.plotY),
+    index("facilities_company_idx").on(t.companyId),
+    check("facilities_level_positive", sql`${t.level} >= 1`),
+    check("facilities_plot_bounds", sql`${t.plotX} >= 0 AND ${t.plotX} < 16 AND ${t.plotY} >= 0 AND ${t.plotY} < 16`),
+    check("facilities_status", sql`${t.status} IN ('active', 'suspended')`),
+    check("facilities_price_positive", sql`${t.purchasePrice} > 0`),
+  ],
+);
+
+/** Üretim işleri. Tesis başına aynı anda tek çalışan iş (kısmi UNIQUE). */
+export const productionJobs = pgTable(
+  "production_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    facilityId: uuid("facility_id").notNull().references(() => facilities.id),
+    playerId: uuid("player_id").notNull().references(() => players.id),
+    recipeId: text("recipe_id").notNull(),
+    batches: integer("batches").notNull(),
+    startedTick: bigintCol("started_tick").notNull(),
+    completesAtTick: bigintCol("completes_at_tick").notNull(),
+    status: text("status", { enum: ["running", "done"] }).notNull().default("running"),
+    /** Düşülen girdiler: { productId: "miktar" } */
+    inputs: jsonb("inputs").$type<Record<string, string>>().notNull(),
+    outputProductId: text("output_product_id").notNull().references(() => products.id),
+    outputQty: bigintCol("output_qty").notNull(),
+    completedTick: bigintCol("completed_tick"),
+  },
+  (t) => [
+    uniqueIndex("production_jobs_one_running_idx").on(t.facilityId).where(sql`${t.status} = 'running'`),
+    index("production_jobs_due_idx").on(t.completesAtTick).where(sql`${t.status} = 'running'`),
+    index("production_jobs_player_idx").on(t.playerId),
+    check("production_jobs_batches", sql`${t.batches} BETWEEN 1 AND 10`),
+    check("production_jobs_output_positive", sql`${t.outputQty} > 0`),
+    check("production_jobs_status", sql`${t.status} IN ('running', 'done')`),
+  ],
+);
+
+/**
+ * Ticaret dışı niyetler için genel idempotency tablosu. (player_id, client_key) PK.
+ * Satır, işin kendisiyle aynı transaction'da yazılır; iş hata ile geri alınırsa satır da gider.
+ */
+export const playerActions = pgTable(
+  "player_actions",
+  {
+    playerId: uuid("player_id").notNull().references(() => players.id),
+    clientKey: uuid("client_key").notNull(),
+    kind: text("kind").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    result: jsonb("result").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.playerId, t.clientKey] })],
+);
+
+/** Asgari ödenek talepleri. PK (player_id, period): dönem başına en fazla bir. */
+export const reliefClaims = pgTable(
+  "relief_claims",
+  {
+    playerId: uuid("player_id").notNull().references(() => players.id),
+    period: bigintCol("period").notNull(),
+    amount: bigintCol("amount").notNull(),
+    transferId: uuid("transfer_id").notNull().references(() => transfers.id),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.playerId, t.period] }), check("relief_amount_positive", sql`${t.amount} > 0`)],
 );

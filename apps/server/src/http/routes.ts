@@ -1,18 +1,25 @@
+import { FACILITY_TYPES, PARAMS, RECIPES, RECIPE_IDS, facilityPrice, upkeep } from "@capitalforge/economy";
 import {
+  CITY,
+  CityQuerySchema,
   GuestLoginSchema,
   HISTORY_LIMIT,
   HistoryQuerySchema,
   type ApiError,
+  type Catalog,
+  type CityResponse,
+  type FacilityTypeId,
   type GuestLoginResponse,
   type HistoryResponse,
   type Me,
 } from "@capitalforge/shared";
-import { desc, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createGuest } from "../auth/guest";
 import { createSession, getSession, type Session } from "../auth/session";
 import type { Db } from "../db/client";
-import { priceHistory, products } from "../db/schema";
+import { companies, facilities, gameClock, priceHistory, products } from "../db/schema";
+import { getCompanyView } from "../company/view";
 import { getPortfolio } from "../market/portfolio";
 import type { Redis } from "../redis";
 import { allowGuestLogin } from "../security/rateLimit";
@@ -76,5 +83,69 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
       productId,
       points: rows.reverse().map((r) => ({ tick: Number(r.tick), price: r.price.toString(), at: r.at.toISOString() })),
     } satisfies HistoryResponse;
+  });
+
+  app.get("/catalog", async (req, reply) => {
+    const session = await authenticate(redis, req);
+    if (!session) return send(reply, 401, "UNAUTHORIZED");
+    const [clock] = await db.select({ tick: gameClock.tick }).from(gameClock).where(eq(gameClock.id, 1));
+    const [company] = await db.select({ id: companies.id }).from(companies).where(eq(companies.playerId, session.playerId));
+    let owned = 0n;
+    if (company) {
+      const [n] = await db.select({ n: count() }).from(facilities).where(eq(facilities.companyId, company.id));
+      owned = BigInt(n?.n ?? 0);
+    }
+    return {
+      clockTick: Number(clock?.tick ?? 0n),
+      companyFoundingFee: PARAMS.companyFoundingFee.toString(),
+      maxFacilitiesPerCompany: Number(PARAMS.maxFacilitiesPerCompany),
+      upkeepPeriodTicks: Number(PARAMS.upkeepPeriodTicks),
+      reliefAmount: PARAMS.reliefAmount.toString(),
+      reliefCooldownTicks: Number(PARAMS.reliefCooldownTicks),
+      facilityTypes: FACILITY_TYPES.map((type) => ({
+        type,
+        price: facilityPrice(type, owned).toString(),
+        upkeep: upkeep(type, 1n).toString(),
+      })),
+      recipes: RECIPE_IDS.map((id) => {
+        const r = RECIPES[id];
+        return {
+          id,
+          facilityType: r.facility,
+          inputs: r.inputs.map((l) => ({ productId: l.productId, qty: l.qty.toString() })),
+          output: { productId: r.output.productId, qty: r.output.qty.toString() },
+          durationTicks: Number(r.durationTicks),
+        };
+      }),
+    } satisfies Catalog;
+  });
+
+  app.get("/company", async (req, reply) => {
+    const session = await authenticate(redis, req);
+    if (!session) return send(reply, 401, "UNAUTHORIZED");
+    return getCompanyView(db, session.playerId);
+  });
+
+  // Herkese açık: arsa listesi yalnızca konum, tür, seviye ve şirket adını içerir.
+  app.get("/city", async (req, reply) => {
+    const parsed = CityQuerySchema.safeParse(req.query);
+    if (!parsed.success) return send(reply, 400, "INVALID");
+    const rows = await db
+      .select({
+        plotX: facilities.plotX,
+        plotY: facilities.plotY,
+        type: facilities.type,
+        level: facilities.level,
+        companyName: companies.name,
+      })
+      .from(facilities)
+      .innerJoin(companies, eq(companies.id, facilities.companyId))
+      .where(eq(facilities.cityId, parsed.data.cityId));
+    return {
+      cityId: parsed.data.cityId,
+      width: CITY.width,
+      height: CITY.height,
+      plots: rows.map((r) => ({ ...r, type: r.type as FacilityTypeId })),
+    } satisfies CityResponse;
   });
 }

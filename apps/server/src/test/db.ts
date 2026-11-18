@@ -50,18 +50,20 @@ export function setupTestRedis(): Redis {
 }
 
 /**
- * Tüm oyuncu/ticaret/defter verisini siler. Sistem hesapları ve ürün seed'i (migration 0001 ile aynı)
+ * Tüm oyuncu/ticaret/defter verisini siler. Sistem hesapları, oyun saati ve ürün seed'i (migration 0001/0002 ile aynı)
  * yeniden yazılır; ürün fiyatları seed değerine döner, tick 0 olur.
  */
 export async function resetTestDb(db: Db): Promise<void> {
   await db.execute(
-    sql`TRUNCATE TABLE ledger_entries, transfers, trades, price_history, inventories, accounts, players RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE TABLE relief_claims, player_actions, production_jobs, facilities, companies, ledger_entries, transfers, trades, price_history, inventories, accounts, players RESTART IDENTITY CASCADE`,
   );
   await db.execute(
-    sql`INSERT INTO accounts (kind, code) VALUES ('system', 'system:mint'), ('system', 'system:tax'), ('system', 'system:market')`,
+    sql`INSERT INTO accounts (kind, code) VALUES ('system', 'system:mint'), ('system', 'system:tax'), ('system', 'system:market'), ('system', 'system:fees')`,
   );
+  await db.execute(sql`INSERT INTO game_clock (id, tick) VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET tick = 0`);
   await db.execute(
-    sql`INSERT INTO products (id, name, price) VALUES ('wheat', 'Buğday', 10000), ('iron', 'Demir', 25000), ('energy', 'Enerji', 5000)
+    sql`INSERT INTO products (id, name, price) VALUES ('wheat', 'Buğday', 10000), ('iron', 'Demir', 25000), ('energy', 'Enerji', 5000),
+        ('flour', 'Un', 720), ('steel', 'Çelik', 3300)
         ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, price = EXCLUDED.price, pending_demand = 0, pending_supply = 0, tick = 0`,
   );
   await db.execute(sql`INSERT INTO price_history (product_id, tick, price) SELECT id, 0, price FROM products`);
