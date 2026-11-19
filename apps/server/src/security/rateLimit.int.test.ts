@@ -53,6 +53,22 @@ describe("misafir giriş hız sınırı (5/dk/IP)", () => {
   });
 });
 
+describe("misafir günlük tavanı (20/24 sa/IP, IPv6 /64)", () => {
+  it("aynı /64 ağından 21. kayıt reddedilir, başka ağ etkilenmez", async () => {
+    const results: boolean[] = [];
+    for (let i = 0; i < 21; i++) {
+      // Dakikalık sayaçları sıfırla; yalnızca günlük tavan sınanır. Her istek aynı /64 içinde farklı adrestendir.
+      await redis.del("rl:guest:2001:db8:1:2::/64", "rl:guest:all");
+      results.push(await allowGuestLogin(redis, `2001:db8:1:2::${(i + 1).toString(16)}`));
+    }
+    expect(results.slice(0, 20).every(Boolean)).toBe(true);
+    expect(results[20]).toBe(false);
+    expect(LIMITS.guestLoginDaily.limit).toBe(20);
+    expect(await redis.pttl("rl:guestday:2001:db8:1:2::/64")).toBeGreaterThan(80_000_000);
+    expect(await allowGuestLogin(redis, "2001:db8:1:3::1")).toBe(true);
+  });
+});
+
 describe("Redis hatasında fail closed", () => {
   it("Redis erişilemezse allow istisna fırlatır (çağıran isteği reddeder)", async () => {
     const down = new Redis("redis://127.0.0.1:1", {

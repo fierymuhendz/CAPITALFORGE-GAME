@@ -1,9 +1,16 @@
 # Üretim: sunucuda /opt/capitalforge altında çalışır.
 # Değerler aynı klasördeki .env dosyasından gelir (GitHub Actions yazar, elle düzenlemeyin).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: capitalforge
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD gerekli}
@@ -18,11 +25,13 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *logging
     command: ["redis-server", "--appendonly", "yes"]
     volumes: [redisdata:/data]
 
   migrate:
     image: ${SERVER_IMAGE:?SERVER_IMAGE gerekli}
+    logging: *logging
     environment:
       DATABASE_URL: postgres://capitalforge:${POSTGRES_PASSWORD}@postgres:5432/capitalforge
     command: ["node_modules/.bin/tsx", "src/db/migrate.ts"]
@@ -38,9 +47,17 @@ services:
       DATABASE_URL: postgres://capitalforge:${POSTGRES_PASSWORD}@postgres:5432/capitalforge
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET gerekli}
-      # Yalnızca web konteynerinin X-Forwarded-For başlığına güvenilir (misafir girişi hız sınırı gerçek IP ile çalışır)
-      TRUST_PROXY: "172.30.0.10"
-    ports: ["2567:2567"]
+      # Yalnızca Caddy'nin X-Forwarded-For başlığına güvenilir (Caddy gerçek istemci IP'sini yazar)
+      TRUST_PROXY: "172.30.0.11"
+      NEW_ACCOUNT_TRADE_DELAY_SECONDS: ${NEW_ACCOUNT_TRADE_DELAY_SECONDS:-600}
+    # Dışarıya port açılmaz: yalnızca Caddy üzerinden (/api, /ws) erişilir.
+    logging: *logging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:2567/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_started }
@@ -48,20 +65,44 @@ services:
   web:
     image: ${WEB_IMAGE:?WEB_IMAGE gerekli}
     restart: unless-stopped
-    ports: ["80:3000"]
-    depends_on: [server]
+    logging: *logging
+    # Dışarıya port açılmaz: yalnızca Caddy üzerinden erişilir.
+    depends_on:
+      server: { condition: service_healthy }
+
+  caddy:
+    # Sürüm tam sabitlenir; yükseltme bilinçli bir değişiklik olmalıdır.
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?PUBLIC_DOMAIN gerekli}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      server: { condition: service_healthy }
+      web: { condition: service_started }
     networks:
       default:
-        ipv4_address: 172.30.0.10
+        ipv4_address: 172.30.0.11
 
 networks:
   default:
     ipam:
       config:
         - subnet: 172.30.0.0/24
-          # Dinamik adresler .128-.255 arasından verilir, web'in sabit .10 adresiyle çakışmaz.
+          # Dinamik adresler .128-.255 arasından verilir, Caddy'nin sabit .11 adresiyle çakışmaz.
           ip_range: 172.30.0.128/25
 
 volumes:
   pgdata:
   redisdata:
+  # Sertifikalar: "compose down" çalışsa da silinmez, her yayında yeniden istenmez.
+  caddy_data:
+  caddy_config:

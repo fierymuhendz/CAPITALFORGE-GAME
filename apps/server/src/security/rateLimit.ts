@@ -25,6 +25,11 @@ export const LIMITS = {
   guestLogin: { limit: 5, windowMs: 60_000 },
   /** Tüm IP'ler için toplam misafir kaydı tavanı (adres döndürerek hesap fabrikasına karşı). */
   guestLoginGlobal: { limit: 60, windowMs: 60_000 },
+  /** Misafir kaydı: IP (/64) başına günlük tavan (çoklu hesapla fiyat şişirmeye karşı). */
+  guestLoginDaily: { limit: 20, windowMs: 86_400_000 },
+  /** İstemci hata bildirimi: IP başına ve toplam. */
+  clientErrorIp: { limit: 10, windowMs: 60_000 },
+  clientErrorGlobal: { limit: 600, windowMs: 60_000 },
 } as const;
 
 export const allowOrder = (redis: Redis, playerId: string) =>
@@ -49,5 +54,14 @@ export function ipBucket(ip: string): string {
 export async function allowGuestLogin(redis: Redis, ip: string): Promise<boolean> {
   const perIp = await allow(redis, `guest:${ipBucket(ip)}`, LIMITS.guestLogin.limit, LIMITS.guestLogin.windowMs);
   if (!perIp) return false;
+  const perDay = await allow(redis, `guestday:${ipBucket(ip)}`, LIMITS.guestLoginDaily.limit, LIMITS.guestLoginDaily.windowMs);
+  if (!perDay) return false;
   return allow(redis, "guest:all", LIMITS.guestLoginGlobal.limit, LIMITS.guestLoginGlobal.windowMs);
+}
+
+/** Redis hatasında istisna fırlatır (çağıran reddeder). */
+export async function allowClientError(redis: Redis, ip: string): Promise<boolean> {
+  const perIp = await allow(redis, `clienterr:${ipBucket(ip)}`, LIMITS.clientErrorIp.limit, LIMITS.clientErrorIp.windowMs);
+  if (!perIp) return false;
+  return allow(redis, "clienterr:all", LIMITS.clientErrorGlobal.limit, LIMITS.clientErrorGlobal.windowMs);
 }

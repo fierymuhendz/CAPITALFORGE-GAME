@@ -2,9 +2,11 @@ import { FACILITY_TYPES, PARAMS, RECIPES, RECIPE_IDS, facilityPrice, poolMaxOrde
 import {
   CITY,
   CityQuerySchema,
+  ClientErrorReportSchema,
   GuestLoginSchema,
   HISTORY_LIMIT,
   HistoryQuerySchema,
+  LogoutRequestSchema,
   type ApiError,
   type Catalog,
   type CityResponse,
@@ -16,20 +18,25 @@ import {
 import { asc, count, desc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createGuest } from "../auth/guest";
-import { createSession, getSession, type Session } from "../auth/session";
+import { createSession, getSession, revokeSession, type Session } from "../auth/session";
+import { config } from "../config";
 import type { Db } from "../db/client";
 import { companies, facilities, gameClock, priceHistory, products } from "../db/schema";
 import { getCompanyView } from "../company/view";
 import { getPortfolio } from "../market/portfolio";
 import type { Redis } from "../redis";
-import { allowGuestLogin, allowRead, ipBucket } from "../security/rateLimit";
+import { tradeUnlockAt } from "../market/cooldown";
+import { allow, allowClientError, allowGuestLogin, allowRead, ipBucket } from "../security/rateLimit";
 
 const send = (reply: FastifyReply, status: number, error: ApiError["error"]) => reply.code(status).send({ error } satisfies ApiError);
 
-async function authenticate(redis: Redis, req: FastifyRequest): Promise<Session | null> {
+function bearerToken(req: FastifyRequest): string | undefined {
   const h = req.headers.authorization;
-  const token = h?.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
-  return getSession(redis, token);
+  return h?.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
+}
+
+async function authenticate(redis: Redis, req: FastifyRequest): Promise<Session | null> {
+  return getSession(redis, bearerToken(req));
 }
 
 export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redis }): void {
@@ -85,7 +92,30 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
     if (!session) return send(reply, 401, "UNAUTHORIZED");
     if (!(await allowRead(redis, `p:${session.playerId}`))) return send(reply, 429, "RATE_LIMITED");
     const portfolio = await getPortfolio(db, session.playerId);
-    return { playerId: session.playerId, username: session.username, ...portfolio } satisfies Me;
+    const unlock = await tradeUnlockAt(db, session.playerId, config.newAccountTradeDelaySeconds);
+    return { playerId: session.playerId, username: session.username, ...portfolio, tradeUnlockAt: unlock.toISOString() } satisfies Me;
+  });
+
+  // Çıkış: geçersiz token için de 204 (idempotent, bilgi sızdırmaz). all=true tüm cihazlardaki oturumları kapatır.
+  app.post("/auth/logout", async (req, reply) => {
+    if (!(await allow(redis, `logout:${ipBucket(req.ip)}`, 20, 60_000))) return send(reply, 429, "RATE_LIMITED");
+    const parsed = LogoutRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return send(reply, 400, "INVALID");
+    await revokeSession(redis, bearerToken(req), parsed.data.all === true);
+    return reply.code(204).send();
+  });
+
+  // İstemci hata bildirimi: kimliksiz, küçük gövde, IP başına ve toplam sınır. Redis hatasında reddeder.
+  app.post("/client-errors", { bodyLimit: 8 * 1024 }, async (req, reply) => {
+    try {
+      if (!(await allowClientError(redis, req.ip))) return send(reply, 429, "RATE_LIMITED");
+    } catch {
+      return send(reply, 503, "INTERNAL");
+    }
+    const parsed = ClientErrorReportSchema.safeParse(req.body);
+    if (!parsed.success) return send(reply, 400, "INVALID");
+    req.log.warn({ src: "web", clientError: parsed.data }, "istemci hatası");
+    return reply.code(204).send();
   });
 
   app.get("/market/history", async (req, reply) => {

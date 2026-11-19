@@ -2,8 +2,10 @@ import { PARAMS, executeAgainstPool, poolMaxOrder, volumeAllowed } from "@capita
 import type { OrderErrorCode, OrderResult, PlaceOrder } from "@capitalforge/shared";
 import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import { currentTick } from "../actions/run";
+import { config } from "../config";
+import { reportError } from "../observability/log";
 import type { Db } from "../db/client";
-import { accounts, inventories, products, trades } from "../db/schema";
+import { accounts, inventories, players, products, trades } from "../db/schema";
 import { applyTransfer } from "../ledger/transfer";
 
 class TradeError extends Error {
@@ -29,6 +31,17 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
   try {
     return await db.transaction(async (tx) => {
       const quantity = BigInt(order.quantity);
+
+      // 0. Yeni hesap bekleme süresi: kilitsiz okuma, ürün kilidinden ÖNCE (kilit sırası değişmez).
+      // Saat kaynağı veritabanı now(). Reddedilen istek trades'e yazılmaz (transaction geri alınır).
+      const delay = config.newAccountTradeDelaySeconds;
+      if (delay > 0) {
+        const [acct] = await tx
+          .select({ locked: sql<boolean>`${players.createdAt} + make_interval(secs => ${delay}) > now()` })
+          .from(players)
+          .where(eq(players.id, playerId));
+        if (acct?.locked) throw new TradeError("NEW_ACCOUNT_COOLDOWN");
+      }
 
       // 1. Ürün satırı (kilit sırasının ilki)
       const [product] = await tx.select().from(products).where(eq(products.id, order.productId)).for("update");
@@ -198,7 +211,7 @@ export async function executeTrade(db: Db, playerId: string, order: PlaceOrder):
     });
   } catch (err) {
     if (err instanceof TradeError) return fail(err.code);
-    console.error("executeTrade hatası", err);
+    reportError(err, { what: "executeTrade hatası" });
     return fail("INTERNAL");
   }
 }

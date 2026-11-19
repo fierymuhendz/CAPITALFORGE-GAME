@@ -1,5 +1,6 @@
 import type { ActionErrorCode, ActionKind, ActionResult } from "@capitalforge/shared";
 import { and, eq } from "drizzle-orm";
+import { reportError } from "../observability/log";
 import type { Db, Tx } from "../db/client";
 import { accounts, gameClock } from "../db/schema";
 import { ActionError, claimAction, completeAction } from "./idempotency";
@@ -64,7 +65,7 @@ export async function runAction(
     });
   } catch (err) {
     if (err instanceof ActionError) return { ok: false, error: err.code as ActionErrorCode, idempotencyKey };
-    console.error(`${kind} hatası`, err);
+    reportError(err, { what: `${kind} hatası` });
     return { ok: false, error: "INTERNAL", idempotencyKey };
   }
 }
