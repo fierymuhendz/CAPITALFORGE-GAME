@@ -1,39 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Client } from "colyseus.js";
 import { formatMoney } from "@capitalforge/economy";
-import { ROOMS } from "@capitalforge/shared";
+import { PRODUCT_IDS } from "@capitalforge/shared";
+import { productLabel } from "../lib/labels";
+import { useGame, type ConnectionStatus } from "./GameProvider";
 
-type Status = "bağlanıyor" | "bağlı" | "koptu";
+const STATUS_STYLE: Record<ConnectionStatus, string> = {
+  bağlı: "bg-emerald-900 text-emerald-200",
+  bağlanıyor: "bg-amber-900 text-amber-200",
+  "yeniden bağlanıyor": "bg-red-900 text-red-200",
+};
 
-/** Fiyat sunucudan gelir; istemci hesap yapmaz, sadece gösterir. */
-export function MarketTicker() {
-  const [price, setPrice] = useState<string | null>(null);
-  const [status, setStatus] = useState<Status>("bağlanıyor");
-
-  useEffect(() => {
-    const url = process.env.NEXT_PUBLIC_GAME_SERVER_URL ?? "ws://localhost:2567";
-    const client = new Client(url);
-    let leave: (() => void) | undefined;
-
-    client
-      .joinOrCreate(ROOMS.market)
-      .then((room) => {
-        setStatus("bağlı");
-        room.onStateChange((state: { price: string }) => setPrice(state.price));
-        room.onLeave(() => setStatus("koptu"));
-        leave = () => void room.leave();
-      })
-      .catch(() => setStatus("koptu"));
-
-    return () => leave?.();
-  }, []);
-
+export function ConnectionBadge() {
+  const { status } = useGame();
   return (
-    <section aria-live="polite">
-      <p>Bağlantı: {status}</p>
-      <p>Fiyat: {price ? formatMoney(BigInt(price)) : "…"}</p>
+    <span role="status" className={`rounded px-2 py-1 text-xs ${STATUS_STYLE[status]}`}>
+      {status === "bağlı" ? "● Bağlı" : status === "bağlanıyor" ? "◌ Bağlanıyor…" : "⚠ Bağlantı koptu, yeniden bağlanıyor…"}
+    </span>
+  );
+}
+
+/** Fiyatlar sunucudan gelir; istemci hesap yapmaz, yalnızca gösterir ve yönü karşılaştırır. */
+export function MarketTicker() {
+  const { quotes } = useGame();
+  return (
+    <section aria-label="Piyasa fiyatları">
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {PRODUCT_IDS.map((id) => {
+          const q = quotes[id];
+          const dir = q?.prev == null ? 0 : BigInt(q.price) > BigInt(q.prev) ? 1 : BigInt(q.price) < BigInt(q.prev) ? -1 : 0;
+          return (
+            <li key={id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-900 p-3 text-sm">
+              <span>{productLabel(id)}</span>
+              <span className="tabular-nums">
+                {q ? formatMoney(BigInt(q.price)) : <span className="inline-block h-4 w-16 animate-pulse rounded bg-slate-800 align-middle" aria-label="Yükleniyor" />}{" "}
+                <span className={dir > 0 ? "text-emerald-400" : dir < 0 ? "text-red-400" : "text-slate-500"}>
+                  {dir > 0 ? "▲ yükseldi" : dir < 0 ? "▼ düştü" : "–"}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }

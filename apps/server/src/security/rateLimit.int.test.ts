@@ -1,0 +1,69 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { Redis } from "ioredis";
+import type { Redis as RedisClient } from "../redis";
+import { closeTestResources, setupTestRedis } from "../test/db";
+import { allow, allowGuestLogin, allowOrder, LIMITS } from "./rateLimit";
+
+let redis: RedisClient;
+
+beforeAll(() => {
+  redis = setupTestRedis();
+});
+beforeEach(async () => {
+  await redis.flushdb();
+});
+afterAll(async () => {
+  await closeTestResources();
+});
+
+describe("emir hız sınırı (5/sn/oyuncu)", () => {
+  it("6. istek reddedilir, ilk 5 kabul edilir", async () => {
+    const playerId = randomUUID();
+    const results: boolean[] = [];
+    for (let i = 0; i < 6; i++) results.push(await allowOrder(redis, playerId));
+    expect(results).toEqual([true, true, true, true, true, false]);
+  });
+
+  it("bir oyuncunun sınırı diğerini etkilemez", async () => {
+    const a = randomUUID();
+    const b = randomUUID();
+    for (let i = 0; i < LIMITS.order.limit; i++) await allowOrder(redis, a);
+    expect(await allowOrder(redis, a)).toBe(false);
+    expect(await allowOrder(redis, b)).toBe(true);
+  });
+
+  it("pencere dolunca yeniden izin verilir", async () => {
+    const key = `window-${randomUUID()}`;
+    expect(await allow(redis, key, 2, 200)).toBe(true);
+    expect(await allow(redis, key, 2, 200)).toBe(true);
+    expect(await allow(redis, key, 2, 200)).toBe(false);
+    await new Promise((r) => setTimeout(r, 250));
+    expect(await allow(redis, key, 2, 200)).toBe(true);
+  });
+});
+
+describe("misafir giriş hız sınırı (5/dk/IP)", () => {
+  it("6. giriş denemesi aynı IP için reddedilir", async () => {
+    const ip = `203.0.113.${Math.floor(Math.random() * 200) + 1}`;
+    const results: boolean[] = [];
+    for (let i = 0; i < 6; i++) results.push(await allowGuestLogin(redis, ip));
+    expect(results).toEqual([true, true, true, true, true, false]);
+    expect(await allowGuestLogin(redis, "198.51.100.7")).toBe(true);
+  });
+});
+
+describe("Redis hatasında fail closed", () => {
+  it("Redis erişilemezse allow istisna fırlatır (çağıran isteği reddeder)", async () => {
+    const down = new Redis("redis://127.0.0.1:1", {
+      lazyConnect: true,
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 0,
+    });
+    try {
+      await expect(allowOrder(down, randomUUID())).rejects.toThrow();
+    } finally {
+      down.disconnect();
+    }
+  });
+});

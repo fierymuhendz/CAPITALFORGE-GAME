@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter ./apps/* dev",
     "build": "pnpm -r build",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:int": "vitest run --project integration",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "sim": "pnpm --filter @capitalforge/economy sim",
