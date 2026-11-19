@@ -21,3 +21,19 @@ export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(NAME_KEY);
 }
+
+/**
+ * Sunucudaki oturumu iptal eder. Hata olsa bile yerel oturum çağıranda silinir;
+ * bu yüzden burada hiçbir şey fırlatılmaz.
+ */
+export async function logoutRequest(token: string, all: boolean): Promise<void> {
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(all ? { all: true } : {}),
+    });
+  } catch {
+    // Ağ hatası: yerel oturum yine de silinir.
+  }
+}

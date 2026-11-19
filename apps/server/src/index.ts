@@ -7,12 +7,13 @@ import { createDb } from "./db/client";
 import { registerRoutes } from "./http/routes";
 import { bridgeTicks, startTicker } from "./market/ticker";
 import { createRedis } from "./redis";
+import { logger, reportError } from "./observability/log";
 import { MarketRoom } from "./rooms/MarketRoom";
 
 const db = createDb();
 const redis = createRedis();
 
-const app = Fastify({ logger: true, trustProxy: config.trustProxy });
+const app = Fastify({ loggerInstance: logger, trustProxy: config.trustProxy });
 registerRoutes(app, { db, redis });
 
 await app.ready();
@@ -27,13 +28,24 @@ const stopTicker = startTicker(db, redis);
 await gameServer.listen(config.port);
 app.log.info(`Sunucu ${config.port} portunda hazır`);
 
-async function shutdown(): Promise<void> {
+let shuttingDown = false;
+async function shutdown(code = 0): Promise<void> {
+  if (shuttingDown) return; // tek seferlik: sinyal/istisna yeniden girişine karşı
+  shuttingDown = true;
   stopTicker();
   await stopBridge().catch(() => undefined);
   await gameServer.gracefullyShutdown(false).catch(() => undefined);
   await app.close().catch(() => undefined);
   redis.disconnect();
-  process.exit(0);
+  process.exit(code);
 }
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
+
+process.on("unhandledRejection", (reason) => reportError(reason, { what: "unhandledRejection" }));
+process.on("uncaughtException", (err) => {
+  logger.fatal({ err }, "uncaughtException");
+  // Süreç durumu belirsiz: temiz kapat ve çık (compose yeniden başlatır).
+  setTimeout(() => process.exit(1), 5000).unref();
+  void shutdown(1);
+});

@@ -1,10 +1,12 @@
-import { FACILITY_TYPES, PARAMS, RECIPES, RECIPE_IDS, facilityPrice, poolMaxOrder, upkeep } from "@capitalforge/economy";
+import { FACILITY_TYPES, PARAMS, PRODUCT_IDS, RECIPES, RECIPE_IDS, facilityPrice, poolMaxOrder, upkeep } from "@capitalforge/economy";
 import {
   CITY,
   CityQuerySchema,
+  ClientErrorReportSchema,
   GuestLoginSchema,
   HISTORY_LIMIT,
   HistoryQuerySchema,
+  LogoutRequestSchema,
   type ApiError,
   type Catalog,
   type CityResponse,
@@ -16,20 +18,34 @@ import {
 import { asc, count, desc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createGuest } from "../auth/guest";
-import { createSession, getSession, type Session } from "../auth/session";
+import { createSession, getSession, revokeSession, type Session } from "../auth/session";
+import { config } from "../config";
 import type { Db } from "../db/client";
 import { companies, facilities, gameClock, priceHistory, products } from "../db/schema";
 import { getCompanyView } from "../company/view";
 import { getPortfolio } from "../market/portfolio";
 import type { Redis } from "../redis";
-import { allowGuestLogin, allowRead, ipBucket } from "../security/rateLimit";
+import { tradeUnlockAt } from "../market/cooldown";
+import { allow, allowClientError, allowGuestLogin, allowRead, ipBucket, recordGuestSignup } from "../security/rateLimit";
+
+/** İstemci metnini günlüğe yazmadan önce kısaltır ve token benzeri desenleri gizler (önce gizle, sonra kısalt). */
+export function sanitizeClientText(text: string, max: number): string {
+  const redacted = text
+    .replace(/Bearer\s+\S+/gi, "[Redacted]")
+    .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]*/g, "[Redacted]")
+    .replace(/\b[0-9a-fA-F]{32,}\b/g, "[Redacted]");
+  return redacted.length > max ? redacted.slice(0, max) : redacted;
+}
 
 const send = (reply: FastifyReply, status: number, error: ApiError["error"]) => reply.code(status).send({ error } satisfies ApiError);
 
-async function authenticate(redis: Redis, req: FastifyRequest): Promise<Session | null> {
+function bearerToken(req: FastifyRequest): string | undefined {
   const h = req.headers.authorization;
-  const token = h?.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
-  return getSession(redis, token);
+  return h?.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
+}
+
+async function authenticate(redis: Redis, req: FastifyRequest): Promise<Session | null> {
+  return getSession(redis, bearerToken(req));
 }
 
 export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redis }): void {
@@ -49,7 +65,8 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
   // Redis hatasında istek reddedilir (fail closed). Oyuncu başına sınır, kimlik doğrulanınca ayrıca uygulanır.
   const READ_PATHS = new Set(["/me", "/market/history", "/catalog", "/company", "/city"]);
   app.addHook("onRequest", async (req, reply) => {
-    if (req.method !== "GET" || !READ_PATHS.has(req.url.split("?")[0] ?? "")) return;
+    // Yönlendirme sonrası şablon: yüzde-kodlu yollar (/%6De) ham URL eşlemesini atlatamaz.
+    if (req.method !== "GET" || !READ_PATHS.has(req.routeOptions.url ?? "")) return;
     if (!(await allowRead(redis, `ip:${ipBucket(req.ip)}`))) return send(reply, 429, "RATE_LIMITED");
   });
 
@@ -76,6 +93,8 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
     const result = await createGuest(db, parsed.data.username);
     if (!result.ok) return send(reply, 409, "USERNAME_TAKEN");
 
+    // Günlük sayaç yalnızca başarılı kayıtta artar; sayaç hatası kaydı geri almaz.
+    await recordGuestSignup(redis, req.ip).catch((err) => req.log.warn({ err }, "günlük kayıt sayacı artırılamadı"));
     const token = await createSession(redis, { playerId: result.playerId, username: result.username });
     return { token, playerId: result.playerId, username: result.username } satisfies GuestLoginResponse;
   });
@@ -85,13 +104,41 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
     if (!session) return send(reply, 401, "UNAUTHORIZED");
     if (!(await allowRead(redis, `p:${session.playerId}`))) return send(reply, 429, "RATE_LIMITED");
     const portfolio = await getPortfolio(db, session.playerId);
-    return { playerId: session.playerId, username: session.username, ...portfolio } satisfies Me;
+    const unlock = await tradeUnlockAt(db, session.playerId, config.newAccountTradeDelaySeconds);
+    return { playerId: session.playerId, username: session.username, ...portfolio, tradeUnlockAt: unlock.toISOString() } satisfies Me;
+  });
+
+  // Çıkış: geçersiz token için de 204 (idempotent, bilgi sızdırmaz). all=true tüm cihazlardaki oturumları kapatır.
+  app.post("/auth/logout", async (req, reply) => {
+    if (!(await allow(redis, `logout:${ipBucket(req.ip)}`, 20, 60_000))) return send(reply, 429, "RATE_LIMITED");
+    const parsed = LogoutRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return send(reply, 400, "INVALID");
+    await revokeSession(redis, bearerToken(req), parsed.data.all === true);
+    return reply.code(204).send();
+  });
+
+  // İstemci hata bildirimi: kimliksiz, küçük gövde, IP başına ve toplam sınır. Redis hatasında reddeder.
+  app.post("/client-errors", { bodyLimit: 8 * 1024 }, async (req, reply) => {
+    try {
+      if (!(await allowClientError(redis, req.ip))) return send(reply, 429, "RATE_LIMITED");
+    } catch {
+      return send(reply, 503, "INTERNAL");
+    }
+    const parsed = ClientErrorReportSchema.safeParse(req.body);
+    if (!parsed.success) return send(reply, 400, "INVALID");
+    const { message, stack, ...rest } = parsed.data;
+    req.log.warn(
+      { src: "web", clientError: { ...rest, message: sanitizeClientText(message, 300), ...(stack ? { stack: sanitizeClientText(stack, 1000) } : {}) } },
+      "istemci hatası",
+    );
+    return reply.code(204).send();
   });
 
   app.get("/market/history", async (req, reply) => {
     const parsed = HistoryQuerySchema.safeParse(req.query);
     if (!parsed.success) return send(reply, 400, "INVALID");
     const { productId } = parsed.data;
+    if (!(PRODUCT_IDS as readonly string[]).includes(productId)) return send(reply, 404, "UNKNOWN_PRODUCT");
     const body = await cached(`history:${productId}`, async (): Promise<HistoryResponse | null> => {
       const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, productId));
       if (!product) return null;

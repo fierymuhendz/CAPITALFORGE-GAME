@@ -24,6 +24,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Alan adı tanımlı mı
+        shell: bash
+        env:
+          PUBLIC_DOMAIN: ${{ vars.PUBLIC_DOMAIN }}
+        run: |
+          if [ -z "$PUBLIC_DOMAIN" ]; then
+            echo "::error::PUBLIC_DOMAIN değişkeni (production ortamı Variables) tanımlı değil. Örn: oyun.ornek.com veya 1-2-3-4.sslip.io"
+            exit 1
+          fi
+          if ! [[ "$PUBLIC_DOMAIN" =~ ^([a-z0-9-]+\.)+[a-z0-9-]+$ ]]; then
+            echo "::error::PUBLIC_DOMAIN yalnızca küçük harfli alan adı olmalı (şema, yol, port, boşluk yok)"
+            exit 1
+          fi
+
       - name: İmaj adlarını belirle
         id: img
         run: |
@@ -55,16 +69,20 @@ jobs:
           file: apps/web/Dockerfile
           push: true
           tags: ${{ steps.img.outputs.web }}
-          build-args: NEXT_PUBLIC_GAME_SERVER_URL=${{ vars.PUBLIC_GAME_SERVER_URL }}
+          # Göreli adres: istemci wss://<host>/ws adresini tarayıcıdaki konumdan üretir (IP/alan adı imaja gömülmez)
+          build-args: NEXT_PUBLIC_GAME_SERVER_URL=/ws
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
       - name: SSH anahtarını hazırla
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
       - name: Sunucuya yayınla
         env:
@@ -72,25 +90,39 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          PUBLIC_DOMAIN: ${{ vars.PUBLIC_DOMAIN }}
+          NEW_ACCOUNT_TRADE_DELAY_SECONDS: ${{ vars.NEW_ACCOUNT_TRADE_DELAY_SECONDS }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERVER_IMAGE: ${{ steps.img.outputs.server }}
+          WEB_IMAGE: ${{ steps.img.outputs.web }}
+          ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
           SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes $USER@$HOST"
           $SSH 'mkdir -p /opt/capitalforge && chmod 700 /opt/capitalforge'
           scp -i ~/.ssh/id_deploy deploy/docker-compose.prod.yml "$USER@$HOST:/opt/capitalforge/docker-compose.yml"
+          scp -i ~/.ssh/id_deploy deploy/Caddyfile "$USER@$HOST:/opt/capitalforge/Caddyfile"
           {
-            echo "SERVER_IMAGE=${{ steps.img.outputs.server }}"
-            echo "WEB_IMAGE=${{ steps.img.outputs.web }}"
+            echo "SERVER_IMAGE=$SERVER_IMAGE"
+            echo "WEB_IMAGE=$WEB_IMAGE"
             echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
             echo "JWT_SECRET=$JWT_SECRET"
+            echo "PUBLIC_DOMAIN=$PUBLIC_DOMAIN"
+            if [ -n "$NEW_ACCOUNT_TRADE_DELAY_SECONDS" ]; then
+              echo "NEW_ACCOUNT_TRADE_DELAY_SECONDS=$NEW_ACCOUNT_TRADE_DELAY_SECONDS"
+            fi
           } | $SSH 'umask 077 && cat > /opt/capitalforge/.env'
-          echo "$GHCR_TOKEN" | $SSH "docker login $REGISTRY -u ${{ github.actor }} --password-stdin"
+          echo "$GHCR_TOKEN" | $SSH "docker login $REGISTRY -u $ACTOR --password-stdin"
           # Önce imajları çek, sonra yığını temiz bir ağla yeniden kur. "down" volume'ları silmez
           # (veriler korunur); eski ağda kalan konteynerlerin DNS sorununu (EAI_AGAIN) önler.
           $SSH 'cd /opt/capitalforge && docker compose pull && docker compose down --remove-orphans'
           # Migration veya başlatma başarısız olursa nedenini CI günlüğünde göster.
           if ! $SSH 'cd /opt/capitalforge && docker compose up -d --remove-orphans'; then
-            $SSH 'cd /opt/capitalforge && docker compose ps -a; docker network inspect capitalforge_default --format "{{json .IPAM.Config}} {{range .Containers}}{{.Name}}={{.IPv4Address}} {{end}}"; docker compose logs --no-color --tail=200 migrate server' || true
+            # Günlükler istemci denetiminde olabilecek metin içerir: iş akışı komutları (::...::) çalışmasın.
+            STOP_TOKEN=$(openssl rand -hex 16)
+            echo "::stop-commands::$STOP_TOKEN"
+            $SSH 'cd /opt/capitalforge && docker compose ps -a; docker network inspect capitalforge_default --format "{{json .IPAM.Config}} {{range .Containers}}{{.Name}}={{.IPv4Address}} {{end}}"; docker compose logs --no-color --tail=200 migrate server caddy' || true
+            echo "::$STOP_TOKEN::"
             exit 1
           fi
           $SSH 'docker image prune -f'
@@ -98,10 +130,33 @@ jobs:
 
       - name: Sağlık kontrolü
         env:
+          PUBLIC_DOMAIN: ${{ vars.PUBLIC_DOMAIN }}
           HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          for i in $(seq 1 30); do
-            if curl -fsS "http://$HOST:2567/health"; then exit 0; fi
-            sleep 5
-          done
-          echo "Sunucu /health yanıt vermedi" && exit 1
+          # Sertifika ilk yayında birkaç on saniye sürebilir: 60 deneme x 5 sn.
+          check() {
+            for i in $(seq 1 60); do
+              if curl -fsS --max-time 10 "https://$PUBLIC_DOMAIN$1" > /dev/null; then echo "OK $1"; return 0; fi
+              sleep 5
+            done
+            echo "Sağlık kontrolü başarısız: $1"; return 1
+          }
+          fail() {
+            local stop_token
+            stop_token=$(openssl rand -hex 16)
+            echo "::stop-commands::$stop_token"
+            ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$USER@$HOST" 'cd /opt/capitalforge && docker compose ps -a; docker compose logs --no-color --tail=200 caddy server' || true
+            echo "::$stop_token::"
+            exit 1
+          }
+          check /api/health || fail
+          check /ws/health || fail
+          check / || fail
+          # http -> https yönlendirmesi
+          loc=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code} %{redirect_url}' "http://$PUBLIC_DOMAIN/") || fail
+          echo "$loc"
+          case "$loc" in
+            30[1278]\ https://*) ;;
+            *) echo "http -> https yönlendirmesi çalışmıyor"; fail ;;
+          esac

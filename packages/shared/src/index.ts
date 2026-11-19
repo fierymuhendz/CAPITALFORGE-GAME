@@ -67,8 +67,26 @@ export type Portfolio = z.infer<typeof PortfolioSchema>;
 export const MeSchema = PortfolioSchema.extend({
   playerId: z.string().uuid(),
   username: UsernameSchema,
+  /** Yeni hesap bekleme süresinin bittiği an (ISO 8601). Sunucu hesaplar; yalnızca gösterim içindir. */
+  tradeUnlockAt: z.string().datetime(),
 });
 export type Me = z.infer<typeof MeSchema>;
+
+/** Çıkış: gövde boş ({}) olabilir. all=true tüm cihazlardaki oturumları kapatır. */
+export const LogoutRequestSchema = z.object({ all: z.boolean().optional() }).strict();
+export type LogoutRequest = z.infer<typeof LogoutRequestSchema>;
+
+/** İstemci hata bildirimi (kimliksiz). Yalnızca pathname alınır, sorgu dizesi/URL gönderilmez. */
+export const ClientErrorReportSchema = z
+  .object({
+    kind: z.enum(["error", "unhandledrejection", "react"]),
+    message: z.string().min(1).max(500),
+    stack: z.string().max(4000).optional(),
+    path: z.string().max(200).regex(/^\//).optional(),
+    release: z.string().max(64).optional(),
+  })
+  .strict();
+export type ClientErrorReport = z.infer<typeof ClientErrorReportSchema>;
 
 export const HistoryQuerySchema = z.object({ productId: z.string().min(1).max(64) });
 export type HistoryQuery = z.infer<typeof HistoryQuerySchema>;
@@ -118,6 +136,7 @@ export const ORDER_ERRORS = [
   "VOLUME_LIMIT",
   "ORDER_TOO_LARGE",
   "IDEMPOTENCY_MISMATCH",
+  "NEW_ACCOUNT_COOLDOWN",
   "INTERNAL",
 ] as const;
 export const OrderErrorCodeSchema = z.enum(ORDER_ERRORS);

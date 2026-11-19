@@ -14,12 +14,13 @@
   "dependencies": {
     "@capitalforge/economy": "workspace:*",
     "@capitalforge/shared": "workspace:*",
+    "@colyseus/core": "0.16.26",
     "@colyseus/schema": "3.0.76",
     "@colyseus/ws-transport": "0.16.5",
-    "@colyseus/core": "0.16.26",
     "drizzle-orm": "0.45.4",
     "fastify": "5.12.8",
     "ioredis": "5.8.2",
+    "pino": "10.4.0",
     "postgres": "3.4.7",
     "tsx": "4.20.6"
   },

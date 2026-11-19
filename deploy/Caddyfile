@@ -1,0 +1,34 @@
+# Tek origin: https://{$PUBLIC_DOMAIN}
+#   /api/*  -> server:2567  (önek kırpılır)
+#   /ws/*   -> server:2567  (önek kırpılır; Colyseus matchmake HTTP + WebSocket yükseltmesi)
+#   diğer   -> web:3000
+# Sertifika otomatik alınır (Let's Encrypt) ve caddy_data volume'unda saklanır; http -> https yönlendirmesi otomatiktir.
+# Caddy gelen X-Forwarded-For başlığına güvenmez (trusted_proxies tanımlı değil) ve gerçek istemci IP'sini yazar;
+# sunucudaki TRUST_PROXY yalnızca Caddy'nin sabit IP'sidir.
+{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# Bir hafta sorunsuz çalışınca max-age=31536000 yapın.
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		# Önce yalnızca rapor modu; ihlaller tarayıcı konsolunda görünür, sonra zorunlu yapılır.
+		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://{$PUBLIC_DOMAIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+
+	handle_path /api/* {
+		reverse_proxy server:2567
+	}
+
+	handle_path /ws/* {
+		reverse_proxy server:2567
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

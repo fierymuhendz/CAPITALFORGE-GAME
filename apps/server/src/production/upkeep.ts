@@ -1,6 +1,7 @@
 import { type FacilityType, upkeep, upkeepPeriod } from "@capitalforge/economy";
 import { and, asc, count, eq, gt, lt } from "drizzle-orm";
 import { lockWallet, systemAccountId } from "../actions/run";
+import { reportError } from "../observability/log";
 import type { Db } from "../db/client";
 import { companies, facilities } from "../db/schema";
 import { applyTransfer } from "../ledger/transfer";
@@ -86,7 +87,7 @@ export async function runUpkeepPhase(db: Db, tick: bigint, maxBatches = 10): Pro
         const r = await chargeUpkeep(db, f.id, f.companyId, period);
         if (r !== "skipped") processed++;
       } catch (err) {
-        console.error("bakım hatası", f.id, err);
+        reportError(err, { what: "bakım hatası", facilityId: f.id });
       }
     }
     if (due.length < UPKEEP_BATCH) break;

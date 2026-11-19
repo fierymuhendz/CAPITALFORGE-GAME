@@ -11,7 +11,7 @@ import {
   type OrderResult,
 } from "@capitalforge/shared";
 import { asc, eq } from "drizzle-orm";
-import { getSession, type Session } from "../auth/session";
+import { getSession, getSessionByHash, hashToken, type Session } from "../auth/session";
 import type { Db } from "../db/client";
 import { gameClock, products } from "../db/schema";
 import { buyFacility } from "../company/buyFacility";
@@ -22,8 +22,9 @@ import type { CompletedJob } from "../production/complete";
 import { startProduction } from "../production/start";
 import { claimRelief } from "../relief/claim";
 import { getPortfolio } from "../market/portfolio";
-import { JOB_EVENT, TICK_EVENT, tickBus, type TickBroadcast } from "../market/ticker";
+import { JOB_EVENT, REVOKE_EVENT, TICK_EVENT, tickBus, type TickBroadcast } from "../market/ticker";
 import type { Redis } from "../redis";
+import { reportError } from "../observability/log";
 import { allowAction, allowOrder } from "../security/rateLimit";
 
 /** Ürün başına herkese açık durum. Oyuncu bakiyeleri/envanteri burada yayınlanmaz. */
@@ -59,7 +60,7 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
   static deps: MarketRoomDeps | null = null;
 
   maxClients = 200;
-  /** Oturum yeniden doğrulaması için istemci başına token (yalnızca sunucu belleğinde). */
+  /** Oturum yeniden doğrulaması için istemci başına token SHA-256 özeti (ham token tutulmaz). */
   private tokens = new Map<string, string>();
   private revalidateTimer?: ReturnType<typeof setInterval>;
   static readonly REVALIDATE_MS = 60_000;
@@ -72,6 +73,15 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
       p.tick = t.tick;
     }
     this.state.clockTick = b.clockTick;
+  };
+
+  /** Çıkışla iptal edilen oturumlar: eşleşen istemciler 4002 ile atılır. */
+  private onRevoked = (hashes: string[]) => {
+    const set = new Set(hashes);
+    for (const client of [...this.clients] as AuthedClient[]) {
+      const h = this.tokens.get(client.sessionId);
+      if (h && set.has(h)) client.leave(MarketRoom.CLOSE_SESSION_EXPIRED);
+    }
   };
 
   /** Biten işler yalnızca sahibine bildirilir; envanter ve şirket görünümü tazelenir. */
@@ -101,7 +111,7 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
       throw new ServerError(503, "INTERNAL");
     }
     if (!session) throw new ServerError(401, "UNAUTHORIZED");
-    if (typeof token === "string") this.tokens.set(_client.sessionId, token);
+    if (typeof token === "string") this.tokens.set(_client.sessionId, hashToken(token));
     return session;
   }
 
@@ -118,6 +128,7 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
     this.state.clockTick = Number(clock?.tick ?? 0n);
     tickBus.on(TICK_EVENT, this.onTick);
     tickBus.on(JOB_EVENT, this.onJobs);
+    tickBus.on(REVOKE_EVENT, this.onRevoked);
     this.revalidateTimer = setInterval(() => void this.revalidateAll(), MarketRoom.REVALIDATE_MS);
 
     this.onMessage(MSG.placeOrder, (client: AuthedClient, raw: unknown) => this.handleOrder(client, raw));
@@ -173,30 +184,39 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
   }
 
   /**
-   * Oturum hâlâ geçerli mi. Yalnızca token Redis'te kesin olarak yoksa (çıkış/süre dolumu) false döner ve
-   * istemci 4002 ile atılır; Redis hatasında bağlantı düşürülmez (emir işleyicileri ayrıca fail-closed'dır).
+   * Oturum hâlâ geçerli mi. Token Redis'te kesin olarak yoksa false döner ve istemci 4002 ile atılır.
+   * Redis hatasında da false döner (fail-closed: eylem reddedilir) ama bağlantı düşürülmez.
    */
   private async sessionValid(client: AuthedClient): Promise<boolean> {
-    const token = this.tokens.get(client.sessionId);
+    const hash = this.tokens.get(client.sessionId);
     try {
-      const s = token ? await getSession(this.deps.redis, token) : null;
+      const s = hash ? await getSessionByHash(this.deps.redis, hash) : null;
       if (s && client.auth && s.playerId === client.auth.playerId) return true;
     } catch {
-      return true;
+      return false;
     }
     client.leave(MarketRoom.CLOSE_SESSION_EXPIRED);
     return false;
   }
 
+  /** Periyodik doğrulama: Redis hatasında kimse atılmaz (geçici kesintide toplu düşüş olmaz). */
   private async revalidateAll(): Promise<void> {
-    for (const client of [...this.clients] as AuthedClient[]) await this.sessionValid(client);
+    for (const client of [...this.clients] as AuthedClient[]) {
+      const hash = this.tokens.get(client.sessionId);
+      try {
+        const s = hash ? await getSessionByHash(this.deps.redis, hash) : null;
+        if (!(s && client.auth && s.playerId === client.auth.playerId)) client.leave(MarketRoom.CLOSE_SESSION_EXPIRED);
+      } catch {
+        // Redis geçici olarak erişilemez: bağlantıyı koru.
+      }
+    }
   }
 
   private async sendCompany(client: AuthedClient, playerId: string): Promise<void> {
     try {
       client.send(MSG.company, await getCompanyView(this.deps.db, playerId));
     } catch (err) {
-      console.error("company hatası", err);
+      reportError(err, { what: "company hatası" });
     }
   }
 
@@ -233,7 +253,7 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
     try {
       client.send(MSG.portfolio, await getPortfolio(this.deps.db, playerId));
     } catch (err) {
-      console.error("portfolio hatası", err);
+      reportError(err, { what: "portfolio hatası" });
     }
   }
 
@@ -252,5 +272,6 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
     if (this.revalidateTimer) clearInterval(this.revalidateTimer);
     tickBus.off(TICK_EVENT, this.onTick);
     tickBus.off(JOB_EVENT, this.onJobs);
+    tickBus.off(REVOKE_EVENT, this.onRevoked);
   }
 }

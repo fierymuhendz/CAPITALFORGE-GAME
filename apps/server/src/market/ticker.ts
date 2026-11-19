@@ -1,6 +1,8 @@
 import { type ProductId, poolPrice, replenish } from "@capitalforge/economy";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { EventEmitter } from "node:events";
+import { REVOKE_CHANNEL } from "../auth/session";
+import { reportError, logger } from "../observability/log";
 import type { Db } from "../db/client";
 import { gameClock, priceHistory, products } from "../db/schema";
 import { type CompletedJob, runCompletionPhase } from "../production/complete";
@@ -32,6 +34,8 @@ tickBus.setMaxListeners(0);
 export const TICK_EVENT = "tick";
 /** Tamamlanan üretim işleri (CompletedJob[]). */
 export const JOB_EVENT = "jobCompleted";
+/** İptal edilen oturum özetleri (string[]). */
+export const REVOKE_EVENT = "sessionsRevoked";
 
 /**
  * Fiyat fazı: ürünleri id sırasıyla kilitler (ticaret yalnızca tek ürün kilitler, deadlock yok),
@@ -102,19 +106,19 @@ export async function runTickCycle(db: Db, onPriceTick?: (b: TickBroadcast) => P
   try {
     completed = await runCompletionPhase(db, tick);
   } catch (err) {
-    console.error("tamamlama fazı hatası", err);
+    reportError(err, { what: "tamamlama fazı hatası" });
   }
   const t2 = Date.now();
   let upkeepProcessed = 0;
   try {
     upkeepProcessed = await runUpkeepPhase(db, tick);
   } catch (err) {
-    console.error("bakım fazı hatası", err);
+    reportError(err, { what: "bakım fazı hatası" });
   }
   const t3 = Date.now();
   // Döngü tick kilidinden uzun sürerse bir sonraki tick başka örnekte çakışabilir.
   if (t3 - t0 > TICK_LOCK_PX) {
-    console.warn(
+    logger.warn(
       `tick ${tick} kilit süresini (${TICK_LOCK_PX}ms) aştı: toplam ${t3 - t0}ms (fiyat ${t1 - t0}, tamamlama ${t2 - t1} [${completed.length} iş], bakım ${t3 - t2})`,
     );
   }
@@ -139,7 +143,7 @@ export function startTicker(db: Db, redis: Redis): () => void {
       const completed = cycle?.completed ?? [];
       if (completed.length > 0) await redis.publish(JOB_CHANNEL, JSON.stringify(completed));
     } catch (err) {
-      console.error("tick hatası", err);
+      reportError(err, { what: "tick hatası" });
     } finally {
       running = false;
     }
@@ -149,17 +153,22 @@ export function startTicker(db: Db, redis: Redis): () => void {
 
 /** Redis kanalını dinleyip tickBus'a aktarır. Kapatma fonksiyonu döner. */
 export async function bridgeTicks(sub: Redis): Promise<() => Promise<void>> {
-  await sub.subscribe(TICK_CHANNEL, JOB_CHANNEL);
+  await sub.subscribe(TICK_CHANNEL, JOB_CHANNEL, REVOKE_CHANNEL);
   sub.on("message", (channel, message) => {
     try {
       if (channel === TICK_CHANNEL) tickBus.emit(TICK_EVENT, JSON.parse(message) as TickBroadcast);
       else if (channel === JOB_CHANNEL) tickBus.emit(JOB_EVENT, JSON.parse(message) as CompletedJob[]);
+      else if (channel === REVOKE_CHANNEL) {
+        const v: unknown = JSON.parse(message);
+        const hashes = typeof v === "object" && v !== null ? (v as { hashes?: unknown }).hashes : undefined;
+        if (Array.isArray(hashes)) tickBus.emit(REVOKE_EVENT, hashes.filter((h): h is string => typeof h === "string"));
+      }
     } catch {
       /* bozuk mesajı yok say */
     }
   });
   return async () => {
-    await sub.unsubscribe(TICK_CHANNEL, JOB_CHANNEL);
+    await sub.unsubscribe(TICK_CHANNEL, JOB_CHANNEL, REVOKE_CHANNEL);
     sub.disconnect();
   };
 }

@@ -1,5 +1,6 @@
 # Depo kökünden derlenir:
-# docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_GAME_SERVER_URL=ws://SUNUCU:2567 .
+# Üretimde göreli adres kullanılır (Caddy /ws önekini sunucuya yönlendirir):
+# docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_GAME_SERVER_URL=/ws .
 FROM node:22-alpine AS build
 WORKDIR /app
 RUN npm install -g pnpm@10.28.0

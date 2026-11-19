@@ -2,16 +2,36 @@
 
 `main` dalına her birleştirmede `.github/workflows/deploy.yml` çalışır:
 
-1. Sunucu ve web Docker imajlarını derler, GitHub Container Registry'ye (ghcr.io) gönderir.
-2. SSH ile sunucuya bağlanır, `/opt/capitalforge/` altına `docker-compose.yml` ve `.env` yazar.
-3. `docker compose up -d` ile PostgreSQL, Redis, migration, oyun sunucusu ve web arayüzünü başlatır.
-4. `http://SUNUCU:2567/health` adresini kontrol eder.
+1. `PUBLIC_DOMAIN` tanımlı değilse hemen hata verir.
+2. Sunucu ve web Docker imajlarını derler, GitHub Container Registry'ye (ghcr.io) gönderir. Web imajı `NEXT_PUBLIC_GAME_SERVER_URL=/ws` ile derlenir (göreli; adres tarayıcıdan üretilir, imaja IP/alan adı gömülmez).
+3. SSH ile sunucuya bağlanır, `/opt/capitalforge/` altına `docker-compose.yml`, `Caddyfile` ve `.env` yazar.
+4. `docker compose up -d` ile PostgreSQL, Redis, migration, oyun sunucusu, web ve Caddy'yi başlatır.
+5. `https://$PUBLIC_DOMAIN/api/health`, `/ws/health`, `/` adreslerini (60 x 5 sn) ve `http://` -> `https://` yönlendirmesini kontrol eder. Başarısızsa `caddy` ve `server` günlüklerini basar.
 
-Actions sekmesinden **Deploy → Run workflow** ile elle de çalıştırılabilir.
+Tüm trafik tek adresten geçer. Dışarıya yalnızca **80 ve 443** açıktır:
+
+| Yol | Hedef |
+|---|---|
+| `https://ALAN_ADI/api/*` | `server:2567` (önek kırpılır) |
+| `https://ALAN_ADI/ws/*` | `server:2567` (önek kırpılır; Colyseus HTTP + WebSocket) |
+| diğer her şey | `web:3000` |
+
+Sertifikayı Caddy otomatik alır (Let's Encrypt) ve `caddy_data` volume'unda saklar; `compose down` volume'ları silmediği için her yayında yeniden istenmez.
+
+Actions sekmesinden **Deploy -> Run workflow** ile elle de çalıştırılabilir. Geri dönüş için önceki başarılı commit üzerinden bu iş çalıştırılır.
+
+## Alan adı (`PUBLIC_DOMAIN`)
+
+Değer yalnızca alan adıdır (`https://`, yol veya port yazılmaz). İki yol vardır:
+
+- **(a) Kendi alan adınız (kalıcı çözüm):** `PUBLIC_DOMAIN=oyun.ornek.com`. DNS'te sunucu IP'sine bir A kaydı (IPv6 varsa AAAA) ekleyin; kayıt yayılmadan yayın yapmayın.
+- **(b) Alan adı yoksa sslip.io (geçici):** sunucu IP'sindeki **noktaları tire** yapıp sonuna `.sslip.io` ekleyin. Ör. IP `1.2.3.4` ise `PUBLIC_DOMAIN=1-2-3-4.sslip.io`. DNS kaydı gerekmez. sslip.io paylaşılan bir alan adı olduğundan Let's Encrypt oran sınırına takılma riski vardır; kalıcı kullanım için (a)'ya geçin.
+
+Alan adı kodda veya imajda yoktur; değiştirmek için değişkeni güncelleyip yeniden yayınlamak yeterlidir.
 
 ## GitHub ayarları
 
-Depo → Settings → Environments → `production` ortamı oluşturun, aşağıdakileri oraya ekleyin.
+Depo -> Settings -> Environments -> `production` ortamı oluşturun, aşağıdakileri oraya ekleyin.
 
 **Secrets**
 
@@ -28,7 +48,10 @@ Depo → Settings → Environments → `production` ortamı oluşturun, aşağı
 
 | Ad | Değer |
 |---|---|
-| `PUBLIC_GAME_SERVER_URL` | `ws://SUNUCU_IP:2567` (alan adı ve TLS gelince `wss://...`) |
+| `PUBLIC_DOMAIN` | **Zorunlu.** `oyun.ornek.com` veya `1-2-3-4.sslip.io` |
+| `NEW_ACCOUNT_TRADE_DELAY_SECONDS` | İsteğe bağlı. Yeni hesapların alım-satım bekleme süresi (saniye, varsayılan 600, `0` kapatır) |
+
+`PUBLIC_GAME_SERVER_URL` **artık kullanılmaz**; web imajı göreli `/ws` ile derlenir. Eski değişken varsa ilk başarılı yayından sonra silin.
 
 ## Sunucuda bir kez yapılacaklar
 
@@ -50,30 +73,43 @@ chmod 600 /home/deploy/.ssh/authorized_keys && chown -R deploy:deploy /home/depl
 mkdir -p /opt/capitalforge && chown deploy:deploy /opt/capitalforge
 ls -ld /opt/capitalforge   # sahibi "deploy deploy" görünmeli
 
-# Güvenlik duvarı: sadece SSH, web ve oyun sunucusu
-ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 2567/tcp && ufw enable
+# Güvenlik duvarı: SSH, HTTP (sertifika doğrulaması + yönlendirme) ve HTTPS
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw enable
+# Eskiden 2567 açıldıysa, ilk başarılı HTTPS yayınından SONRA kapatın:
+ufw delete allow 2567/tcp
 ```
 
-UpCloud panelindeki güvenlik duvarı kullanılıyorsa orada da TCP 22, 80 ve 2567 için gelen trafiğe izin verilmelidir.
+UpCloud panelindeki güvenlik duvarında da TCP 22, 80, 443 (isteğe bağlı UDP 443) açık olmalıdır. **80 kapalı kalırsa Caddy sertifika alamaz ve yayın düşer.** 2567, yayın yeşil olduktan sonra hem ufw'de hem UpCloud panelinde kapatılır.
 
 ## İlk yayın kontrol listesi
 
 1. `ls -ld /opt/capitalforge` çıktısında sahip `deploy` olmalı.
-2. `production` ortamında 6 secret ve `PUBLIC_GAME_SERVER_URL` değişkeni tanımlı olmalı.
-3. Güvenlik duvarında 22, 80 ve 2567 açık olmalı.
-4. Yayından sonra `http://SUNUCU_IP:2567/health` adresi `{"ok":true}` döndürmeli.
-5. `http://SUNUCU_IP` adresinde oyun açılmalı ve bağlantı göstergesi "● Bağlı" olmalı.
+2. `production` ortamında 6 secret ve `PUBLIC_DOMAIN` değişkeni tanımlı olmalı.
+3. (a) yolunda DNS A kaydı sunucu IP'sine işaret etmeli.
+4. Güvenlik duvarında (ufw + UpCloud) 22, 80, 443 açık olmalı.
+5. Yayından sonra `https://ALAN_ADI/api/health` adresi `{"ok":true}` döndürmeli.
+6. `https://ALAN_ADI` adresinde oyun açılmalı ve bağlantı göstergesi "● Bağlı" olmalı (WebSocket `wss://ALAN_ADI/ws` üzerinden).
+7. Yayın yeşil olunca 2567/tcp kapatılır; `http://SUNUCU_IP:2567/health` zaman aşımına uğramalıdır.
+8. HSTS başlangıçta `max-age=86400`; bir hafta sorunsuz çalışınca `deploy/Caddyfile` içinde 1 yıla (`31536000`) çıkarın.
 
 ## Sorun giderme
 
 | Belirti | Neden | Çözüm |
 |---|---|---|
 | `mkdir: cannot create directory '/opt/capitalforge': Permission denied` | Klasör hazırlanmamış | Yukarıdaki zorunlu adımı root ile çalıştırıp Actions'ta **Re-run jobs** |
-| Sağlık kontrolü zaman aşımı | 2567 portu kapalı | UpCloud ve ufw'de 2567'yi açın |
-| Sayfada "Bağlantı koptu" uyarısı | 2567 kapalı veya `PUBLIC_GAME_SERVER_URL` hatalı | Değer tam olarak `ws://SUNUCU_IP:2567` olmalı, değiştirince yeniden yayın gerekir |
+| `PUBLIC_DOMAIN değişkeni ... tanımlı değil` | Variable eksik | production ortamına ekleyin |
+| Sağlık kontrolü zaman aşımı, Caddy günlüğünde sertifika hatası | 80/443 kapalı, DNS yanlış veya Let's Encrypt oran sınırı (sslip.io) | Güvenlik duvarını/DNS'i düzeltin; sslip.io'da sınır doluysa kendi alan adınıza geçin |
+| Sayfada "Bağlantı koptu" uyarısı | `/ws` yönlendirmesi veya wss çalışmıyor | `https://ALAN_ADI/ws/health` yanıtını ve `docker compose logs caddy server` çıktısını kontrol edin |
+| Yeni hesap emirlerde "bekleme" hatası | Beklenen davranış: yeni hesaplar süre dolana kadar alım-satım yapamaz | `NEW_ACCOUNT_TRADE_DELAY_SECONDS` ile ayarlanır |
 
-Not: Docker, yayınladığı portlar için ufw kurallarını atlar. PostgreSQL ve Redis bu yüzden hiç port açmaz.
+Not: Docker, yayınladığı portlar için ufw kurallarını atlar. Bu yüzden `server` ve `web` hiç port yayınlamaz; PostgreSQL ve Redis de açmaz. Yalnızca `caddy` 80/443 yayınlar.
 
-## Sonraki adım
+## Hata günlükleri
 
-Alan adı alındığında önüne Caddy koyup otomatik HTTPS ve `wss://` eklenecek, 2567 portu dışarıya kapatılacak.
+Sunucu JSON günlük yazar (yetki başlığı, token ve parola alanları `[Redacted]`). İstemci hataları `POST /api/client-errors` ile gelir ve `src: "web"` alanıyla `warn` düzeyinde günlüğe yazılır:
+
+```bash
+cd /opt/capitalforge && docker compose logs --since 1h server | grep '"src":"web"'
+```
+
+Docker günlükleri `json-file`, servis başına 10 MB x 5 dosya ile döndürülür.
