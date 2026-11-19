@@ -100,8 +100,12 @@ jobs:
           set -euo pipefail
           SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes $USER@$HOST"
           $SSH 'mkdir -p /opt/capitalforge && chmod 700 /opt/capitalforge'
-          scp -i ~/.ssh/id_deploy deploy/docker-compose.prod.yml "$USER@$HOST:/opt/capitalforge/docker-compose.yml"
+          # Dosyalar önce ".new" adıyla yüklenir; uzakta doğrulamalar geçince .env ile birlikte yerine taşınır
+          # (yarım yayında compose/betikler ile .env uyumsuz kalmasın).
+          scp -i ~/.ssh/id_deploy deploy/docker-compose.prod.yml "$USER@$HOST:/opt/capitalforge/docker-compose.yml.new"
           scp -i ~/.ssh/id_deploy deploy/Caddyfile "$USER@$HOST:/opt/capitalforge/Caddyfile"
+          scp -i ~/.ssh/id_deploy deploy/backup.sh "$USER@$HOST:/opt/capitalforge/backup.sh.new"
+          scp -i ~/.ssh/id_deploy deploy/restore.sh "$USER@$HOST:/opt/capitalforge/restore.sh.new"
           {
             echo "SERVER_IMAGE=$SERVER_IMAGE"
             echo "WEB_IMAGE=$WEB_IMAGE"
@@ -111,11 +115,69 @@ jobs:
             if [ -n "$NEW_ACCOUNT_TRADE_DELAY_SECONDS" ]; then
               echo "NEW_ACCOUNT_TRADE_DELAY_SECONDS=$NEW_ACCOUNT_TRADE_DELAY_SECONDS"
             fi
-          } | $SSH 'umask 077 && cat > /opt/capitalforge/.env'
+          } | $SSH 'umask 077 && cat > /opt/capitalforge/.env.new'
+          # Sunucuda: Redis parolası yoksa bir kez üretilir (değer CI günlüğüne hiç çıkmaz), .env'e uzakta eklenir.
+          # Yedek klasörü yayın kullanıcısına ait olur (backup konteyneri aynı UID/GID ile çalışır).
+          $SSH 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          cd /opt/capitalforge
+          mkdir -p secrets backups
+          chmod 700 secrets
+          if [ ! -s secrets/redis_password ]; then
+            head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/redis_password.tmp
+            mv secrets/redis_password.tmp secrets/redis_password
+          fi
+          chmod 600 secrets/redis_password
+          # Biçim denetimi (değer yazdırılmaz): 64 küçük harfli onaltılık karakter.
+          if ! grep -Eq '^[0-9a-f]{64}$' secrets/redis_password; then
+            echo "HATA: secrets/redis_password beklenen biçimde değil (64 onaltılık karakter olmalı). Dosyayı silip yeniden yayınlayın (yeni parola üretilir)." >&2
+            exit 1
+          fi
+          # Yedek konteyneri UID/GID: root olarak bağlanıldıysa 1000, değilse bağlanan kullanıcı.
+          if [ "$(id -u)" = "0" ]; then
+            BUID=1000; BGID=1000
+            chown "$BUID:$BGID" backups
+          else
+            BUID=$(id -u); BGID=$(id -g)
+            if [ "$(stat -c %u backups)" = "0" ]; then
+              echo "HATA: /opt/capitalforge/backups root sahipliğinde; yedek konteyneri yazamaz. Sunucuda root ile çalıştırın: chown -R $BUID:$BGID /opt/capitalforge/backups" >&2
+              exit 1
+            fi
+          fi
+          chmod 700 backups
+          if [ ! -w backups ]; then
+            echo "HATA: /opt/capitalforge/backups yazılabilir değil (sahip UID $(stat -c %u backups), beklenen $BUID)" >&2
+            exit 1
+          fi
+          printf 'REDIS_PASSWORD=%s\n' "$(cat secrets/redis_password)" >> .env.new
+          printf 'BACKUP_UID=%s\nBACKUP_GID=%s\n' "$BUID" "$BGID" >> .env.new
+          # Her şey hazır: dosyalar .env ile birlikte yerine alınır.
+          mv docker-compose.yml.new docker-compose.yml
+          mv backup.sh.new backup.sh
+          mv restore.sh.new restore.sh
+          mv .env.new .env
+          REMOTE
           echo "$GHCR_TOKEN" | $SSH "docker login $REGISTRY -u $ACTOR --password-stdin"
           # Önce imajları çek, sonra yığını temiz bir ağla yeniden kur. "down" volume'ları silmez
           # (veriler korunur); eski ağda kalan konteynerlerin DNS sorununu (EAI_AGAIN) önler.
-          $SSH 'cd /opt/capitalforge && docker compose pull && docker compose down --remove-orphans'
+          $SSH 'cd /opt/capitalforge && docker compose pull'
+          # Yayın öncesi yedek (ilk yedek yayından hemen önce alınır). İlk kurulumda postgres yoksa atlanır;
+          # postgres çalışıyorsa yedek başarısız olursa yayın DURUR (down çalışmaz).
+          pg_rc=0
+          $SSH 'cd /opt/capitalforge && docker compose ps --status running --services | grep -qx postgres' || pg_rc=$?
+          case "$pg_rc" in
+            0)
+              echo "Yayın öncesi yedek alınıyor"
+              if ! $SSH 'cd /opt/capitalforge && docker compose run --rm --no-deps -e BACKUP_RUN_ONCE=1 backup'; then
+                echo "::error::Yayın öncesi yedek başarısız; yayın durduruldu (mevcut yığın çalışmaya devam ediyor)"
+                exit 1
+              fi
+              ;;
+            1) echo "postgres çalışmıyor (ilk kurulum): yayın öncesi yedek atlandı" ;;
+            *) echo "::error::Sunucuya ulaşılamadı veya docker compose ps başarısız (kod $pg_rc)"; exit 1 ;;
+          esac
+          $SSH 'cd /opt/capitalforge && docker compose down --remove-orphans'
           # Migration veya başlatma başarısız olursa nedenini CI günlüğünde göster.
           if ! $SSH 'cd /opt/capitalforge && docker compose up -d --remove-orphans'; then
             # Günlükler istemci denetiminde olabilecek metin içerir: iş akışı komutları (::...::) çalışmasın.
