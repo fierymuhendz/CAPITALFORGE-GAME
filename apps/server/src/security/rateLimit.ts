@@ -27,9 +27,11 @@ export const LIMITS = {
   guestLoginGlobal: { limit: 60, windowMs: 60_000 },
   /** Misafir kaydı: IP (/64) başına günlük tavan (çoklu hesapla fiyat şişirmeye karşı). */
   guestLoginDaily: { limit: 20, windowMs: 86_400_000 },
+  /** Misafir kaydı: IPv6 /48 başına günlük tavan (tek tahsisli bloktan /64 döndürmeye karşı). */
+  guestLoginDaily48: { limit: 100, windowMs: 86_400_000 },
   /** İstemci hata bildirimi: IP başına ve toplam. */
   clientErrorIp: { limit: 10, windowMs: 60_000 },
-  clientErrorGlobal: { limit: 600, windowMs: 60_000 },
+  clientErrorGlobal: { limit: 60, windowMs: 60_000 },
 } as const;
 
 export const allowOrder = (redis: Redis, playerId: string) =>
@@ -41,22 +43,50 @@ export const allowAction = (redis: Redis, playerId: string) =>
 export const allowRead = (redis: Redis, bucket: string) =>
   allow(redis, `read:${bucket}`, LIMITS.read.limit, LIMITS.read.windowMs);
 
-/** IPv6 adresini /64 önekine indirger; tek bir ağ içinde adres döndürmek sınırı aşmaz. */
-export function ipBucket(ip: string): string {
-  if (!ip.includes(":") || ip.startsWith("::ffff:")) return ip.replace(/^::ffff:/, "");
+function ipv6Groups(ip: string): string[] {
   const [head = "", tail = ""] = ip.split("::");
   const h = head ? head.split(":") : [];
   const t = tail ? tail.split(":") : [];
   const groups = ip.includes("::") ? [...h, ...Array(8 - h.length - t.length).fill("0"), ...t] : h;
-  return groups.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, "")).join(":") + "::/64";
+  return groups.map((g) => g.toLowerCase().replace(/^0+(?=.)/, ""));
 }
 
+const isV4 = (ip: string) => !ip.includes(":") || ip.startsWith("::ffff:");
+
+/** IPv6 adresini /64 önekine indirger; tek bir ağ içinde adres döndürmek sınırı aşmaz. */
+export function ipBucket(ip: string): string {
+  if (isV4(ip)) return ip.replace(/^::ffff:/, "");
+  return ipv6Groups(ip).slice(0, 4).join(":") + "::/64";
+}
+
+/** IPv6 için /48 öneki; IPv4 için null (IPv4'te /64 kovası zaten tek adrestir). */
+export function ipBucket48(ip: string): string | null {
+  if (isV4(ip)) return null;
+  return ipv6Groups(ip).slice(0, 3).join(":") + "::/48";
+}
+
+async function dailyCount(redis: Redis, key: string): Promise<number> {
+  return Number((await redis.get(`rl:${key}`)) ?? 0);
+}
+
+/**
+ * Misafir kaydı ön kontrolü: dakikalık IP sınırı ve küresel sınır sayılır; günlük tavanlar (/64 ve IPv6 için /48)
+ * yalnızca okunur. Günlük sayaç başarılı kayıttan sonra recordGuestSignup ile artar. Redis hatasında istisna fırlatır.
+ */
 export async function allowGuestLogin(redis: Redis, ip: string): Promise<boolean> {
   const perIp = await allow(redis, `guest:${ipBucket(ip)}`, LIMITS.guestLogin.limit, LIMITS.guestLogin.windowMs);
   if (!perIp) return false;
-  const perDay = await allow(redis, `guestday:${ipBucket(ip)}`, LIMITS.guestLoginDaily.limit, LIMITS.guestLoginDaily.windowMs);
-  if (!perDay) return false;
+  if ((await dailyCount(redis, `guestday:${ipBucket(ip)}`)) >= LIMITS.guestLoginDaily.limit) return false;
+  const b48 = ipBucket48(ip);
+  if (b48 && (await dailyCount(redis, `guestday48:${b48}`)) >= LIMITS.guestLoginDaily48.limit) return false;
   return allow(redis, "guest:all", LIMITS.guestLoginGlobal.limit, LIMITS.guestLoginGlobal.windowMs);
+}
+
+/** Başarılı misafir kaydından sonra günlük sayaçları artırır. */
+export async function recordGuestSignup(redis: Redis, ip: string): Promise<void> {
+  await allow(redis, `guestday:${ipBucket(ip)}`, LIMITS.guestLoginDaily.limit, LIMITS.guestLoginDaily.windowMs);
+  const b48 = ipBucket48(ip);
+  if (b48) await allow(redis, `guestday48:${b48}`, LIMITS.guestLoginDaily48.limit, LIMITS.guestLoginDaily48.windowMs);
 }
 
 /** Redis hatasında istisna fırlatır (çağıran reddeder). */

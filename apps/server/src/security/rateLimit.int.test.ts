@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Redis } from "ioredis";
 import type { Redis as RedisClient } from "../redis";
 import { closeTestResources, setupTestRedis } from "../test/db";
-import { allow, allowGuestLogin, allowOrder, LIMITS } from "./rateLimit";
+import { allow, allowGuestLogin, allowOrder, ipBucket48, LIMITS, recordGuestSignup } from "./rateLimit";
 
 let redis: RedisClient;
 
@@ -53,19 +53,41 @@ describe("misafir giriş hız sınırı (5/dk/IP)", () => {
   });
 });
 
-describe("misafir günlük tavanı (20/24 sa/IP, IPv6 /64)", () => {
+describe("misafir günlük tavanı (20/24 sa/IP /64, 100/24 sa /48)", () => {
   it("aynı /64 ağından 21. kayıt reddedilir, başka ağ etkilenmez", async () => {
     const results: boolean[] = [];
     for (let i = 0; i < 21; i++) {
       // Dakikalık sayaçları sıfırla; yalnızca günlük tavan sınanır. Her istek aynı /64 içinde farklı adrestendir.
       await redis.del("rl:guest:2001:db8:1:2::/64", "rl:guest:all");
-      results.push(await allowGuestLogin(redis, `2001:db8:1:2::${(i + 1).toString(16)}`));
+      const ip = `2001:db8:1:2::${(i + 1).toString(16)}`;
+      const ok = await allowGuestLogin(redis, ip);
+      results.push(ok);
+      if (ok) await recordGuestSignup(redis, ip);
     }
     expect(results.slice(0, 20).every(Boolean)).toBe(true);
     expect(results[20]).toBe(false);
     expect(LIMITS.guestLoginDaily.limit).toBe(20);
     expect(await redis.pttl("rl:guestday:2001:db8:1:2::/64")).toBeGreaterThan(80_000_000);
     expect(await allowGuestLogin(redis, "2001:db8:1:3::1")).toBe(true);
+  });
+
+  it("günlük sayaç yalnızca recordGuestSignup ile artar (başarısız kayıt sayılmaz)", async () => {
+    for (let i = 0; i < 3; i++) {
+      await redis.del("rl:guest:2001:db8:9:9::/64", "rl:guest:all");
+      expect(await allowGuestLogin(redis, "2001:db8:9:9::1")).toBe(true);
+    }
+    expect(await redis.get("rl:guestday:2001:db8:9:9::/64")).toBeNull();
+    await recordGuestSignup(redis, "2001:db8:9:9::1");
+    expect(await redis.get("rl:guestday:2001:db8:9:9::/64")).toBe("1");
+  });
+
+  it("/48 tavanı: farklı /64'lerden 100 kayıttan sonra aynı /48 reddedilir", async () => {
+    expect(ipBucket48("2001:db8:7:5::1")).toBe("2001:db8:7::/48");
+    expect(ipBucket48("203.0.113.5")).toBeNull();
+    await redis.set("rl:guestday48:2001:db8:7::/48", "100", "PX", 60_000);
+    await redis.del("rl:guest:all");
+    expect(await allowGuestLogin(redis, "2001:db8:7:ffff::1")).toBe(false);
+    expect(await allowGuestLogin(redis, "2001:db8:8::1")).toBe(true);
   });
 });
 

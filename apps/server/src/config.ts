@@ -13,7 +13,7 @@ export const config = {
   sessionTtlSeconds: Number(process.env.SESSION_TTL_SECONDS ?? 604_800),
   /** Reverse proxy arkasında istemci IP'sini X-Forwarded-For'dan almak için. */
   // "true": tüm vekillere güven (sadece geliştirme). Virgüllü IP/CIDR listesi: yalnızca bunlara güven.
-  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  trustProxy: resolveTrustProxy(process.env.TRUST_PROXY, process.env.NODE_ENV),
   /** Yeni hesapların alım-satım yapamadığı süre (saniye). 0 = kapalı. Saat kaynağı veritabanı now(). */
   newAccountTradeDelaySeconds: parseIntRange("NEW_ACCOUNT_TRADE_DELAY_SECONDS", process.env.NEW_ACCOUNT_TRADE_DELAY_SECONDS, 600, 0, 86_400),
 };
@@ -26,6 +26,15 @@ export function parseIntRange(name: string, value: string | undefined, def: numb
     throw new Error(`Ortam değişkeni geçersiz: ${name} (${min}-${max} arası tam sayı olmalı)`);
   }
   return n;
+}
+
+/** Üretimde TRUST_PROXY zorunlu: yoksa tüm istekler proxy IP'sinden görünür ve IP hız sınırları işlemez. */
+export function resolveTrustProxy(value: string | undefined, nodeEnv: string | undefined): boolean | string[] {
+  const parsed = parseTrustProxy(value);
+  if (nodeEnv === "production" && (parsed === false || (Array.isArray(parsed) && parsed.length === 0))) {
+    throw new Error("Ortam değişkeni eksik veya geçersiz: TRUST_PROXY (üretimde zorunlu)");
+  }
+  return parsed;
 }
 
 function parseTrustProxy(value: string | undefined): boolean | string[] {

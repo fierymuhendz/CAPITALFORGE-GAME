@@ -43,6 +43,7 @@ services:
     image: ${SERVER_IMAGE}
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       PORT: "2567"
       DATABASE_URL: postgres://capitalforge:${POSTGRES_PASSWORD}@postgres:5432/capitalforge
       REDIS_URL: redis://redis:6379

@@ -28,7 +28,10 @@ const stopTicker = startTicker(db, redis);
 await gameServer.listen(config.port);
 app.log.info(`Sunucu ${config.port} portunda hazır`);
 
+let shuttingDown = false;
 async function shutdown(code = 0): Promise<void> {
+  if (shuttingDown) return; // tek seferlik: sinyal/istisna yeniden girişine karşı
+  shuttingDown = true;
   stopTicker();
   await stopBridge().catch(() => undefined);
   await gameServer.gracefullyShutdown(false).catch(() => undefined);

@@ -23,4 +23,19 @@ describe("günlük gizleme", () => {
     expect(out).not.toMatch(/gizli-/);
     expect(out.match(/\[Redacted\]/g)?.length).toBe(4);
   });
+
+  it("*.authorization ve *.*.token gizlenir", () => {
+    const { lines, logger } = capture();
+    logger.info({ h: { authorization: "Bearer gizli-a" }, a: { b: { token: "gizli-b" } } }, "x");
+    expect(lines.join("")).not.toMatch(/gizli-/);
+  });
+
+  it("err yalnızca type, message, stack, code içerir", () => {
+    const { lines, logger } = capture();
+    const e = Object.assign(new Error("boom"), { code: "E1", parameters: ["sir-parola"], query: "select sir" });
+    logger.error({ err: e }, "hata");
+    const rec = JSON.parse(lines.join("")).err;
+    expect(Object.keys(rec).sort()).toEqual(["code", "message", "stack", "type"]);
+    expect(lines.join("")).not.toMatch(/sir/);
+  });
 });

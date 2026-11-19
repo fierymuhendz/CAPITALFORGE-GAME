@@ -108,6 +108,23 @@ describe("MarketRoom oturum iptali", () => {
   });
 });
 
+describe("MarketRoom Redis kesintisi", () => {
+  it("emir fail-closed reddedilir ama bağlantı düşürülmez; revalidateAll kimseyi atmaz", async () => {
+    const a = await join("odaRedisDown");
+    const spy = vi.spyOn(redis, "get").mockRejectedValue(new Error("redis down"));
+    try {
+      await internals().handleOrder(a.client, order());
+      const call = a.client.send.mock.calls.find((c) => c[0] === MSG.orderResult);
+      expect(call?.[1]).toMatchObject({ ok: false, error: "UNAUTHORIZED" });
+      expect(a.client.leave).not.toHaveBeenCalled();
+      await (room as unknown as { revalidateAll(): Promise<void> }).revalidateAll();
+      expect(a.client.leave).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe("MarketRoom yetkisiz erişim (başkasının varlığı)", () => {
   /** Gerçek oyuncu (players + cüzdan) oluşturur; bakiye ve şirket sorguları için gerekir. */
   async function joinReal(tag: string) {

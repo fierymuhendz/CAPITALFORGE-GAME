@@ -48,8 +48,19 @@ export async function getSessionByHash(redis: Redis, hash: string): Promise<Sess
 }
 
 /**
- * Çıkış. Geçersiz/bilinmeyen token sessizce yok sayılır (idempotent). all=true oyuncunun tüm oturumlarını kapatır.
- * Silme MULTI ile yapılır, ardından iptal edilen özetler kanala yayınlanır. Redis hatasında istisna fırlatır.
+ * Oyuncunun tüm oturumlarını tek atomik adımda siler: üye kümesi okunur, her anahtar silinir, küme silinir
+ * ve silinen özetler döner. Araya giren createSession betiğin dışında kalmaz (ya önce eklenir ve silinir, ya sonra kalır).
+ */
+const REVOKE_ALL = `
+local members = redis.call('SMEMBERS', KEYS[1])
+for _, h in ipairs(members) do redis.call('DEL', 'sess:' .. h) end
+redis.call('DEL', KEYS[1])
+return members
+`;
+
+/**
+ * Çıkış. Geçersiz/bilinmeyen token sessizce yok sayılır (idempotent). all=true oyuncunun tüm oturumlarını kapatır
+ * (tek Lua betiği), ardından iptal edilen özetler kanala yayınlanır. Redis hatasında istisna fırlatır.
  */
 export async function revokeSession(redis: Redis, token: string | undefined | null, all: boolean): Promise<void> {
   const session = await getSession(redis, token);
@@ -57,13 +68,11 @@ export async function revokeSession(redis: Redis, token: string | undefined | nu
   const hash = hashToken(token);
   let hashes = [hash];
   if (all) {
-    const members = await redis.smembers(playerSetKey(session.playerId));
+    const members = (await redis.eval(REVOKE_ALL, 1, playerSetKey(session.playerId))) as string[];
+    await redis.del(keyOfHash(hash));
     hashes = [...new Set([hash, ...members])];
+  } else {
+    await redis.multi().del(keyOfHash(hash)).srem(playerSetKey(session.playerId), hash).exec();
   }
-  const m = redis.multi();
-  for (const h of hashes) m.del(keyOfHash(h));
-  if (all) m.del(playerSetKey(session.playerId));
-  else m.srem(playerSetKey(session.playerId), hash);
-  await m.exec();
   await redis.publish(REVOKE_CHANNEL, JSON.stringify({ hashes }));
 }

@@ -1,4 +1,4 @@
-import { FACILITY_TYPES, PARAMS, RECIPES, RECIPE_IDS, facilityPrice, poolMaxOrder, upkeep } from "@capitalforge/economy";
+import { FACILITY_TYPES, PARAMS, PRODUCT_IDS, RECIPES, RECIPE_IDS, facilityPrice, poolMaxOrder, upkeep } from "@capitalforge/economy";
 import {
   CITY,
   CityQuerySchema,
@@ -26,7 +26,16 @@ import { getCompanyView } from "../company/view";
 import { getPortfolio } from "../market/portfolio";
 import type { Redis } from "../redis";
 import { tradeUnlockAt } from "../market/cooldown";
-import { allow, allowClientError, allowGuestLogin, allowRead, ipBucket } from "../security/rateLimit";
+import { allow, allowClientError, allowGuestLogin, allowRead, ipBucket, recordGuestSignup } from "../security/rateLimit";
+
+/** İstemci metnini günlüğe yazmadan önce kısaltır ve token benzeri desenleri gizler (önce gizle, sonra kısalt). */
+export function sanitizeClientText(text: string, max: number): string {
+  const redacted = text
+    .replace(/Bearer\s+\S+/gi, "[Redacted]")
+    .replace(/eyJ[\w-]+\.[\w-]+\.[\w-]*/g, "[Redacted]")
+    .replace(/\b[0-9a-fA-F]{32,}\b/g, "[Redacted]");
+  return redacted.length > max ? redacted.slice(0, max) : redacted;
+}
 
 const send = (reply: FastifyReply, status: number, error: ApiError["error"]) => reply.code(status).send({ error } satisfies ApiError);
 
@@ -56,7 +65,8 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
   // Redis hatasında istek reddedilir (fail closed). Oyuncu başına sınır, kimlik doğrulanınca ayrıca uygulanır.
   const READ_PATHS = new Set(["/me", "/market/history", "/catalog", "/company", "/city"]);
   app.addHook("onRequest", async (req, reply) => {
-    if (req.method !== "GET" || !READ_PATHS.has(req.url.split("?")[0] ?? "")) return;
+    // Yönlendirme sonrası şablon: yüzde-kodlu yollar (/%6De) ham URL eşlemesini atlatamaz.
+    if (req.method !== "GET" || !READ_PATHS.has(req.routeOptions.url ?? "")) return;
     if (!(await allowRead(redis, `ip:${ipBucket(req.ip)}`))) return send(reply, 429, "RATE_LIMITED");
   });
 
@@ -83,6 +93,8 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
     const result = await createGuest(db, parsed.data.username);
     if (!result.ok) return send(reply, 409, "USERNAME_TAKEN");
 
+    // Günlük sayaç yalnızca başarılı kayıtta artar; sayaç hatası kaydı geri almaz.
+    await recordGuestSignup(redis, req.ip).catch((err) => req.log.warn({ err }, "günlük kayıt sayacı artırılamadı"));
     const token = await createSession(redis, { playerId: result.playerId, username: result.username });
     return { token, playerId: result.playerId, username: result.username } satisfies GuestLoginResponse;
   });
@@ -114,7 +126,11 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
     }
     const parsed = ClientErrorReportSchema.safeParse(req.body);
     if (!parsed.success) return send(reply, 400, "INVALID");
-    req.log.warn({ src: "web", clientError: parsed.data }, "istemci hatası");
+    const { message, stack, ...rest } = parsed.data;
+    req.log.warn(
+      { src: "web", clientError: { ...rest, message: sanitizeClientText(message, 300), ...(stack ? { stack: sanitizeClientText(stack, 1000) } : {}) } },
+      "istemci hatası",
+    );
     return reply.code(204).send();
   });
 
@@ -122,6 +138,7 @@ export function registerRoutes(app: FastifyInstance, deps: { db: Db; redis: Redi
     const parsed = HistoryQuerySchema.safeParse(req.query);
     if (!parsed.success) return send(reply, 400, "INVALID");
     const { productId } = parsed.data;
+    if (!(PRODUCT_IDS as readonly string[]).includes(productId)) return send(reply, 404, "UNKNOWN_PRODUCT");
     const body = await cached(`history:${productId}`, async (): Promise<HistoryResponse | null> => {
       const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, productId));
       if (!product) return null;

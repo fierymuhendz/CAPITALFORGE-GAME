@@ -184,8 +184,8 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
   }
 
   /**
-   * Oturum hâlâ geçerli mi. Yalnızca token Redis'te kesin olarak yoksa (çıkış/süre dolumu) false döner ve
-   * istemci 4002 ile atılır; Redis hatasında bağlantı düşürülmez (emir işleyicileri ayrıca fail-closed'dır).
+   * Oturum hâlâ geçerli mi. Token Redis'te kesin olarak yoksa false döner ve istemci 4002 ile atılır.
+   * Redis hatasında da false döner (fail-closed: eylem reddedilir) ama bağlantı düşürülmez.
    */
   private async sessionValid(client: AuthedClient): Promise<boolean> {
     const hash = this.tokens.get(client.sessionId);
@@ -193,14 +193,23 @@ export class MarketRoom extends Room<MarketState, unknown, unknown, Session> {
       const s = hash ? await getSessionByHash(this.deps.redis, hash) : null;
       if (s && client.auth && s.playerId === client.auth.playerId) return true;
     } catch {
-      return true;
+      return false;
     }
     client.leave(MarketRoom.CLOSE_SESSION_EXPIRED);
     return false;
   }
 
+  /** Periyodik doğrulama: Redis hatasında kimse atılmaz (geçici kesintide toplu düşüş olmaz). */
   private async revalidateAll(): Promise<void> {
-    for (const client of [...this.clients] as AuthedClient[]) await this.sessionValid(client);
+    for (const client of [...this.clients] as AuthedClient[]) {
+      const hash = this.tokens.get(client.sessionId);
+      try {
+        const s = hash ? await getSessionByHash(this.deps.redis, hash) : null;
+        if (!(s && client.auth && s.playerId === client.auth.playerId)) client.leave(MarketRoom.CLOSE_SESSION_EXPIRED);
+      } catch {
+        // Redis geçici olarak erişilemez: bağlantıyı koru.
+      }
+    }
   }
 
   private async sendCompany(client: AuthedClient, playerId: string): Promise<void> {

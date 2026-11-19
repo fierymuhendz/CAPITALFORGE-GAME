@@ -10,7 +10,7 @@ import type { Db } from "../db/client";
 import { players } from "../db/schema";
 import type { Redis } from "../redis";
 import { closeTestResources, resetTestDb, setupTestDb, setupTestRedis } from "../test/db";
-import { registerRoutes } from "./routes";
+import { registerRoutes, sanitizeClientText } from "./routes";
 
 let db: Db;
 let redis: Redis;
@@ -93,8 +93,8 @@ describe("POST /client-errors", () => {
     expect((await report(valid, "198.51.100.10")).statusCode).toBe(204);
   });
 
-  it("toplam 600/dk sınırı aşılınca 429", async () => {
-    await redis.set("rl:clienterr:all", "600", "PX", 60_000);
+  it("toplam 60/dk sınırı aşılınca 429", async () => {
+    await redis.set("rl:clienterr:all", "60", "PX", 60_000);
     expect((await report(valid, "203.0.113.77")).statusCode).toBe(429);
   });
 
@@ -111,5 +111,28 @@ describe("POST /client-errors", () => {
       await a.close();
       down.disconnect();
     }
+  });
+});
+
+describe("okuma hız sınırı kancası", () => {
+  it("yüzde-kodlu yol (/%6De) IP sınırını atlatamaz", async () => {
+    const codes: number[] = [];
+    for (let i = 0; i < 30; i++) codes.push((await app.inject({ method: "GET", url: "/%6De", remoteAddress: "198.51.100.50" })).statusCode);
+    expect(codes).toContain(429);
+  });
+
+  it("bilinmeyen ürün geçmişi 404", async () => {
+    const res = await app.inject({ method: "GET", url: "/market/history?productId=nope", remoteAddress: "198.51.100.51" });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("istemci hata günlüğü temizliği", () => {
+  it("Bearer, JWT ve uzun hex gizlenir; uzunluk kısalır", () => {
+    const jwt = "eyJhbGciOi.eyJzdWIiOiIx.sig-_x";
+    const hex = "a".repeat(40);
+    const out = sanitizeClientText(`Bearer abc.def ${jwt} ${hex} ok`, 1000);
+    expect(out).toBe("[Redacted] [Redacted] [Redacted] ok");
+    expect(sanitizeClientText("x".repeat(4000), 1000)).toHaveLength(1000);
   });
 });
