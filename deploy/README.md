@@ -43,6 +43,7 @@ Depo -> Settings -> Environments -> `production` ortamı oluşturun, aşağıdak
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan SUNUCU_IP` çıktısı |
 | `POSTGRES_PASSWORD` | Uzun, rastgele parola (`openssl rand -hex 32`) |
 | `JWT_SECRET` | Uzun, rastgele değer (`openssl rand -hex 32`) |
+| `BACKUP_PASSPHRASE` | Sunucu dışı yedekleri şifreleyen parola (aşağıda "Yedekler"). Zorunlu değil ama `Backup` iş akışı bunsuz çalışmaz |
 
 **Variables**
 
@@ -84,13 +85,47 @@ UpCloud panelindeki güvenlik duvarında da TCP 22, 80, 443 (isteğe bağlı UDP
 ## İlk yayın kontrol listesi
 
 1. `ls -ld /opt/capitalforge` çıktısında sahip `deploy` olmalı.
-2. `production` ortamında 6 secret ve `PUBLIC_DOMAIN` değişkeni tanımlı olmalı.
+2. `production` ortamında 6 secret (+ yedek için `BACKUP_PASSPHRASE`) ve `PUBLIC_DOMAIN` değişkeni tanımlı olmalı.
 3. (a) yolunda DNS A kaydı sunucu IP'sine işaret etmeli.
 4. Güvenlik duvarında (ufw + UpCloud) 22, 80, 443 açık olmalı.
 5. Yayından sonra `https://ALAN_ADI/api/health` adresi `{"ok":true}` döndürmeli.
 6. `https://ALAN_ADI` adresinde oyun açılmalı ve bağlantı göstergesi "● Bağlı" olmalı (WebSocket `wss://ALAN_ADI/ws` üzerinden).
 7. Yayın yeşil olunca 2567/tcp kapatılır; `http://SUNUCU_IP:2567/health` zaman aşımına uğramalıdır.
 8. HSTS başlangıçta `max-age=86400`; bir hafta sorunsuz çalışınca `deploy/Caddyfile` içinde 1 yıla (`31536000`) çıkarın.
+
+## Redis parolası
+
+Redis parolası sunucuda ilk yayında otomatik üretilir: `/opt/capitalforge/secrets/redis_password` (izin 600). Yayın betiği dosya yoksa oluşturur, varsa dokunmaz; değeri sunucuda `.env`'e ekler, GitHub'a veya CI günlüğüne çıkmaz. Redis parolayı komut satırında değil geçici yapılandırma dosyasında alır (`ps`'te görünmez). Üretimde `REDIS_URL` parolasız ise sunucu başlamaz. Redis verisi (oturumlar) aynı volume'da kalır, parola eklemek oturumları silmez.
+
+## Yedekler
+
+**Sunucuda:** `backup` servisi her gün 03:00'te (Türkiye saati) `pg_dump` alır ve `/opt/capitalforge/backups/capitalforge-YYYYMMDD-SSDD.dump` olarak yazar. Her yedek `pg_restore --list` ile doğrulanır, bozuksa silinir. Saklama: son 7 gün + son 4 pazar günü yedeği. Klasör `compose down` ile silinmez. Günlük: `docker compose logs backup`. Elle yedek almak için: `docker compose exec backup sh -c 'BACKUP_RUN_ONCE=1 sh /backup.sh'`.
+
+**Sunucu dışı kopya:** `.github/workflows/backup.yml` her gün 04:00'te (Türkiye saati) en yeni yedeği SSH ile çeker, `BACKUP_PASSPHRASE` ile şifreler (`gpg`, AES256), 30 gün saklanan Actions artifact'i olarak yükler. Aynı iş geçici bir PostgreSQL 17'ye geri yükleme denemesi yapıp `players` ve `ledger_entries` satır sayılarını günlüğe yazar. Elle çalıştırmak için Actions -> **Backup** -> Run workflow.
+
+**`BACKUP_PASSPHRASE` ekleme:** `openssl rand -hex 32` ile bir parola üretin, Settings -> Environments -> `production` -> Secrets altına `BACKUP_PASSPHRASE` olarak ekleyin ve **ayrıca** güvenli bir yerde (parola yöneticisi) saklayın. Kaybolursa sunucu dışı yedekler açılamaz. Tanımlı değilse iş açık bir hatayla durur.
+
+**Artifact'ten geri yükleme:**
+
+1. Actions -> **Backup** -> ilgili çalışma -> Artifacts bölümünden `capitalforge-yedek-...` dosyasını indirin, zip'ten çıkarın.
+2. Şifreyi çözün (parolayı sorar):
+   ```bash
+   gpg -d -o capitalforge.dump capitalforge-YYYYMMDD-SSDD.dump.gpg
+   ```
+3. Dosyayı sunucuya kopyalayın: `scp capitalforge.dump deploy@SUNUCU:/opt/capitalforge/backups/`
+4. Sunucuda önce **ayrı bir veritabanına** yükleyip kontrol edin (canlıya dokunmaz):
+   ```bash
+   cd /opt/capitalforge
+   docker compose run --rm --no-deps backup sh /restore.sh /backups/capitalforge.dump
+   # yeni veritabanı: capitalforge_restore_YYYYMMDD, satır sayıları yazdırılır
+   ```
+5. Canlı veritabanının üzerine yazmak gerekiyorsa önce oyunu durdurun:
+   ```bash
+   docker compose stop server web
+   docker compose run --rm --no-deps -e RESTORE_CONFIRM=EVET backup sh /restore.sh /backups/capitalforge.dump capitalforge
+   docker compose start server web
+   ```
+Sunucudaki yedekten geri yüklemek için 1-3. adımları atlayıp 4'te `/backups/` altındaki dosya adını verin.
 
 ## Sorun giderme
 

@@ -102,6 +102,7 @@ jobs:
           $SSH 'mkdir -p /opt/capitalforge && chmod 700 /opt/capitalforge'
           scp -i ~/.ssh/id_deploy deploy/docker-compose.prod.yml "$USER@$HOST:/opt/capitalforge/docker-compose.yml"
           scp -i ~/.ssh/id_deploy deploy/Caddyfile "$USER@$HOST:/opt/capitalforge/Caddyfile"
+          scp -i ~/.ssh/id_deploy deploy/backup.sh deploy/restore.sh "$USER@$HOST:/opt/capitalforge/"
           {
             echo "SERVER_IMAGE=$SERVER_IMAGE"
             echo "WEB_IMAGE=$WEB_IMAGE"
@@ -111,7 +112,24 @@ jobs:
             if [ -n "$NEW_ACCOUNT_TRADE_DELAY_SECONDS" ]; then
               echo "NEW_ACCOUNT_TRADE_DELAY_SECONDS=$NEW_ACCOUNT_TRADE_DELAY_SECONDS"
             fi
-          } | $SSH 'umask 077 && cat > /opt/capitalforge/.env'
+          } | $SSH 'umask 077 && cat > /opt/capitalforge/.env.new'
+          # Sunucuda: Redis parolası yoksa bir kez üretilir (değer CI günlüğüne hiç çıkmaz), .env'e uzakta eklenir.
+          # Yedek klasörü yayın kullanıcısına ait olur (backup konteyneri aynı UID/GID ile çalışır).
+          $SSH 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          cd /opt/capitalforge
+          mkdir -p secrets backups
+          chmod 700 secrets backups
+          if [ ! -s secrets/redis_password ]; then
+            head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > secrets/redis_password.tmp
+            mv secrets/redis_password.tmp secrets/redis_password
+          fi
+          chmod 600 secrets/redis_password
+          printf 'REDIS_PASSWORD=%s\n' "$(cat secrets/redis_password)" >> .env.new
+          printf 'BACKUP_UID=%s\nBACKUP_GID=%s\n' "$(id -u)" "$(id -g)" >> .env.new
+          mv .env.new .env
+          REMOTE
           echo "$GHCR_TOKEN" | $SSH "docker login $REGISTRY -u $ACTOR --password-stdin"
           # Önce imajları çek, sonra yığını temiz bir ağla yeniden kur. "down" volume'ları silmez
           # (veriler korunur); eski ağda kalan konteynerlerin DNS sorununu (EAI_AGAIN) önler.

@@ -1,0 +1,112 @@
+name: Backup
+
+# Her gün 04:00 TR (01:00 UTC): sunucudaki en yeni yedeği çeker, şifreler, artifact olarak saklar
+# ve geçici bir PostgreSQL'e geri yükleyerek denemesini yapar.
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    environment: production
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: restore
+          POSTGRES_DB: restore
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U restore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Şifreleme parolası tanımlı mı
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::BACKUP_PASSPHRASE sırrı (production ortamı Secrets) tanımlı değil. Uzun rastgele bir parola ekleyin ve güvenli bir yerde ayrıca saklayın."
+            exit 1
+          fi
+
+      - name: SSH anahtarını hazırla
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: En yeni yedeği çek ve şifrele
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # plain/ yalnızca runner'da kalır; artifact'e yalnızca out/ yüklenir.
+          mkdir -p "$RUNNER_TEMP/plain" "$RUNNER_TEMP/out"
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes $USER@$HOST"
+          latest=$($SSH 'ls -1 /opt/capitalforge/backups/capitalforge-????????-????.dump 2>/dev/null | sort | tail -n 1')
+          if [ -z "$latest" ]; then
+            echo "::error::Sunucuda yedek bulunamadı (/opt/capitalforge/backups)"
+            exit 1
+          fi
+          name=$(basename "$latest")
+          if ! [[ "$name" =~ ^capitalforge-[0-9]{8}-[0-9]{4}\.dump$ ]]; then
+            echo "::error::Beklenmeyen yedek dosya adı"
+            exit 1
+          fi
+          scp -p -i ~/.ssh/id_deploy "$USER@$HOST:/opt/capitalforge/backups/$name" "$RUNNER_TEMP/plain/$name"
+          echo "Çekilen yedek: $name ($(wc -c < "$RUNNER_TEMP/plain/$name") bayt)"
+          # Yedek 36 saatten eskiyse sunucudaki yedekleme durmuş demektir.
+          if [ -n "$(find "$RUNNER_TEMP/plain/$name" -mmin +2160)" ]; then
+            echo "::error::En yeni yedek 36 saatten eski; sunucudaki backup servisi çalışmıyor olabilir"
+            exit 1
+          fi
+          # Parola komut satırında değil, dosya tanıtıcısından (fd 0) okunur.
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output "$RUNNER_TEMP/out/$name.gpg" "$RUNNER_TEMP/plain/$name"
+          echo "BACKUP_NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Geri yükleme denemesi (geçici PostgreSQL 17)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          PGPASSWORD: restore
+        run: |
+          set -euo pipefail
+          umask 077
+          # Şifreli dosyayı açıp geri yükle: sadece şifreli artifact'in çözülebildiğini kanıtlar.
+          mkdir -p "$RUNNER_TEMP/verify"
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --decrypt --output "$RUNNER_TEMP/verify/restore.dump" "$RUNNER_TEMP/out/$BACKUP_NAME.gpg"
+          # İstemci sürümü 17 olmalı (runner'daki pg_restore eski olabilir).
+          pg="docker run --rm --network host -e PGPASSWORD -v $RUNNER_TEMP/verify:/in:ro postgres:17-alpine"
+          $pg pg_restore --no-owner --no-privileges --exit-on-error -h localhost -U restore -d restore /in/restore.dump
+          for t in players ledger_entries; do
+            n=$($pg psql -h localhost -U restore -d restore -Atc "SELECT count(*) FROM $t")
+            echo "$t: $n satır"
+          done
+          rm -rf "$RUNNER_TEMP/verify" "$RUNNER_TEMP/plain"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capitalforge-yedek-${{ env.BACKUP_NAME }}
+          path: ${{ runner.temp }}/out/*.gpg
+          retention-days: 30
+          if-no-files-found: error
