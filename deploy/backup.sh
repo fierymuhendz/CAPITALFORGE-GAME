@@ -4,6 +4,7 @@
 # Ortam: BACKUP_DIR (varsayılan /backups), BACKUP_HOUR (varsayılan 3, yerel saat),
 #        BACKUP_RUN_ONCE=1 (tek yedek alıp çık), BACKUP_KEEP_DAILY (7), BACKUP_KEEP_SUNDAYS (4)
 set -eu
+umask 077
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
 BACKUP_HOUR="${BACKUP_HOUR:-3}"
@@ -43,7 +44,10 @@ seconds_until_next_run() {
 # Tek yedek: geçici adla yaz, pg_restore --list ile doğrula, sonra yeniden adlandır.
 take_backup() {
   mkdir -p "$BACKUP_DIR"
-  name="capitalforge-$(date +%Y%m%d-%H%M).dump"
+  # Önceki çalışmadan artakalan yarım dosyalar (çökme/SIGKILL) silinir.
+  rm -f "$BACKUP_DIR"/*.tmp
+  # Dosya adına haftanın günü (1=Pazartesi ... 7=Pazar) eklenir; saklama bunu okur.
+  name="capitalforge-$(date +%Y%m%d-%H%M)-$(date +%u).dump"
   tmp="$BACKUP_DIR/$name.tmp"
   if ! pg_dump -Fc --no-owner -f "$tmp"; then
     log "HATA: pg_dump başarısız"; rm -f "$tmp"; return 1
@@ -56,17 +60,28 @@ take_backup() {
 }
 
 # Saklama: en yeni KEEP_DAILY farklı günün yedekleri + en yeni KEEP_SUNDAYS pazar günü yedeği. Gerisi silinir.
+# Pazar tespiti dosya adındaki gün etiketinden yapılır (-7.dump); etiketsiz eski adlar için
+# (capitalforge-YYYYMMDD-HHMM.dump) GNU date -d denenir, çalışmazsa pazar sayılmaz.
 prune_backups() {
-  files=$(ls -1 "$BACKUP_DIR"/capitalforge-????????-????.dump 2>/dev/null | sort -r) || true
+  files=$(ls -1 "$BACKUP_DIR"/capitalforge-????????-????.dump "$BACKUP_DIR"/capitalforge-????????-????-?.dump 2>/dev/null | sort -r) || true
   [ -n "$files" ] || return 0
   days=$(echo "$files" | sed 's|.*/capitalforge-\([0-9]\{8\}\)-.*|\1|' | sort -ru)
   keep_days=$(echo "$days" | head -n "$KEEP_DAILY")
   sundays=""
-  for d in $days; do
-    dow=$(date -d "$(echo "$d" | sed 's/\(....\)\(..\)\(..\)/\1-\2-\3/')" +%u 2>/dev/null || echo 0)
-    [ "$dow" = "7" ] && sundays="$sundays $d"
+  for f in $files; do
+    b=$(basename "$f")
+    d=$(echo "$b" | sed 's/capitalforge-\([0-9]\{8\}\)-.*/\1/')
+    case "$b" in
+      capitalforge-????????-????-7.dump) is_sun=1 ;;
+      capitalforge-????????-????-?.dump) is_sun=0 ;;
+      *) [ "$(date -d "$(echo "$d" | sed 's/\(....\)\(..\)\(..\)/\1-\2-\3/')" +%u 2>/dev/null || echo 0)" = "7" ] && is_sun=1 || is_sun=0 ;;
+    esac
+    if [ "$is_sun" = 1 ]; then
+      echo "$sundays" | grep -qx "$d" || sundays="$sundays
+$d"
+    fi
   done
-  keep_sundays=$(echo $sundays | tr ' ' '\n' | head -n "$KEEP_SUNDAYS")
+  keep_sundays=$(echo "$sundays" | sed '/^$/d' | sort -ru | head -n "$KEEP_SUNDAYS")
   for f in $files; do
     d=$(basename "$f" | sed 's/capitalforge-\([0-9]\{8\}\)-.*/\1/')
     if echo "$keep_days" | grep -qx "$d" || echo "$keep_sundays" | grep -qx "$d"; then continue; fi
@@ -80,6 +95,7 @@ if [ "${BACKUP_RUN_ONCE:-0}" = "1" ]; then
   exit 0
 fi
 
+mkdir -p "$BACKUP_DIR" && rm -f "$BACKUP_DIR"/*.tmp
 log "başladı; her gün $(printf '%02d' "$BACKUP_HOUR"):00 (yerel saat) yedek alınır"
 while true; do
   w=$(seconds_until_next_run)

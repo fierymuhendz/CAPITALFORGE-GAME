@@ -4,8 +4,8 @@
 
 1. `PUBLIC_DOMAIN` tanımlı değilse hemen hata verir.
 2. Sunucu ve web Docker imajlarını derler, GitHub Container Registry'ye (ghcr.io) gönderir. Web imajı `NEXT_PUBLIC_GAME_SERVER_URL=/ws` ile derlenir (göreli; adres tarayıcıdan üretilir, imaja IP/alan adı gömülmez).
-3. SSH ile sunucuya bağlanır, `/opt/capitalforge/` altına `docker-compose.yml`, `Caddyfile` ve `.env` yazar.
-4. `docker compose up -d` ile PostgreSQL, Redis, migration, oyun sunucusu, web ve Caddy'yi başlatır.
+3. SSH ile sunucuya bağlanır, `/opt/capitalforge/` altına `docker-compose.yml`, `backup.sh`, `restore.sh` ve `.env` dosyalarını önce `.new` adıyla yükler, doğrulamalar (Redis parolası biçimi, `backups` klasörü sahipliği) geçince hepsini birlikte yerine taşır. Root olarak bağlanılırsa `BACKUP_UID/GID=1000` kullanılır ve `backups` klasörü buna chown edilir; klasör root sahipliyse açık hatayla durur.
+4. İmajları çeker, **yayın öncesi yedek alır** (`docker compose run --rm --no-deps -e BACKUP_RUN_ONCE=1 backup`; postgres çalışmıyorsa, yani ilk kurulumda, atlanır; yedek başarısızsa yayın durur). İlk yedek bu yüzden yayından hemen önce alınır. Sonra `docker compose down` ve `docker compose up -d` ile PostgreSQL, Redis, migration, oyun sunucusu, web ve Caddy'yi başlatır.
 5. `https://$PUBLIC_DOMAIN/api/health`, `/ws/health`, `/` adreslerini (60 x 5 sn) ve `http://` -> `https://` yönlendirmesini kontrol eder. Başarısızsa `caddy` ve `server` günlüklerini basar.
 
 Tüm trafik tek adresten geçer. Dışarıya yalnızca **80 ve 443** açıktır:
@@ -43,7 +43,9 @@ Depo -> Settings -> Environments -> `production` ortamı oluşturun, aşağıdak
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan SUNUCU_IP` çıktısı |
 | `POSTGRES_PASSWORD` | Uzun, rastgele parola (`openssl rand -hex 32`) |
 | `JWT_SECRET` | Uzun, rastgele değer (`openssl rand -hex 32`) |
-| `BACKUP_PASSPHRASE` | Sunucu dışı yedekleri şifreleyen parola (aşağıda "Yedekler"). Zorunlu değil ama `Backup` iş akışı bunsuz çalışmaz |
+| `BACKUP_PASSPHRASE` | Sunucu dışı yedekleri şifreleyen parola: **en az 32 karakter, rastgele** (ör. `openssl rand -base64 48`), ayrıca parola yöneticisinde saklayın. Kısaysa `Backup` iş akışı hata verir (aşağıda "Yedekler") |
+
+Ortam koruması: `production` ortamında **Deployment branches: `main`** (yalnızca `main` dalı) kısıtını açın. Böylece başka bir dal bu ortamın sırlarına (SSH anahtarı, `BACKUP_PASSPHRASE`) erişen bir iş akışı çalıştıramaz.
 
 **Variables**
 
@@ -85,7 +87,7 @@ UpCloud panelindeki güvenlik duvarında da TCP 22, 80, 443 (isteğe bağlı UDP
 ## İlk yayın kontrol listesi
 
 1. `ls -ld /opt/capitalforge` çıktısında sahip `deploy` olmalı.
-2. `production` ortamında 6 secret (+ yedek için `BACKUP_PASSPHRASE`) ve `PUBLIC_DOMAIN` değişkeni tanımlı olmalı.
+2. `production` ortamında 6 secret (+ yedek için en az 32 karakterlik `BACKUP_PASSPHRASE`) ve `PUBLIC_DOMAIN` değişkeni tanımlı, Deployment branches `main` ile kısıtlı olmalı.
 3. (a) yolunda DNS A kaydı sunucu IP'sine işaret etmeli.
 4. Güvenlik duvarında (ufw + UpCloud) 22, 80, 443 açık olmalı.
 5. Yayından sonra `https://ALAN_ADI/api/health` adresi `{"ok":true}` döndürmeli.
@@ -99,18 +101,18 @@ Redis parolası sunucuda ilk yayında otomatik üretilir: `/opt/capitalforge/sec
 
 ## Yedekler
 
-**Sunucuda:** `backup` servisi her gün 03:00'te (Türkiye saati) `pg_dump` alır ve `/opt/capitalforge/backups/capitalforge-YYYYMMDD-SSDD.dump` olarak yazar. Her yedek `pg_restore --list` ile doğrulanır, bozuksa silinir. Saklama: son 7 gün + son 4 pazar günü yedeği. Klasör `compose down` ile silinmez. Günlük: `docker compose logs backup`. Elle yedek almak için: `docker compose exec backup sh -c 'BACKUP_RUN_ONCE=1 sh /backup.sh'`.
+**Sunucuda:** `backup` servisi her gün 03:00'te (Türkiye saati) `pg_dump` alır ve `/opt/capitalforge/backups/capitalforge-YYYYMMDD-SSDD-G.dump` (`G` haftanın günü, 1=Pazartesi ... 7=Pazar; saklama pazar yedeklerini bundan tanır, eski etiketsiz adlar da okunur) olarak yazar. Her yedek `pg_restore --list` ile doğrulanır, bozuksa silinir. Saklama: son 7 gün + son 4 pazar günü yedeği. Klasör `compose down` ile silinmez. Günlük: `docker compose logs backup`. Elle yedek almak için: `docker compose run --rm --no-deps -e BACKUP_RUN_ONCE=1 backup`. Yayın öncesi alınan yedek de aynı klasöre yazılır.
 
-**Sunucu dışı kopya:** `.github/workflows/backup.yml` her gün 04:00'te (Türkiye saati) en yeni yedeği SSH ile çeker, `BACKUP_PASSPHRASE` ile şifreler (`gpg`, AES256), 30 gün saklanan Actions artifact'i olarak yükler. Aynı iş geçici bir PostgreSQL 17'ye geri yükleme denemesi yapıp `players` ve `ledger_entries` satır sayılarını günlüğe yazar. Elle çalıştırmak için Actions -> **Backup** -> Run workflow.
+**Sunucu dışı kopya:** `.github/workflows/backup.yml` her gün 04:00'te (Türkiye saati) en yeni yedeği SSH ile çeker, `BACKUP_PASSPHRASE` ile şifreler (`gpg`, AES256, SHA512 ile yinelemeli anahtar türetme), 30 gün saklanan Actions artifact'i olarak yükler. Aynı iş geçici bir PostgreSQL 17'ye geri yükleme denemesi yapıp `players` ve `ledger_entries` satır sayılarını günlüğe yazar ve defter değişmezini denetler (`ledger_entries` tutarları toplamı 0, her transfer dengeli; tablo yoksa veya sorgu hata verirse iş kırmızı biter). Şifreli dosya doğrulamadan önce artifact olarak yüklenir, doğrulama başarısız olsa da yedek elde kalır. Elle çalıştırmak için Actions -> **Backup** -> Run workflow.
 
-**`BACKUP_PASSPHRASE` ekleme:** `openssl rand -hex 32` ile bir parola üretin, Settings -> Environments -> `production` -> Secrets altına `BACKUP_PASSPHRASE` olarak ekleyin ve **ayrıca** güvenli bir yerde (parola yöneticisi) saklayın. Kaybolursa sunucu dışı yedekler açılamaz. Tanımlı değilse iş açık bir hatayla durur.
+**`BACKUP_PASSPHRASE` ekleme:** En az 32 karakterlik rastgele bir parola üretin (ör. `openssl rand -base64 48`), Settings -> Environments -> `production` -> Secrets altına `BACKUP_PASSPHRASE` olarak ekleyin ve **ayrıca** parola yöneticisinde saklayın. Kaybolursa sunucu dışı yedekler açılamaz. Tanımlı değilse veya 32 karakterden kısaysa iş (değeri yazdırmadan) açık bir hatayla durur.
 
 **Artifact'ten geri yükleme:**
 
 1. Actions -> **Backup** -> ilgili çalışma -> Artifacts bölümünden `capitalforge-yedek-...` dosyasını indirin, zip'ten çıkarın.
 2. Şifreyi çözün (parolayı sorar):
    ```bash
-   gpg -d -o capitalforge.dump capitalforge-YYYYMMDD-SSDD.dump.gpg
+   gpg -d -o capitalforge.dump capitalforge-YYYYMMDD-SSDD-G.dump.gpg
    ```
 3. Dosyayı sunucuya kopyalayın: `scp capitalforge.dump deploy@SUNUCU:/opt/capitalforge/backups/`
 4. Sunucuda önce **ayrı bir veritabanına** yükleyip kontrol edin (canlıya dokunmaz):
@@ -119,12 +121,17 @@ Redis parolası sunucuda ilk yayında otomatik üretilir: `/opt/capitalforge/sec
    docker compose run --rm --no-deps backup sh /restore.sh /backups/capitalforge.dump
    # yeni veritabanı: capitalforge_restore_YYYYMMDD, satır sayıları yazdırılır
    ```
-5. Canlı veritabanının üzerine yazmak gerekiyorsa önce oyunu durdurun:
+5. Canlı veritabanının üzerine yazmak gerekiyorsa önce oyunu durdurun. `restore.sh` şunları zorunlu kılar:
+   - hedefte (kendisi dışında) bağlantı olmamalı; varsa reddeder ve `docker compose stop server` der,
+   - `RESTORE_CONFIRM` değeri **hedef veritabanı adına** eşit olmalı (`capitalforge`),
+   - üzerine yazmadan önce `/backups/pre-restore-<zaman>.dump` güvenlik yedeği alır,
+   - geri yükleme tek transaction'dadır; hata olursa canlı veri değişmez.
    ```bash
    docker compose stop server web
-   docker compose run --rm --no-deps -e RESTORE_CONFIRM=EVET backup sh /restore.sh /backups/capitalforge.dump capitalforge
+   docker compose run --rm --no-deps -e RESTORE_CONFIRM=capitalforge backup sh /restore.sh /backups/capitalforge.dump capitalforge
    docker compose start server web
    ```
+   Sonunda tablolar, satır sayıları ve defter toplamı (0) denetlenir; eksik tablo hata sayılır. `pre-restore-*.dump` dosyaları saklama politikasıyla silinmez, işiniz bitince elle temizleyin.
 Sunucudaki yedekten geri yüklemek için 1-3. adımları atlayıp 4'te `/backups/` altındaki dosya adını verin.
 
 ## Sorun giderme
