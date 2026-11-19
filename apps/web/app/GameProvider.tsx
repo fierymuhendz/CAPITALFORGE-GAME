@@ -8,6 +8,7 @@ import {
   CityResponseSchema,
   CompanyViewSchema,
   JobCompletedSchema,
+  MeSchema,
   MSG,
   OrderResultSchema,
   PortfolioSchema,
@@ -21,6 +22,7 @@ import {
   type PlaceOrder,
   type Portfolio,
 } from "@capitalforge/shared";
+import { gameServerUrl } from "../lib/gameServerUrl";
 
 export type ConnectionStatus = "bağlanıyor" | "bağlı" | "yeniden bağlanıyor";
 
@@ -55,6 +57,10 @@ interface GameContextValue {
   refreshCity: () => void;
   completions: CompletionNotice[];
   dismissCompletion: (jobId: string) => void;
+  /** Yeni hesap bekleme süresinin bitişi (epoch ms). Yalnızca gösterim; otorite sunucudadır. */
+  tradeUnlockAtMs: number | null;
+  /** /me'yi yeniden alır (ör. sunucu bekleme süresi hatası verince). */
+  refreshMe: () => void;
   /** HTTP 401 gibi durumlarda oturumu sonlandırır. */
   sessionExpired: () => void;
 }
@@ -98,6 +104,7 @@ export function GameProvider({
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [city, setCity] = useState<CityResponse | null>(null);
   const [completions, setCompletions] = useState<CompletionNotice[]>([]);
+  const [tradeUnlockAtMs, setTradeUnlockAtMs] = useState<number | null>(null);
   const roomRef = useRef<Room | null>(null);
   const pending = useRef(new Map<string, (r: OrderResult) => void>());
   const pendingActions = useRef(new Map<string, (r: ActionResult) => void>());
@@ -114,8 +121,7 @@ export function GameProvider({
     let dirty = false;
     let latestClock: number | null = null;
 
-    const url = process.env.NEXT_PUBLIC_GAME_SERVER_URL ?? "ws://localhost:2567";
-    const client = new Client(url);
+    const client = new Client(gameServerUrl());
 
     const flush = () => {
       if (latestClock !== null) setClockTick((old) => (old === latestClock ? old : latestClock));
@@ -324,6 +330,19 @@ export function GameProvider({
       .catch(() => undefined);
   }, [authFetch, status]);
 
+  const refreshMe = useCallback(() => {
+    void authFetch("/api/me")
+      .then((raw) => {
+        const parsed = MeSchema.safeParse(raw);
+        if (parsed.success) setTradeUnlockAtMs(Date.parse(parsed.data.tradeUnlockAt));
+      })
+      .catch(() => undefined);
+  }, [authFetch]);
+
+  useEffect(() => {
+    refreshMe();
+  }, [refreshMe]);
+
   useEffect(() => {
     refreshCity();
   }, [refreshCity, facilityCount]);
@@ -342,9 +361,11 @@ export function GameProvider({
       refreshCity,
       completions,
       dismissCompletion,
+      tradeUnlockAtMs,
+      refreshMe,
       sessionExpired,
     }),
-    [status, quotes, portfolio, sendOrder, sendAction, company, clockTick, catalog, city, refreshCity, completions, dismissCompletion, sessionExpired],
+    [status, quotes, portfolio, sendOrder, sendAction, company, clockTick, catalog, city, refreshCity, completions, dismissCompletion, tradeUnlockAtMs, refreshMe, sessionExpired],
   );
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }

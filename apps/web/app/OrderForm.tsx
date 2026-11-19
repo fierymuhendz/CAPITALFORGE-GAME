@@ -1,15 +1,23 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { formatMoney } from "@capitalforge/economy";
 import { PRODUCT_IDS, PlaceOrderSchema, type OrderResult, type PlaceOrder } from "@capitalforge/shared";
-import { ORDER_ERROR_TEXT, RETRYABLE, formatQuantity, productLabel } from "../lib/labels";
+import { ORDER_ERROR_TEXT, RETRYABLE, TICK_SECONDS, cooldownCountdownText, formatDuration, formatQuantity, productLabel } from "../lib/labels";
 import { useGame } from "./GameProvider";
 
 type Side = "buy" | "sell";
 
 export function OrderForm({ selected, onSelect }: { selected: string; onSelect: (id: string) => void }) {
-  const { sendOrder, status, catalog } = useGame();
+  const { sendOrder, status, catalog, tradeUnlockAtMs, refreshMe } = useGame();
+  const [now, setNow] = useState(() => Date.now());
+  const remainingSec = tradeUnlockAtMs === null ? 0 : Math.max(0, Math.ceil((tradeUnlockAtMs - now) / 1000));
+  const locked = remainingSec > 0;
+  useEffect(() => {
+    if (tradeUnlockAtMs === null || tradeUnlockAtMs <= Date.now()) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [tradeUnlockAtMs]);
   const maxOrder = catalog?.products.find((p) => p.productId === selected)?.maxOrder;
   const [side, setSide] = useState<Side>("buy");
   const [qty, setQty] = useState("1");
@@ -20,6 +28,7 @@ export function OrderForm({ selected, onSelect }: { selected: string; onSelect: 
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (locked) return;
     setMessage(null);
     const quantity = Number(qty);
     const sig = `${side}:${selected}:${quantity}`;
@@ -41,6 +50,7 @@ export function OrderForm({ selected, onSelect }: { selected: string; onSelect: 
         });
       } else {
         retry.current = RETRYABLE.has(result.error) ? { sig, key } : null;
+        if (result.error === "NEW_ACCOUNT_COOLDOWN") refreshMe();
         setMessage({ kind: "err", text: ORDER_ERROR_TEXT[result.error] });
       }
     } catch (err) {
@@ -98,9 +108,14 @@ export function OrderForm({ selected, onSelect }: { selected: string; onSelect: 
           {maxOrder ? `En büyük emir: ${formatQuantity(maxOrder)}` : "En büyük emir: …"}
         </span>
       </label>
+      {locked && (
+        <p role="status" data-testid="cooldown" className="rounded bg-amber-900/40 p-2 text-sm text-amber-200">
+          ⏳ {cooldownCountdownText(formatDuration(remainingSec / TICK_SECONDS))}
+        </p>
+      )}
       <button
         type="submit"
-        disabled={busy || status !== "bağlı"}
+        disabled={busy || locked || status !== "bağlı"}
         className={`rounded bg-emerald-600 p-3 font-semibold hover:bg-emerald-500 disabled:opacity-50 ${focus}`}
       >
         {busy ? "Gönderiliyor…" : side === "buy" ? "Satın al" : "Sat"}

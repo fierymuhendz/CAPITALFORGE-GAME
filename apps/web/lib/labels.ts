@@ -22,6 +22,7 @@ export const ORDER_ERROR_TEXT: Record<OrderErrorCode, string> = {
   IDEMPOTENCY_MISMATCH: "Bu istek anahtarı farklı bir emirle kullanılmış. Emri yeniden gönderin.",
   VOLUME_LIMIT: "Bu ürün için saatlik işlem hacmi sınırına ulaştınız. Biraz sonra yeniden deneyin.",
   ORDER_TOO_LARGE: "Emir piyasa derinliğine göre çok büyük, daha küçük parçalara bölün.",
+  NEW_ACCOUNT_COOLDOWN: "Yeni hesaplarda alım satım kısa bir bekleme süresinden sonra açılır. Süre dolunca tekrar deneyin.",
   INTERNAL: "Sunucu hatası. Tekrar deneyebilirsiniz.",
 };
 
@@ -99,4 +100,9 @@ export function formatDuration(ticks: number): string {
 /** Sunucudan gelen tam sayı dizgesini binlik ayraçla gösterir (hesap yapmaz). */
 export function formatQuantity(q: string): string {
   return BigInt(q).toLocaleString("tr-TR");
+}
+
+/** Yeni hesap bekleme süresi geri sayımı; süre formatDuration ile verilir (ör. "9 dk 30 sn"). */
+export function cooldownCountdownText(remaining: string): string {
+  return `Alım satım ${remaining} sonra açılır`;
 }
