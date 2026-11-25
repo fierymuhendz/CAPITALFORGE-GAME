@@ -132,14 +132,17 @@ export async function ledgerLines(db: DbOrTx, companyId: string, before: Date | 
 
 type SaleRow = typeof sales.$inferSelect;
 
-async function saleDtos(db: DbOrTx, rows: SaleRow[]): Promise<SaleDto[]> {
+async function saleDtos(db: DbOrTx, rows: SaleRow[], viewerId: string): Promise<SaleDto[]> {
   const ids = [...new Set(rows.flatMap((r) => [r.sellerCompanyId, r.buyerCompanyId]))];
   const names = ids.length ? await db.select({ id: companies.id, name: companies.name }).from(companies).where(inArray(companies.id, ids)) : [];
   const nm = new Map(names.map((n) => [n.id, n.name]));
   return rows.map((r) => ({
     id: r.id, at: r.createdAt.toISOString(), source: r.source, productId: r.productId, quality: r.quality, qtyKg: r.qtyKg, pricePerKg: m(r.pricePerKg),
     buyerName: nm.get(r.buyerCompanyId) ?? "", sellerName: nm.get(r.sellerCompanyId) ?? "", cityId: r.cityId,
-    gross: m(r.gross), cogs: m(r.cogs), freight: m(r.freight), fees: m(r.fees), netProfit: m(r.netProfit),
+    gross: m(r.gross),
+    // satıcıya özel kâr kalemleri alıcıya sızmaz
+    cogs: r.sellerCompanyId === viewerId ? m(r.cogs) : "0", freight: r.sellerCompanyId === viewerId ? m(r.freight) : "0",
+    fees: r.sellerCompanyId === viewerId ? m(r.fees) : "0", netProfit: r.sellerCompanyId === viewerId ? m(r.netProfit) : "0",
     contractId: r.contractId, installmentId: r.installmentId, shipmentId: r.shipmentId, ledgerTransactionIds: r.transactionIds,
   }));
 }
@@ -151,13 +154,13 @@ export async function salesList(db: DbOrTx, companyId: string, before: Date | un
     .where(and(eq(sales.sellerCompanyId, companyId), before ? lt(sales.createdAt, before) : undefined))
     .orderBy(desc(sales.createdAt), desc(sales.id))
     .limit(100);
-  return saleDtos(db, rows);
+  return saleDtos(db, rows, companyId);
 }
 
 export async function saleTrace(db: DbOrTx, companyId: string, saleId: string): Promise<SaleTraceDto> {
   const row = (await db.select().from(sales).where(eq(sales.id, saleId)).limit(1))[0];
   if (!row || (row.sellerCompanyId !== companyId && row.buyerCompanyId !== companyId)) fail("NOT_FOUND");
-  const [sale] = await saleDtos(db, [row]);
+  const [sale] = await saleDtos(db, [row], companyId);
   const c = row.contractId ? (await db.select().from(contracts).where(eq(contracts.id, row.contractId)).limit(1))[0] : undefined;
   const inst = row.installmentId ? (await db.select().from(contractInstallments).where(eq(contractInstallments.id, row.installmentId)).limit(1))[0] : undefined;
   const sh = row.shipmentId ? (await db.select().from(shipments).where(eq(shipments.id, row.shipmentId)).limit(1))[0] : undefined;

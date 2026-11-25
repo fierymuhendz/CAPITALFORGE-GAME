@@ -23,6 +23,10 @@ export interface ProductionContext {
   facilityQualityLevel: number;
   /** kalite araştırması seviyesi */
   researchQualityLevels: number;
+  /** bina seviyesi bonusları (bp, isteğe bağlı): çıktı +, enerji ve işçilik −, girdi tasarrufu */
+  levelYieldBp?: number;
+  levelEfficiencyBp?: number;
+  levelInputSavingBp?: number;
   /** şehir iş gücü durumu (bp, 10000 nötr) */
   laborAvailabilityBp: number;
   /** girdi kaliteleri: her girdi için kullanılacak lotların (kg, kalite) listesi */
@@ -46,8 +50,9 @@ export interface ProductionPlan {
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 /** Girdi miktarları (parti başına × parti). Verim girdileri değil çıktıyı etkiler. */
-export function requiredInputs(recipe: RecipeLike, batches: number): Array<{ productId: string; kg: number }> {
-  return recipe.inputs.map((i) => ({ productId: i.productId, kg: i.kg * batches }));
+export function requiredInputs(recipe: RecipeLike, batches: number, inputSavingBp = 0): Array<{ productId: string; kg: number }> {
+  const keep = 10000 - clamp(inputSavingBp, 0, 3000);
+  return recipe.inputs.map((i) => ({ productId: i.productId, kg: Math.max(1, Math.ceil((i.kg * batches * keep) / 10000)) }));
 }
 
 /** Kalite: girdilerin kg ağırlıklı ortalaması (yarım yukarı), girdisiz tarifte 2; + bonuslar; 1..5 */
@@ -64,16 +69,16 @@ export function outputQuality(lots: Array<{ kg: number; quality: number }>, faci
 export function planProduction(recipe: RecipeLike, ctx: ProductionContext): ProductionPlan {
   if (!Number.isInteger(ctx.batches) || ctx.batches < 1) throw new Error("parti sayısı geçersiz");
   const b = BigInt(ctx.batches);
-  const yieldNum = toBig(recipe.output.kg) * b * toBig(ctx.plotYieldBp) * toBig(ctx.cityYieldBp) * (BP + toBig(ctx.researchYieldBp));
-  const outputKg = Number(yieldNum / (BP * BP * BP));
-  const eff = BP - toBig(clamp(ctx.researchEfficiencyBp, 0, 5000));
+  const yieldNum = toBig(recipe.output.kg) * b * toBig(ctx.plotYieldBp) * toBig(ctx.cityYieldBp) * (BP + toBig(ctx.researchYieldBp)) * (BP + toBig(ctx.levelYieldBp ?? 0));
+  const outputKg = Number(yieldNum / (BP * BP * BP * BP));
+  const eff = BP - toBig(clamp(ctx.researchEfficiencyBp + (ctx.levelEfficiencyBp ?? 0), 0, 6000));
   const energyKwh = Number((toBig(recipe.energyKwh) * b * eff) / BP);
   const laborHours = Number((toBig(recipe.laborHours) * b * eff) / BP);
   const waterM3 = recipe.waterM3 * ctx.batches;
   const durBp = 10000 + Math.round((10000 - ctx.laborAvailabilityBp) / 2);
   const minutes = Math.max(1, Math.ceil((recipe.minutes * clamp(durBp, 7000, 13000)) / 10000));
   return {
-    inputs: requiredInputs(recipe, ctx.batches),
+    inputs: requiredInputs(recipe, ctx.batches, ctx.levelInputSavingBp ?? 0),
     outputKg,
     outputQuality: outputQuality(ctx.inputLots, ctx.facilityQualityLevel, ctx.researchQualityLevels),
     minutes,

@@ -7,6 +7,7 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { allocate, applyBp, estimateOwnTrip, mulDiv } from "@capitalforge/economy";
 import { roadDistanceKm } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
+import { paceTrip } from "../catalog/pace";
 import type { Tx } from "../db/client";
 import { contractInstallments, freightJobs, sales, shipmentCargo, shipments, vehicles } from "../db/schema";
 import type { Deps } from "../deps";
@@ -89,9 +90,11 @@ export async function startShipment(tx: Tx, uow: UnitOfWork, catalog: Catalog, a
   const bonus = await researchBonuses(tx, catalog, a.carrierId);
   const trip = estimateOwnTrip(km, { capacityKg: model.capacityKg, speedKmh: model.speedKmh, fuelPerKm: BigInt(model.fuelPerKm) }, BigInt(catalog.city(origin).wage), {
     speedBonusBp: bonus.speedBp, fuelSavingBp: bonus.fuelBp, loadingHours: catalog.settings.freight.driverHoursPerTrip,
+    handlingMinutes: catalog.settings.freight.handlingMinutes ?? 0,
   });
   const id = randomUUID();
-  const arrivesAt = new Date(a.now.getTime() + trip.minutes * 60_000);
+  const tripMinutes = paceTrip(catalog, trip.minutes);
+  const arrivesAt = new Date(a.now.getTime() + tripMinutes * 60_000);
   const own = a.purpose === "own";
   const led = await post(tx, {
     kind: "shipment_depart", idempotencyKey: `ship-depart:${id}`, refType: "shipment", refId: id, at: a.now,

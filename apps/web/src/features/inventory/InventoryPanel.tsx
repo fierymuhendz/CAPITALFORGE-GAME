@@ -18,8 +18,7 @@ export function InventoryPanel() {
   const [sel, setSel] = useState<HoldingDto | null>(null);
   const cities = useMemo(() => [...new Set((res.data ?? []).map((h) => h.cityId))], [res.data]);
   const cols: Col<HoldingDto>[] = [
-    { key: "p", head: t("inventory.product"), cell: (h) => <b>{cat.product(h.productId)}</b> },
-    { key: "q", head: t("common.quality"), cell: (h) => `★${h.quality}` },
+    { key: "p", head: t("inventory.product"), lead: true, cell: (h) => <b>{cat.product(h.productId)} <span className="muted xs">★{h.quality}</span></b> },
     { key: "n", head: t("inventory.qty"), right: true, cell: (h) => <span className="num">{i.qty(h.qtyKg)}</span> },
     { key: "a", head: t("inventory.available"), right: true, cell: (h) => <span className="num">{i.qty(h.availableKg)}{h.reservedKg ? <span className="muted"> ({t("inventory.reserved")} {i.qty(h.reservedKg)})</span> : null}</span> },
     { key: "c", head: t("inventory.city"), cell: (h) => cat.city(h.cityId) },
@@ -51,14 +50,14 @@ function Detail({ h, onClose, onSell }: { h: HoldingDto | null; onClose: () => v
   const cat = useCat();
   const mv = useData<MovementDto[]>(h ? "/inventory/movements" : null, h ? { productId: h.productId, cityId: h.cityId, quality: h.quality } : undefined, ["inventory"]);
   return (
-    <Sheet open={!!h} onClose={onClose} closeLabel={t("common.close")} wide title={h ? `${cat.product(h.productId)} ★${h.quality} · ${cat.city(h.cityId)}` : ""}>
+    <Sheet open={!!h} onClose={onClose} closeLabel={t("common.close")} wide title={h ? `${cat.product(h.productId)} ★${h.quality} · ${cat.city(h.cityId)}` : ""}
+      footer={h ? <Button variant="primary" onClick={() => onSell(h)}>{t("inventory.sell")}</Button> : undefined}>
       {h ? (
         <div className="col">
           <KV k={t("inventory.qty")} v={i.qty(h.qtyKg)} />
           <KV k={t("inventory.available")} v={i.qty(h.availableKg)} />
           <KV k={t("inventory.totalCost")} v={i.money(h.costTotal)} />
           <KV k={t("inventory.avgCost")} v={i.price(h.avgCostPerKg)} />
-          <Button variant="primary" onClick={() => onSell(h)}>{t("inventory.sell")}</Button>
           <h4>{t("inventory.movements")}</h4>
           {mv.data ? (mv.data.length ? mv.data.map((m) => (
             <div key={m.id} className="card flat tight col tight">

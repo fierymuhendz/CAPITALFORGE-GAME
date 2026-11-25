@@ -1,10 +1,12 @@
 import type { Dict } from "./index";
 import { trGame } from "./tr.game";
 import { trAdmin } from "./tr.admin";
+import { trCity } from "./tr.city";
 
 export const tr: Dict = {
   ...trGame,
   ...trAdmin,
+  ...trCity,
   errors: {
     BAD_REQUEST: "Geçersiz istek.",
     UNAUTHENTICATED: "Lütfen giriş yapın.",
@@ -50,6 +52,7 @@ export const tr: Dict = {
     CONTRACT_NOT_ACTIVE: "Sözleşme aktif değil.",
     INSTALLMENT_NOT_OPEN: "Bu taksit için teslim penceresi açık değil.",
     NOT_PARTY: "Bu sözleşmenin tarafı değilsiniz.",
+    TOO_MANY_LOADS: "Teslim ettirilecek miktar en çok 10 kamyon dolusu olabilir; miktarı azaltın.",
     FREIGHT_NOT_OPEN: "Taşıma işi artık açık değil.",
     LOAN_LIMIT: "Kredi limitiniz yetersiz.",
     LOAN_NOT_ACTIVE: "Kredi aktif değil.",

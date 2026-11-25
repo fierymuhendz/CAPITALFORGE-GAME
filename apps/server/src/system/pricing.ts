@@ -33,3 +33,14 @@ export async function currentSystemBid(db: DbOrTx, catalog: Catalog, productId: 
   const ref = refs.get(cityId) ?? BigInt(catalog.product(productId).basePricePerKg);
   return systemBid(ref, catalog.settings.system.bidBp, filledTodayKg, dailyKg, bidCapFromRefs(refs, catalog.settings.system.askBp));
 }
+
+/** Sistem alım sözleşmesi fiyat sınırı: en düşük güncel sistem satışının %95'i (kabul anında uygulanır) */
+export async function systemContractCap(db: DbOrTx, catalog: Catalog, productId: string): Promise<bigint | null> {
+  const refs = await loadRefs(db, productId);
+  let min: bigint | null = null;
+  for (const ref of refs.values()) {
+    const a = systemAsk(ref, catalog.settings.system.askBp, 0, 1);
+    if (min === null || a < min) min = a;
+  }
+  return min === null ? null : (min * 9500n) / 10000n;
+}

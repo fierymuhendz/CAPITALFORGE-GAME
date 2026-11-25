@@ -6,7 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { and, desc, eq, inArray, ne, or } from "drizzle-orm";
 import {
   BoardScopeQuery, BuyFromListingReq, BuyOrderReq, BuyVehicleReq, CancelReq, ContractProposalReq, DeliverReq, FreightJobReq, FreightQuoteQuery,
-  AcceptFreightReq, ListingReq, MarketHistoryQuery, MarketQuery, MineScopeQuery, SellToOrderReq, ShipmentReq,
+  AcceptFreightReq, ListingReq, MarketHistoryQuery, MarketQuery, MineScopeQuery, OffersQuery, SellToOrderReq, ShipmentReq,
 } from "@capitalforge/shared";
 import { z } from "zod";
 import { contracts, freightJobs, marketOrders, shipmentCargo, shipments, vehicles } from "../../db/schema";
@@ -15,7 +15,10 @@ import { fail } from "../../errors";
 import { registerTask } from "../../scheduler/scheduler";
 import { route } from "../route";
 import { companyBriefs, needCompany, uuidParam } from "../../market/common";
-import { buyFromListing, cancelOrder, createBuyOrder, createListing, orderDto, sellToOrder } from "../../market/spot";
+import { cancelOrder, createBuyOrder, createListing, orderDto, sellToOrder } from "../../market/spot";
+import { buyWithDelivery } from "../../market/buy";
+import { offers } from "../../market/offers";
+import { contractCompare } from "../../contracts/compare";
 import { marketOverview, marketView, priceHistoryView } from "../../market/views";
 import { updatePriceRefs } from "../../market/prices";
 import {
@@ -71,7 +74,11 @@ export function register(app: FastifyInstance, deps: Deps): void {
   });
   route(app, deps, {
     method: "POST", url: "/market/listings/:id/buy", auth: "company", kind: "mutation", body: BuyFromListingReq,
-    handler: async ({ tx, uow, body, company, now, params }) => spotOut(await buyFromListing(tx, uow, cat, needCompany(company), uuidParam(params.id), body, now)),
+    handler: async ({ tx, uow, body, company, now, params }) => buyWithDelivery(tx, uow, cat, needCompany(company), uuidParam(params.id), body, now),
+  });
+  route(app, deps, {
+    method: "GET", url: "/market/offers", auth: "company", body: OffersQuery,
+    handler: async ({ body, company, now }) => offers(deps.db, cat, needCompany(company), body, now),
   });
   route(app, deps, {
     method: "POST", url: "/market/orders/:id/sell", auth: "company", kind: "mutation", body: SellToOrderReq,
@@ -130,6 +137,18 @@ export function register(app: FastifyInstance, deps: Deps): void {
       const openPublic = row.status === "proposed" && !row.counterpartyCompanyId;
       if (!party && !openPublic) fail("NOT_PARTY");
       return contractDetail(deps.db, row, c.id);
+    },
+  });
+  route(app, deps, {
+    method: "GET", url: "/contracts/:id/compare", auth: "company",
+    handler: async ({ company, params, now }) => {
+      const c = needCompany(company);
+      const row = (await deps.db.select().from(contracts).where(eq(contracts.id, uuidParam(params.id))))[0];
+      if (!row) fail("NOT_FOUND");
+      const party = [row.sellerCompanyId, row.buyerCompanyId, row.proposerCompanyId, row.counterpartyCompanyId].includes(c.id);
+      const openPublic = row.status === "proposed" && !row.counterpartyCompanyId;
+      if (!party && !openPublic) fail("NOT_PARTY");
+      return (await contractCompare(deps.db, cat, row, c.id, now)).dto;
     },
   });
   route(app, deps, {

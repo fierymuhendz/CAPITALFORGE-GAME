@@ -7,3 +7,5 @@ export * from "./pricing";
 export * from "./contracts";
 export * from "./loans";
 export * from "./anomaly";
+export * from "./decisions";
+export * from "./pace";

@@ -24,7 +24,7 @@ export const RESEARCH: ResearchDef[] = [
   {
     id: "quality_control", name: { tr: "Kalite kontrol", en: "Quality control" },
     description: { tr: "Tüm çıktılarda kalite seviye başına +1 (en fazla 5)", en: "+1 output quality per level (max 5)" },
-    maxLevel: 2, baseCost: 5_000_000, baseMinutes: 240, effect: { kind: "quality", perLevel: 1 },
+    maxLevel: 2, baseCost: 10_000_000, baseMinutes: 240, effect: { kind: "quality", perLevel: 1 },
   },
   {
     id: "eco_driving", name: { tr: "Ekonomik sürüş", en: "Eco driving" },

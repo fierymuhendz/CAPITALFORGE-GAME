@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { peekShipIntent, takeShipIntent, type ShipIntent } from "@/lib/intent";
 import { BuyVehicleReq, FreightJobReq, ShipmentReq, type FreightJobDto, type FreightQuoteDto, type PublicCompanyDto, type ShipmentDto, type VehicleDto } from "@capitalforge/shared";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/action";
@@ -7,17 +8,19 @@ import { useApp } from "@/lib/app";
 import { useCat } from "@/lib/catalog";
 import { useData, useList } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { Async, Badge, Button, Card, Countdown, EmptyState, IntInput, KV, MoneyInput, Notice, SelectField, SystemBadge, TextField, TimeProgress, Tabs, Trend } from "@/ui";
+import { ActionBar, Async, Badge, Button, Card, Countdown, EmptyState, IntInput, KV, MoneyInput, Notice, SelectField, SystemBadge, TextField, TimeProgress, Table, Tabs, Tag, Trend, type Col } from "@/ui";
 import { usePlay } from "../play/context";
 import { CargoPicker, cargoBody, cargoTotal, type CargoLine } from "./CargoPicker";
 
 export function LogisticsPanel() {
   const { t } = useT();
-  const [tab, setTab] = useState("fleet");
+  const [intent] = useState<ShipIntent | null>(() => peekShipIntent());
+  useEffect(() => { takeShipIntent(); }, []);
+  const [tab, setTab] = useState(intent ? "send" : "fleet");
   return (
     <div className="col">
       <Tabs label={t("panels.logistics")} value={tab} onChange={setTab} items={[{ id: "fleet", label: t("logistics.fleet") }, { id: "send", label: t("logistics.send") }, { id: "board", label: t("logistics.board") }, { id: "post", label: t("logistics.postJob") }, { id: "ships", label: t("logistics.shipments") }]} />
-      {tab === "fleet" ? <Fleet go={setTab} /> : tab === "send" ? <Send /> : tab === "board" ? <Board /> : tab === "post" ? <PostJob /> : <Shipments />}
+      {tab === "fleet" ? <Fleet go={setTab} /> : tab === "send" ? <Send intent={intent} /> : tab === "board" ? <Board /> : tab === "post" ? <PostJob /> : <Shipments />}
     </div>
   );
 }
@@ -66,7 +69,7 @@ function Fleet({ go }: { go: (t: string) => void }) {
   );
 }
 
-function Send() {
+function Send({ intent }: { intent: ShipIntent | null }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
@@ -74,15 +77,17 @@ function Send() {
   const fleet = useFleet();
   const idle = (fleet.data ?? []).filter((v) => v.status === "idle" && v.cityId);
   const [vid, setVid] = useState("");
-  const [dest, setDest] = useState("");
-  const [lines, setLines] = useState<CargoLine[]>([]);
-  const v = idle.find((x) => x.id === vid) ?? idle[0];
+  const [dest, setDest] = useState(intent?.destCityId ?? "");
+  const [lines, setLines] = useState<CargoLine[]>(intent ? [{ productId: intent.productId, quality: intent.quality, qtyKg: intent.qtyKg }] : []);
+  const intentVeh = intent ? idle.find((x) => x.cityId === intent.fromCityId) : undefined;
+  const v = idle.find((x) => x.id === vid) ?? intentVeh ?? idle[0];
+  const keepLines = useRef(!!intent);
   const dst = dest && dest !== v?.cityId ? dest : cat.world.cities.find((c) => c.id !== v?.cityId)?.id ?? "";
   const kg = cargoTotal(lines);
   const model = cat.world.vehicleModels.find((m) => m.id === v?.modelId);
   const quote = useData<FreightQuoteDto>(v?.cityId && dst && kg > 0 ? "/freight/quote" : null, { originCityId: v?.cityId ?? "", destCityId: dst, kg, modelId: v?.modelId }, []);
   const mine = quote.data?.own.find((o) => o.modelId === v?.modelId);
-  useEffect(() => { setLines([]); }, [v?.id]);
+  useEffect(() => { if (keepLines.current && v?.cityId === intent?.fromCityId) { keepLines.current = false; return; } setLines([]); }, [v?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const body = { vehicleId: v?.id, destCityId: dst, cargo: cargoBody(lines) };
   const ok = !!v && ShipmentReq.omit({ idempotencyKey: true }).safeParse(body).success && (!model || kg <= model.capacityKg);
   if (fleet.data && !idle.length) return <EmptyState icon="truck" title={t("logistics.noIdle")} text={t("logistics.noIdleText")} />;
@@ -90,18 +95,16 @@ function Send() {
     <Async res={fleet}>
       {() => (
         <div className="col">
-          <p className="muted2 small">{t("logistics.sendHint")}</p>
           <SelectField label={t("logistics.vehicle")} value={v?.id ?? ""} onChange={setVid} options={idle.map((x) => ({ id: x.id, label: `${cat.vehicle(x.modelId)} — ${cat.city(x.cityId)}` }))} />
           <SelectField label={t("logistics.destination")} value={dst} onChange={setDest} options={cat.world.cities.filter((c) => c.id !== v?.cityId).map((c) => ({ id: c.id, label: i.name(c.name) }))} />
           {v?.cityId ? <CargoPicker cityId={v.cityId} lines={lines} onChange={setLines} allowEmpty /> : null}
           {model && kg > model.capacityKg ? <Notice tone="bad">{t("errors.VEHICLE_CAPACITY")} ({i.qty(model.capacityKg)})</Notice> : null}
-          {!lines.length ? <Notice tone="steel">{t("logistics.repositionNote")}</Notice> : null}
           {mine ? <Card flat tight><div className="col tight" aria-live="polite">
             <KV k={t("logistics.estCost")} v={<b>{i.money(mine.total)}</b>} /><KV k={t("logistics.fuelCost")} v={i.money(mine.fuel)} /><KV k={t("logistics.driverCost")} v={i.money(mine.driver)} />
             <KV k={t("logistics.eta")} v={`${t("common.minutes", { n: mine.minutes })} (${i.date(mine.arrivesAt)})`} />
             <KV k={t("logistics.systemQuote")} v={i.money(quote.data!.systemQuote)} />
           </div></Card> : null}
-          <div className="sticky-cta"><Button variant="primary" size="lg" loading={busy} disabled={!ok} onClick={() => void run(() => api.post("/shipments", body), { ok: "logistics.shipped" }).then((r) => { if (r) setLines([]); })}>{lines.length ? t("logistics.shipBtn") : t("logistics.moveEmpty")}</Button></div>
+          <ActionBar><Button variant="primary" loading={busy} disabled={!ok} onClick={() => void run(() => api.post("/shipments", body), { ok: "logistics.shipped" }).then((r) => { if (r) setLines([]); })}>{lines.length ? t("logistics.shipBtn") : t("logistics.moveEmpty")}</Button></ActionBar>
         </div>
       )}
     </Async>
@@ -114,39 +117,31 @@ function Board() {
   const cat = useCat();
   const [scope, setScope] = useState<"board" | "mine">("board");
   const res = useList<FreightJobDto>("/freight-jobs", { scope }, ["freight", "shipments"]);
-  const fleet = useFleet();
   const { run, busy } = useAction();
-  const [pick, setPick] = useState<Record<string, string>>({});
+  const bestId = useMemo(() => {
+    let best: FreightJobDto | null = null;
+    for (const j of res.data ?? []) if (j.status === "open" && j.netPerHourForMe !== null && (!best || BigInt(j.netPerHourForMe) > BigInt(best.netPerHourForMe!))) best = j;
+    return best && BigInt(best.netPerHourForMe!) > 0n ? best.id : null;
+  }, [res.data]);
+  const accept = (j: FreightJobDto) => void run(() => api.post(`/freight-jobs/${j.id}/accept`, { vehicleId: j.bestVehicleIdForMe }), { ok: "logistics.accepted" });
+  const cols: Col<FreightJobDto>[] = [
+    { key: "r", head: t("logistics.route"), lead: true, cell: (j) => <span className="col tight" style={{ gap: 0, minWidth: 0 }}><b className="nm">{cat.city(j.originCityId)} → {cat.city(j.destCityId)} · {j.distanceKm} km</b><span className="muted xs nm">{j.cargo.length ? j.cargo.map((c) => `${cat.product(c.productId)} ${i.qty(c.qtyKg)}`).join(", ") : i.qty(j.totalKg)} · {j.shipperName}</span></span> },
+    { key: "p", head: t("logistics.pay"), right: true, nowrap: true, cell: (j) => <b className="num">{i.money(j.payAmount)}</b> },
+    { key: "m", head: t("logistics.truckTime"), right: true, nowrap: true, cell: (j) => j.estMinutesForMe !== null ? <span className="num">{i.dur(j.estMinutesForMe)}</span> : <span className="muted">—</span> },
+    { key: "c", head: t("logistics.estCost"), right: true, nowrap: true, cell: (j) => j.estCostForMe ? <span className="num">{i.money(j.estCostForMe)}</span> : <span className="muted">—</span> },
+    { key: "n", head: t("logistics.net"), right: true, nowrap: true, cell: (j) => j.estCostForMe ? <Trend value={(BigInt(j.payAmount) - BigInt(j.estCostForMe)).toString()} text={i.signed((BigInt(j.payAmount) - BigInt(j.estCostForMe)).toString())} /> : <span className="muted">—</span> },
+    { key: "h", head: t("logistics.netPerHour"), right: true, nowrap: true, cell: (j) => j.netPerHourForMe !== null ? <Trend value={j.netPerHourForMe} text={`${i.signed(j.netPerHourForMe)}/${t("common.hourShort")}`} /> : <span className="muted">—</span> },
+    { key: "d", head: t("logistics.deadline"), nowrap: true, cell: (j) => <Countdown until={j.deadlineAt} doneText={t("logistics.expired")} /> },
+    { key: "t", head: "", bare: true, wide: true, cell: (j) => <span className="tags">{j.id === bestId ? <Tag tone="forge" icon="star">{t("logistics.bestNet")}</Tag> : null}{j.status !== "open" ? <Badge>{t(`logistics.jobStatus.${j.status}`)}</Badge> : null}{j.isSystem ? <SystemBadge /> : null}</span> },
+    { key: "a", head: "", bare: true, act: true, cell: (j) => j.status === "open" && j.mine === "shipper" ? <Button size="sm" variant="danger" loading={busy} onClick={() => void run(() => api.post(`/freight-jobs/${j.id}/cancel`), { ok: "logistics.jobCancelled" })}>{t("common.cancel")}</Button>
+      : j.status === "open" ? (j.bestVehicleIdForMe ? <Button size="sm" variant="primary" loading={busy} onClick={() => accept(j)}>{t("logistics.accept")}</Button> : <span className="warn xs">⚠ {t("logistics.noFitVehicle", { city: cat.city(j.originCityId) })}</span>) : null },
+  ];
   return (
     <div className="col">
       <div className="pill-scroll"><button type="button" className="chip" aria-pressed={scope === "board"} onClick={() => setScope("board")}>{t("logistics.openJobs")}</button><button type="button" className="chip" aria-pressed={scope === "mine"} onClick={() => setScope("mine")}>{t("logistics.myJobs")}</button></div>
       <Async res={res}>
         {(jobs) => !jobs.length ? <EmptyState icon="truck" title={t("logistics.noJobs")} text={t(scope === "board" ? "logistics.noJobsText" : "logistics.noMyJobsText")} /> : (
-          <div className="col">{jobs.map((j) => {
-            const fits = (fleet.data ?? []).filter((v) => v.status === "idle" && v.cityId === j.originCityId && (cat.world.vehicleModels.find((m) => m.id === v.modelId)?.capacityKg ?? 0) >= j.totalKg);
-            const vid = pick[j.id] ?? fits[0]?.id ?? "";
-            const net = j.estCostForMe ? BigInt(j.payAmount) - BigInt(j.estCostForMe) : null;
-            return (
-              <Card key={j.id}><div className="col tight">
-                <div className="row between wrap"><b>{cat.city(j.originCityId)} → {cat.city(j.destCityId)} · {j.distanceKm} km</b><Badge tone={j.status === "open" ? "good" : undefined}>{t(`logistics.jobStatus.${j.status}`)}</Badge></div>
-                <span className="small muted2">{j.cargo.length ? j.cargo.map((c) => `${cat.product(c.productId)} ★${c.quality} ${i.qty(c.qtyKg)}`).join(", ") : i.qty(j.totalKg)}</span>
-                <span className="small muted">{j.shipperName} {j.isSystem ? <SystemBadge /> : null}{j.consigneeName ? <> → {j.consigneeName}</> : null}</span>
-                <KV k={t("logistics.pay")} v={<b>{i.money(j.payAmount)}</b>} />
-                <KV k={t("logistics.deadline")} v={<Countdown until={j.deadlineAt} doneText={t("logistics.expired")} />} />
-                {j.estCostForMe && net !== null ? <>
-                  <KV k={t("logistics.estCost")} v={i.money(j.estCostForMe)} />
-                  <KV k={t("logistics.estNet")} v={<Trend value={net.toString()} text={i.signed(net.toString())} />} />
-                </> : null}
-                {j.status === "open" && j.mine !== "shipper" ? (fits.length ? (
-                  <div className="row wrap" style={{ alignItems: "flex-end" }}>
-                    <div className="grow"><SelectField label={t("logistics.vehicle")} value={vid} onChange={(v) => setPick({ ...pick, [j.id]: v })} options={fits.map((v) => ({ id: v.id, label: cat.vehicle(v.modelId) }))} /></div>
-                    <Button variant="primary" loading={busy} onClick={() => void run(() => api.post(`/freight-jobs/${j.id}/accept`, { vehicleId: vid }), { ok: "logistics.accepted" })}>{t("logistics.accept")}</Button>
-                  </div>
-                ) : <span className="small warn">⚠ {t("logistics.noFitVehicle", { city: cat.city(j.originCityId) })}</span>) : null}
-                {j.status === "open" && j.mine === "shipper" ? <Button size="sm" variant="danger" loading={busy} onClick={() => void run(() => api.post(`/freight-jobs/${j.id}/cancel`), { ok: "logistics.jobCancelled" })}>{t("common.cancel")}</Button> : null}
-              </div></Card>
-            );
-          })}</div>
+          <Table cols={cols} rows={jobs} rowKey={(j) => j.id} rowClass={(j) => (j.id === bestId ? "best" : "")} />
         )}
       </Async>
     </div>
@@ -173,7 +168,6 @@ function PostJob() {
   const ok = FreightJobReq.omit({ idempotencyKey: true }).safeParse(body).success;
   return (
     <div className="col">
-      <p className="muted2 small">{t("logistics.postHint")}</p>
       <div className="grid2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
         <SelectField label={t("logistics.origin")} value={origin} onChange={(v) => { setOrigin(v); setLines([]); }} options={cat.world.cities.map((c) => ({ id: c.id, label: i.name(c.name) }))} />
         <SelectField label={t("logistics.destination")} value={dest} onChange={setDest} options={cat.world.cities.map((c) => ({ id: c.id, label: i.name(c.name) }))} />
@@ -185,7 +179,7 @@ function PostJob() {
       <MoneyInput label={t("logistics.pay")} value={pay} onChange={setPay} hint={quote.data ? `${t("logistics.systemQuote")}: ${i.money(quote.data.systemQuote)} (${quote.data.distanceKm} km)` : t("logistics.payHint")} />
       <IntInput label={t("logistics.deadlineHours")} value={hours} onChange={setHours} min={1} max={168} suffix={t("common.hourShort")} />
       <label className="row" style={{ minHeight: 44 }}><input type="checkbox" checked={allowSys} onChange={(e) => setAllowSys(e.target.checked)} style={{ width: 20, height: 20 }} /> {t("logistics.allowSystem")}</label>
-      <Button variant="primary" size="lg" loading={busy} disabled={!ok} onClick={() => void run(() => api.post("/freight-jobs", body), { ok: "logistics.jobPosted" }).then((r) => { if (r) { setLines([]); setPay(null); } })}>{t("logistics.postBtn")}</Button>
+      <ActionBar><Button variant="primary" loading={busy} disabled={!ok} onClick={() => void run(() => api.post("/freight-jobs", body), { ok: "logistics.jobPosted" }).then((r) => { if (r) { setLines([]); setPay(null); } })}>{t("logistics.postBtn")}</Button></ActionBar>
     </div>
   );
 }

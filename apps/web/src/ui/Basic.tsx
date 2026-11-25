@@ -102,3 +102,23 @@ export function Section({ title, action, children }: { title: ReactNode; action?
     </section>
   );
 }
+
+/** Açılır ayrıntı (bir dokunuşla). Yerel <details>: klavye ve ekran okuyucu uyumlu. */
+export function Disclosure({ summary, children, open }: { summary: ReactNode; children: ReactNode; open?: boolean }) {
+  return (
+    <details className="disc" open={open}>
+      <summary>{summary}</summary>
+      <div className="disc-body">{children}</div>
+    </details>
+  );
+}
+
+/** Kısa etiket: simge + metin (renk tek bilgi değildir). */
+export function Tag({ children, tone, icon, title }: { children: ReactNode; tone?: "good" | "warn" | "forge" | "steel"; icon?: string; title?: string }) {
+  return <span className={`tag ${tone ?? ""}`} title={title}>{icon ? <Icon name={icon} size={12} /> : null}{children}</span>;
+}
+
+/** Alt eylem çubuğu: panel/diyalog kayarken birincil eylem hep görünür. */
+export function ActionBar({ children }: { children: ReactNode }) {
+  return <div className="action-bar">{children}</div>;
+}

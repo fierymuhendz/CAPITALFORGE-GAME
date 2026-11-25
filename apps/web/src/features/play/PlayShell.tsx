@@ -12,7 +12,7 @@ import { Badge, Button, Icon, Sheet } from "@/ui";
 import type { CitySelection } from "../../scene";
 import { Brand } from "../common/Chrome";
 import { CityStage, resolveQuality } from "./CityStage";
-import { PANEL_IDS, PlayProvider, type PanelId } from "./context";
+import { PANEL_IDS, PlayProvider, WIDE_PANELS, type PanelId } from "./context";
 import { PANELS } from "./panels";
 import { SelectionPanel } from "./Selection";
 
@@ -49,6 +49,12 @@ export function PlayShell() {
   const [selection, setSelection] = useState<CitySelection | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const m: Record<string, boolean> = {};
+    try { for (const id of PANEL_IDS) if (localStorage.getItem(`cf-panel-wide:${id}`) === "1") m[id] = true; } catch { /* özel mod */ }
+    setExpandedMap(m);
+  }, []);
 
   const ALIAS: Record<string, PanelId> = { freight: "logistics", shipments: "logistics", sales: "finance" };
   const pRaw = sp.get("tab") ?? sp.get("p");
@@ -74,12 +80,12 @@ export function PlayShell() {
   const activeTab: string = selection ? "city" : panel === "facilities" || panel === "market" || panel === "logistics" ? panel : panel ? "more" : "city";
   const xpPct = c.nextLevelXp ? Math.min(100, Math.round((c.xp / c.nextLevelXp) * 100)) : 100;
 
-  const sidebar = selection ? <SelectionPanel onClose={() => setSelection(null)} /> : (
-    <>
-      <div className="panel-title"><h2>{t(`panels.${Active.id}`)}</h2></div>
-      <Active.Comp />
-    </>
-  );
+  const activeId = (panel ?? "company") as PanelId;
+  const wide = WIDE_PANELS.includes(activeId) && !selection;
+  const expanded = !!expandedMap[activeId] && !selection;
+  const title = selection ? t("play.selection") : t(`panels.${Active.id}`);
+  const toggleExpand = () => setExpandedMap((m) => { const v = { ...m, [activeId]: !m[activeId] }; try { localStorage.setItem(`cf-panel-wide:${activeId}`, v[activeId] ? "1" : "0"); } catch { /* özel mod */ } return v; });
+  const paneBody = selection ? <SelectionPanel onClose={() => setSelection(null)} /> : <Active.Comp />;
 
   return (
     <PlayProvider value={ctx}>
@@ -88,14 +94,14 @@ export function PlayShell() {
         {conn === "closed" || conn === "connecting" ? <div className="conn" role="status"><span className="spin btn" style={{ minHeight: 0, border: 0, padding: 0, background: "none" }} aria-hidden="true" />{t("conn.lost")}</div> : null}
         <header className="play-top">
           <Link href="/play" className="brand" onClick={() => open(null)} aria-label="Capital Forge"><span className="mark" aria-hidden="true">CF</span><span className="hide-sm">Capital Forge</span></Link>
-          <button type="button" className="btn ghost sm" onClick={() => open("company")} style={{ maxWidth: "40%" }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</span> <Badge tone="forge">{t("common.levelShort", { n: c.level })}</Badge>
+          <button type="button" className="btn ghost sm co-btn" onClick={() => open("company")} title={c.name}>
+            <span className="nm">{c.name}</span><span className="hide-xs"><Badge tone="forge">{t("common.levelShort", { n: c.level })}</Badge></span>
           </button>
           <div className="kpis">
-            <button type="button" className="btn ghost sm" onClick={() => open("finance")} aria-label={t("finance.cash")}>
-              <span className="muted xs hide-sm">{t("finance.cash")}</span> <b className="num">{i.money(c.cash)}</b>
+            <button type="button" className="btn ghost sm" onClick={() => open("finance")} aria-label={`${t("finance.cash")}: ${i.money(c.cash)}`} title={i.money(c.cash)}>
+              <span className="muted xs hide-sm">{t("finance.cash")}</span> <b className="num money">{i.money(c.cash)}</b>
             </button>
-            {c.arrears !== "0" ? <Badge tone="bad">{t("finance.arrears")}: {i.money(c.arrears, true)}</Badge> : null}
+            {c.arrears !== "0" ? <button type="button" className="btn ghost sm" onClick={() => open("finance")} title={`${t("finance.arrears")}: ${i.money(c.arrears)}`} aria-label={`${t("finance.arrears")}: ${i.money(c.arrears)}`}><Badge tone="bad"><Icon name="alert" size={12} /><span className="hide-sm">{t("finance.arrears")}: {i.money(c.arrears, true)}</span></Badge></button> : null}
             <span className="hide-sm xs muted" title={t("company.xp")}>XP {xpPct}%</span>
             <button type="button" className="btn ghost icon sm" onClick={() => open("notifications")} aria-label={`${t("panels.notifications")}${c.unreadNotifications ? ` (${c.unreadNotifications})` : ""}`} style={{ position: "relative" }}>
               <Icon name="bell" />{c.unreadNotifications ? <span className="badge forge" style={{ position: "absolute", top: -2, right: -4 }}>{c.unreadNotifications}</span> : null}
@@ -118,17 +124,33 @@ export function PlayShell() {
             {map.error && !map.data ? <div className="notice bad" style={{ position: "absolute", left: 8, right: 8, bottom: 8 }}>{i.err(map.error)} <Button size="sm" onClick={map.reload}>{t("common.retry")}</Button></div> : null}
           </section>
           {!mobile ? (
-            <aside className="side" id="panel" aria-label={t("play.panel")}>
-              <nav className="side-nav" aria-label={t("play.panels")}>
+            <aside className={`side${expanded ? " expanded" : ""}`} data-wide={wide ? "1" : undefined} id="panel" aria-label={t("play.panel")}>
+              <nav className="side-rail" aria-label={t("play.panels")}>
                 {PANELS.map((p) => (
-                  <button key={p.id} type="button" className="tab" aria-selected={!selection && (panel ?? "company") === p.id} role="tab" onClick={() => open(p.id)} title={t(`panels.${p.id}`)}>
-                    <Icon name={p.icon} size={18} />{t(`panels.${p.id}`)}
+                  <button key={p.id} type="button" className="rail-btn" aria-current={!selection && activeId === p.id ? "page" : undefined} onClick={() => open(p.id)} title={t(`panels.${p.id}`)} aria-label={t(`panels.${p.id}`)}>
+                    <Icon name={p.icon} size={20} /><span className="lbl">{t(`panels.${p.id}`)}</span>
                     {p.id === "notifications" && c.unreadNotifications ? <span className="badge forge">{c.unreadNotifications}</span> : null}
                   </button>
                 ))}
               </nav>
-              <div className="side-body">{sidebar}</div>
+              <div className="pane side-main">
+                <div className="pane-head">
+                  {selection ? <Button variant="ghost" size="sm" icon onClick={() => setSelection(null)} aria-label={t("common.back")}><Icon name="back" /></Button> : null}
+                  <h2>{title}</h2>
+                  {!selection ? <Button variant="ghost" size="sm" icon onClick={toggleExpand} aria-pressed={expanded} title={expanded ? t("play.collapse") : t("play.expand")} aria-label={expanded ? t("play.collapse") : t("play.expand")}><Icon name={expanded ? "shrink" : "expand"} /></Button> : null}
+                </div>
+                <div className="pane-body">{paneBody}</div>
+              </div>
             </aside>
+          ) : null}
+          {mobile && (panel || selection) && !moreOpen ? (
+            <div className="m-panel pane" id="panel" role="region" aria-label={title}>
+              <div className="pane-head">
+                <h2>{title}</h2>
+                <button type="button" className="btn ghost icon sm" aria-label={t("common.close")} onClick={() => (selection ? setSelection(null) : open(null))}><Icon name="x" /></button>
+              </div>
+              <div className="pane-body">{paneBody}</div>
+            </div>
           ) : null}
         </div>
 
@@ -143,18 +165,6 @@ export function PlayShell() {
                 </button>
               ))}
             </nav>
-            {(panel || selection) && !moreOpen ? (
-              <div className="overlay panel-overlay" id="panel">
-                <div className="sheet bottom panel" role="dialog" aria-label={selection ? t("play.selection") : t(`panels.${Active.id}`)}>
-                  <div className="grabber" aria-hidden="true" />
-                  <div className="sheet-head">
-                    <h3>{selection ? t("play.selection") : t(`panels.${Active.id}`)}</h3>
-                    <button type="button" className="btn ghost icon sm" aria-label={t("common.close")} onClick={() => (selection ? setSelection(null) : open(null))}><Icon name="x" /></button>
-                  </div>
-                  <div className="sheet-body">{selection ? <SelectionPanel onClose={() => setSelection(null)} hideTitle /> : <Active.Comp />}</div>
-                </div>
-              </div>
-            ) : null}
             <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t("tabs.more")} closeLabel={t("common.close")}>
               <div className="list">
                 {PANELS.filter((p) => p.id !== "facilities" && p.id !== "market" && p.id !== "logistics").map((p) => (

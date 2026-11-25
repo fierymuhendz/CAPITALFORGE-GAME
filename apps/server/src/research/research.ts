@@ -14,11 +14,13 @@ import type { UnitOfWork } from "../events/bus";
 import { co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
+import { paceDuration } from "../catalog/pace";
 
 const MIN = 60_000;
 
 export const researchCost = (baseCost: number, level: number): bigint => BigInt(baseCost) * BigInt(level) * BigInt(level);
 export const researchMinutes = (baseMinutes: number, level: number): number => baseMinutes * level;
+const paced = (c: Catalog, baseMinutes: number, level: number): number => paceDuration(c, researchMinutes(baseMinutes, level));
 
 export async function researchView(db: Tx | Deps["db"], catalog: Catalog, companyId: string): Promise<ResearchDto> {
   const rows = await db.select().from(research).where(eq(research.companyId, companyId));
@@ -31,7 +33,7 @@ export async function researchView(db: Tx | Deps["db"], catalog: Catalog, compan
       return {
         researchId: d.id, level,
         nextCost: maxed ? null : m(researchCost(d.baseCost, level + 1)),
-        nextMinutes: maxed ? null : researchMinutes(d.baseMinutes, level + 1),
+        nextMinutes: maxed ? null : paced(catalog, d.baseMinutes, level + 1),
         minCompanyLevel: maxed ? level : level + 1,
         inProgress: r?.targetLevel && r.endsAt ? { targetLevel: r.targetLevel, endsAt: r.endsAt.toISOString() } : null,
       };
@@ -56,7 +58,7 @@ export async function startResearch(tx: Tx, uow: UnitOfWork, catalog: Catalog, c
     memo: `Araştırma ${researchId} → ${target}`,
     lines: [{ account: co(companyId, "exp_research"), amount: cost }, { account: co(companyId, "cash"), amount: -cost }],
   });
-  const endsAt = new Date(now.getTime() + researchMinutes(def.baseMinutes, target) * MIN);
+  const endsAt = new Date(now.getTime() + paced(catalog, def.baseMinutes, target) * MIN);
   await tx
     .insert(research)
     .values({ companyId, researchId, level, targetLevel: target, endsAt })

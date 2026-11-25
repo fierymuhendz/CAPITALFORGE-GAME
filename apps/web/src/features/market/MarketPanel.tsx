@@ -1,67 +1,162 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import type { HoldingDto, ListingDto, MarketDto, MarketOverviewDto, PriceHistoryDto } from "@capitalforge/shared";
+import type { HoldingDto, OfferNote, OfferRowDto, OffersDto } from "@capitalforge/shared";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/action";
+import { useApp } from "@/lib/app";
 import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
-import { takeMarketIntent } from "@/lib/intent";
-import { useT } from "@/lib/i18n";
-import { Async, Badge, Button, Card, EmptyState, KV, Notice, PriceInput, QtyInput, SelectField, Seg, Sheet, SystemBadge, Table, Tabs, type Col } from "@/ui";
+import { useDebounced } from "@/lib/debounce";
+import { setShipIntent, takeMarketIntent } from "@/lib/intent";
+import { useT, type I18n } from "@/lib/i18n";
+import { Async, Button, EmptyState, KV, QtyInput, SelectField, Sheet, SystemBadge, Table, Tabs, Tag, Trend, type Col } from "@/ui";
 import { usePlay } from "../play/context";
-import { CompareTool } from "./CompareTool";
+import { Board, CreateSheet, type View } from "./MarketBoard";
 
-type View = { productId: string; cityId: string } | null;
+type Tab = "buy" | "sell" | "board";
 
 export function MarketPanel() {
-  const { t } = useT();
-  const [tab, setTab] = useState("overview");
-  const [view, setView] = useState<View>(null);
-  const [createSide, setCreateSide] = useState<"sell" | "buy" | null>(null);
+  const i = useT();
+  const { t } = i;
+  const cat = useCat();
+  const { me } = useApp();
+  const { open } = usePlay();
+  const [tab, setTab] = useState<Tab>("buy");
+  const [productId, setProductId] = useState(cat.world.products[0]!.id);
+  const [toCity, setToCity] = useState(me?.company?.homeCityId ?? cat.world.cities[0]!.id);
+  const [fromCity, setFromCity] = useState<string | null>(null);
+  const [qtyBuy, setQtyBuy] = useState<number | null>(1000);
+  const [qtySell, setQtySell] = useState<number | null>(null);
+  const [create, setCreate] = useState<"sell" | "buy" | null>(null);
   useEffect(() => {
     const it = takeMarketIntent();
-    if (it) { setView({ productId: it.productId, cityId: it.cityId }); setCreateSide(it.side ?? null); }
+    if (it) { setProductId(it.productId); if (it.side === "sell") { setTab("sell"); setFromCity(it.cityId); } else setToCity(it.cityId); }
   }, []);
-  if (view) return <ProductPage view={view} setView={setView} createSide={createSide} setCreateSide={setCreateSide} />;
+  const inv = useData<HoldingDto[]>("/inventory", undefined, ["inventory"]);
+  const held = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const h of inv.data ?? []) m.set(h.productId, (m.get(h.productId) ?? 0) + h.availableKg);
+    return m;
+  }, [inv.data]);
+  const sellProducts = cat.world.products.filter((p) => (held.get(p.id) ?? 0) > 0);
+  const prodId = tab === "sell" && sellProducts.length && !sellProducts.some((p) => p.id === productId) ? sellProducts[0]!.id : productId;
+  const stockCities = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const h of inv.data ?? []) if (h.productId === prodId && h.availableKg > 0) m.set(h.cityId, (m.get(h.cityId) ?? 0) + h.availableKg);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [inv.data, prodId]);
+  const from = fromCity && stockCities.some(([c]) => c === fromCity) ? fromCity : stockCities[0]?.[0] ?? null;
+  const stockKg = stockCities.find(([c]) => c === from)?.[1] ?? 0;
+  const pick = (id: string) => { setProductId(id); setQtySell(null); setFromCity(null); };
+  const chips = tab === "sell" ? sellProducts : cat.world.products;
+  const createView: View = { productId: prodId, cityId: tab === "sell" ? from ?? toCity : toCity };
+
   return (
     <div className="col">
-      <Tabs label={t("panels.market")} value={tab} onChange={setTab} items={[{ id: "overview", label: t("market.overview") }, { id: "compare", label: t("market.compare") }]} />
-      {tab === "overview" ? <Overview onPick={(productId, cityId) => setView({ productId, cityId })} /> : <CompareTool />}
+      <Tabs label={t("panels.market")} value={tab} onChange={(v) => setTab(v as Tab)} items={[{ id: "buy", label: t("offers.tabBuy") }, { id: "sell", label: t("offers.tabSell") }, { id: "board", label: t("offers.tabBoard") }]} />
+      {tab === "board" ? <Board /> : (
+        <>
+          {chips.length ? (
+            <div className="pill-scroll" role="group" aria-label={t("inventory.product")}>
+              {chips.map((p) => (
+                <button key={p.id} type="button" className="chip" aria-pressed={prodId === p.id} onClick={() => pick(p.id)}>
+                  <span className="dot" style={{ background: p.color }} aria-hidden="true" />{cat.product(p.id)}{tab === "sell" ? <span className="muted xs num">{i.qty(held.get(p.id) ?? 0)}</span> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {tab === "sell" && !chips.length ? (
+            <EmptyState icon="box" title={t("offers.noStockTitle")} text={t("offers.noStockText")} action={<div className="row wrap"><Button variant="primary" onClick={() => open("facilities")}>{t("inventory.goProduce")}</Button><Button onClick={() => setTab("buy")}>{t("offers.tabBuy")}</Button></div>} />
+          ) : (
+            <>
+              <div className="grid2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 210px), 1fr))" }}>
+                {tab === "buy" ? (
+                  <SelectField label={t("offers.deliverTo")} value={toCity} onChange={setToCity} options={cat.world.cities.map((c) => ({ id: c.id, label: cat.city(c.id) }))} />
+                ) : (
+                  <SelectField label={t("offers.stockIn")} value={from ?? ""} onChange={(v) => { setFromCity(v); setQtySell(null); }} options={stockCities.map(([c, kg]) => ({ id: c, label: `${cat.city(c)} — ${i.qty(kg)}` }))} />
+                )}
+                {tab === "buy"
+                  ? <QtyInput label={t("market.qty")} value={qtyBuy} onChange={setQtyBuy} />
+                  : <QtyInput label={t("market.qty")} value={qtySell ?? stockKg} onChange={setQtySell} max={stockKg} />}
+              </div>
+              <Offers side={tab} productId={prodId} cityId={tab === "buy" ? toCity : from} fromCityId={tab === "sell" ? from : null} qtyKg={tab === "buy" ? qtyBuy : qtySell ?? stockKg} onCreate={setCreate} />
+            </>
+          )}
+        </>
+      )}
+      <CreateSheet side={create} onClose={() => setCreate(null)} view={createView} refPrice={null} />
     </div>
   );
 }
 
-function Overview({ onPick }: { onPick: (productId: string, cityId: string) => void }) {
+function noteTag(i: I18n, n: OfferNote, r: OfferRowDto) {
+  const { t } = i;
+  switch (n) {
+    case "PARTIAL": return <Tag key={n} tone="warn" icon="alert" title={t("offers.notes.partialHint", { a: i.qty(r.fillKg), b: i.qty(r.availableKg) })}>{t("offers.notes.partial")}</Tag>;
+    case "SPLIT_LOADS": return <Tag key={n} tone="steel" icon="split" title={t("offers.notes.splitHint", { n: r.loads, cap: i.qty(r.truckCapacityKg) })}>{t("offers.notes.split", { n: r.loads })}</Tag>;
+    case "SAME_CITY": return <Tag key={n} icon="city" title={t("offers.notes.sameCityHint")}>{t("offers.notes.sameCity")}</Tag>;
+    case "NO_STOCK": return <Tag key={n} tone="warn" icon="box" title={t("offers.notes.noStockHint")}>{t("offers.notes.noStock")}</Tag>;
+    case "QUALITY_PREMIUM": return <Tag key={n} tone="good" icon="star" title={t("offers.notes.qualityHint")}>{t("offers.notes.quality")}</Tag>;
+    case "SATURATING": return <Tag key={n} tone="warn" icon="alert" title={t("offers.notes.saturatingHint")}>{t("offers.notes.saturating")}</Tag>;
+  }
+}
+
+function Offers({ side, productId, cityId, fromCityId, qtyKg, onCreate }: { side: "buy" | "sell"; productId: string; cityId: string | null; fromCityId: string | null; qtyKg: number | null; onCreate: (s: "sell" | "buy") => void }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
-  const w = cat.world;
-  const res = useData<MarketOverviewDto>("/market/overview", undefined, ["market"]);
-  const [by, setBy] = useState<"city" | "product">("city");
-  const [city, setCity] = useState(w.cities[0]!.id);
-  const [product, setProduct] = useState(w.products[0]!.id);
-  type Row = MarketOverviewDto["rows"][number];
-  const cols: Col<Row>[] = [
-    { key: "k", head: by === "city" ? t("inventory.product") : t("inventory.city"), cell: (r) => <b>{by === "city" ? cat.product(r.productId) : cat.city(r.cityId)}</b> },
-    { key: "r", head: t("market.ref"), right: true, cell: (r) => <span className="num">{i.price(r.refPricePerKg)}</span> },
-    { key: "a", head: t("market.bestAsk"), right: true, cell: (r) => r.bestAsk ? <span className="num">{i.price(r.bestAsk)} <span className="muted xs">({i.qty(r.askKg)})</span></span> : <span className="muted">—</span> },
-    { key: "b", head: t("market.bestBid"), right: true, cell: (r) => r.bestBid ? <span className="num">{i.price(r.bestBid)} <span className="muted xs">({i.qty(r.bidKg)})</span></span> : <span className="muted">—</span> },
-    { key: "s", head: t("market.systemDemand"), right: true, cell: (r) => <span className="num">{r.systemBidRemainingKg ? i.qty(r.systemBidRemainingKg) : "—"}</span> },
-    { key: "v", head: t("market.volume24h"), right: true, cell: (r) => <span className="num">{i.qty(r.volume24hKg)}</span> },
-  ];
+  const { open } = usePlay();
+  const q = useDebounced(qtyKg, 350);
+  const valid = !!cityId && !!q && q > 0 && q <= 10_000_000;
+  const res = useData<OffersDto>(valid ? "/market/offers" : null, { side, productId, cityId, qtyKg: q, fromCityId }, ["market", "inventory"]);
+  const [buy, setBuy] = useState<OfferRowDto | null>(null);
+  const [sell, setSell] = useState<OfferRowDto | null>(null);
+  const ship = (d: OffersDto, r: OfferRowDto) => {
+    if (!d.fromCityId) return;
+    setShipIntent({ fromCityId: d.fromCityId, destCityId: r.cityId, productId, quality: r.quality, qtyKg: r.fillKg });
+    open("logistics");
+  };
+  if (!valid) return <p className="muted small" role="status">{t("offers.enterQty")}</p>;
   return (
     <Async res={res}>
       {(d) => {
-        const rows = d.rows.filter((r) => (by === "city" ? r.cityId === city : r.productId === product));
+        const same = (r: OfferRowDto) => r.notes.includes("SAME_CITY");
+        const cols: Col<OfferRowDto>[] = [
+          { key: "w", head: side === "buy" ? t("offers.seller") : t("offers.buyer"), lead: true, cell: (r) => {
+            const tags = [r.orderId === d.bestOrderId ? <Tag key="b" tone="forge" icon="star">{t("offers.best")}</Tag> : null, r.orderId === d.fastestOrderId ? <Tag key="f" tone="good" icon="bolt">{t("offers.fastest")}</Tag> : null, ...r.notes.filter((n) => n !== "SAME_CITY" || side === "sell").map((n) => noteTag(i, n, r))].filter(Boolean);
+            return (
+              <span className="col tight" style={{ gap: 4, minWidth: 0 }}>
+                <span className="row" style={{ minWidth: 0 }}><b className="nm" title={r.companyName}>{r.companyName}</b>{r.isSystem ? <SystemBadge /> : null}<span className="muted xs">★{r.quality}</span></span>
+                {tags.length ? <span className="tags">{tags}</span> : null}
+              </span>
+            );
+          } },
+          { key: "c", head: t("offers.city"), nowrap: true, cell: (r) => <span>{cat.city(r.cityId)}{same(r) ? "" : ` · ${r.km} km`}</span> },
+          { key: "q", head: t("market.qty"), nowrap: true, cell: (r) => <span className="num">{i.qty(r.fillKg)}{r.fillKg < r.availableKg ? <span className="muted xs"> / {i.qty(r.availableKg)}</span> : null}</span> },
+          side === "buy"
+            ? { key: "p", head: t("offers.deliveredPerT"), right: true, nowrap: true, cell: (r) => <span className="col tight" style={{ alignItems: "inherit", gap: 0 }}><b className="num">{i.price(r.perKg)}</b><span className="muted xs num">{i.money(r.total)}</span></span> }
+            : { key: "p", head: t("offers.netPerT"), right: true, nowrap: true, cell: (r) => <span className="col tight" style={{ alignItems: "inherit", gap: 0 }}><b className="num">{i.price(r.perKg)}</b>{r.profit !== null ? <Trend value={r.profit} text={i.signed(r.profit)} /> : null}</span> },
+          { key: "e", head: side === "buy" ? t("offers.arrives") : t("offers.paidIn"), nowrap: true, cell: (r) => <span className="num">{i.dur(r.etaMinutes)}</span> },
+          { key: "a", head: "", bare: true, act: true, cell: (r) => side === "buy"
+            ? <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); setBuy(r); }}>{t("market.buy")}</Button>
+            : r.notes.includes("NO_STOCK") ? <span className="muted xs">—</span>
+            : same(r) ? <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); setSell(r); }}>{t("market.sell")}</Button>
+            : <Button size="sm" onClick={(e) => { e.stopPropagation(); ship(d, r); }}>{t("offers.shipThere")}</Button> },
+        ];
         return (
           <div className="col">
-            <Seg label={t("market.groupBy")} value={by} onChange={setBy} items={[{ id: "city", label: t("market.byCity") }, { id: "product", label: t("market.byProduct") }]} />
-            <div className="pill-scroll" role="group">
-              {by === "city" ? w.cities.map((c) => <button key={c.id} type="button" className="chip" aria-pressed={city === c.id} onClick={() => setCity(c.id)}>{i.name(c.name)}</button>)
-                : w.products.map((p) => <button key={p.id} type="button" className="chip" aria-pressed={product === p.id} onClick={() => setProduct(p.id)}><span className="dot" style={{ background: p.color }} aria-hidden="true" />{i.name(p.name)}</button>)}
-            </div>
-            <p className="muted small">{t("market.overviewHint")}</p>
-            {rows.length ? <Table cols={cols} rows={rows} rowKey={(r) => `${r.productId}-${r.cityId}`} onRow={(r) => onPick(r.productId, r.cityId)} rowLabel={(r) => `${cat.product(r.productId)} ${cat.city(r.cityId)}`} /> : <EmptyState icon="chart" title={t("market.noRows")} />}
+            {side === "sell" && d.avgCostPerKg ? <span className="muted small">{t("offers.avgCost", { p: i.price(d.avgCostPerKg) })}</span> : null}
+            {d.rows.length ? (
+              <Table cols={cols} rows={d.rows} rowKey={(r) => r.orderId} rowClass={(r) => (r.orderId === d.bestOrderId ? "best" : "")}
+                onTap={(r) => { if (side === "buy") setBuy(r); else if (same(r) && !r.notes.includes("NO_STOCK")) setSell(r); }} />
+            ) : (
+              <EmptyState icon="chart" title={t(side === "buy" ? "offers.noSellers" : "offers.noBuyers", { p: cat.product(productId) })}
+                text={t(side === "buy" ? "offers.noSellersText" : "offers.noBuyersText")}
+                action={<Button variant="primary" onClick={() => onCreate(side === "buy" ? "buy" : "sell")}>{t(side === "buy" ? "market.newOrder" : "market.newListing")}</Button>} />
+            )}
+            {d.rows.length ? <div className="row wrap"><Button size="sm" onClick={() => onCreate(side === "buy" ? "buy" : "sell")}>{t(side === "buy" ? "market.newOrder" : "market.newListing")}</Button></div> : null}
+            <BuySheet row={buy} data={d} onClose={() => setBuy(null)} reload={res.reload} />
+            <SellSheet row={sell} data={d} onClose={() => setSell(null)} reload={res.reload} />
           </div>
         );
       }}
@@ -69,164 +164,74 @@ function Overview({ onPick }: { onPick: (productId: string, cityId: string) => v
   );
 }
 
-function Spark({ productId, cityId }: { productId: string; cityId: string }) {
-  const { t } = useT();
-  const h = useData<PriceHistoryDto>("/market/history", { productId, cityId }, ["market"]);
-  const pts = h.data?.points ?? [];
-  if (pts.length < 2) return null;
-  const ys = pts.map((p) => Number(p.refPricePerKg));
-  const min = Math.min(...ys), max = Math.max(...ys);
-  const path = ys.map((y, n) => `${(n / (ys.length - 1)) * 100},${max === min ? 20 : 38 - ((y - min) / (max - min)) * 36}`).join(" ");
-  const up = ys[ys.length - 1]! >= ys[0]!;
-  return (
-    <figure style={{ margin: 0 }}>
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none" width="100%" height="56" role="img" aria-label={t("market.historyAlt")}>
-        <polyline points={path} fill="none" stroke={up ? "var(--good)" : "var(--bad)"} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <figcaption className="xs muted">{t("market.history")} {up ? "▲" : "▼"}</figcaption>
-    </figure>
-  );
-}
-
-function ProductPage({ view, setView, createSide, setCreateSide }: { view: NonNullable<View>; setView: (v: View) => void; createSide: "sell" | "buy" | null; setCreateSide: (s: "sell" | "buy" | null) => void }) {
+function RowSummary({ r, d }: { r: OfferRowDto; d: OffersDto }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
-  const { run } = useAction();
-  const { open } = usePlay();
-  const res = useData<MarketDto>("/market", { cityId: view.cityId, productId: view.productId }, ["market", "inventory"]);
-  const overview = useData<MarketOverviewDto>("/market/overview", undefined, ["market"]);
-  const [buying, setBuying] = useState<ListingDto | null>(null);
-  const [selling, setSelling] = useState<ListingDto | null>(null);
-  const cancel = (l: ListingDto) => run(() => api.post(l.side === "sell" ? `/market/listings/${l.id}/cancel` : `/market/orders/${l.id}/cancel`), { ok: "market.cancelled" });
-  const lcols = (side: "sell" | "buy"): Col<ListingDto>[] => [
-    { key: "c", head: t("market.company"), cell: (l) => <span className="row wrap">{l.companyName} {l.isSystem ? <SystemBadge /> : null}{l.mine ? <Badge tone="forge">{t("market.mine")}</Badge> : null}</span> },
-    { key: "q", head: side === "sell" ? t("common.quality") : t("market.minQuality"), cell: (l) => `★${l.quality}` },
-    { key: "n", head: t("market.remaining"), right: true, cell: (l) => <span className="num">{i.qty(l.remainingKg)}</span> },
-    { key: "p", head: t("market.price"), right: true, cell: (l) => <b className="num">{i.price(l.pricePerKg)}</b> },
-    { key: "a", head: "", bare: true, act: true, cell: (l) => l.mine ? <Button size="sm" variant="danger" onClick={(e) => { e.stopPropagation(); void cancel(l); }}>{t("common.cancel")}</Button> : side === "sell" ? <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); setBuying(l); }}>{t("market.buy")}</Button> : <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); setSelling(l); }}>{t("market.sell")}</Button> },
-  ];
   return (
-    <div className="col">
-      <Button variant="ghost" size="sm" onClick={() => setView(null)}>← {t("common.back")}</Button>
-      <div className="row between wrap"><h3>{cat.product(view.productId)}</h3>
-        <div className="pill-scroll">{cat.world.cities.map((c) => <button key={c.id} type="button" className="chip" aria-pressed={view.cityId === c.id} onClick={() => setView({ ...view, cityId: c.id })}>{i.name(c.name)}</button>)}</div></div>
-      <Async res={res}>
-        {(m) => (
-          <div className="col">
-            <Card tight><div className="row between"><span className="muted2">{t("market.ref")}</span><b className="num">{i.price(m.refPricePerKg)}</b></div><Spark productId={view.productId} cityId={view.cityId} /></Card>
-            <div className="row wrap"><Button variant="primary" onClick={() => setCreateSide("sell")}>{t("market.newListing")}</Button><Button onClick={() => setCreateSide("buy")}>{t("market.newOrder")}</Button></div>
-
-            <h4>{t("market.asks")} <span className="muted small">({t("market.asksHint")})</span></h4>
-            {m.listings.length ? <Table cols={lcols("sell")} rows={m.listings} rowKey={(l) => l.id} /> : <EmptyState icon="chart" title={t("market.noAsks")} text={t("market.noAsksText")} action={<Button onClick={() => setCreateSide("buy")}>{t("market.newOrder")}</Button>} />}
-            <h4>{t("market.bids")} <span className="muted small">({t("market.bidsHint")})</span></h4>
-            {m.orders.length ? <Table cols={lcols("buy")} rows={m.orders} rowKey={(l) => l.id} /> : <EmptyState icon="chart" title={t("market.noBids")} text={t("market.noBidsText")} action={<Button onClick={() => setCreateSide("sell")}>{t("market.newListing")}</Button>} />}
-
-            <h4>{t("market.whoBuys")}</h4>
-            <p className="muted small">{t("market.whoBuysHint")}</p>
-            <Async res={overview}>
-              {(o) => {
-                const rows = o.rows.filter((r) => r.productId === view.productId && (r.bestBid || r.systemBidRemainingKg > 0)).map((r) => ({ r, km: r.cityId === view.cityId ? 0 : cat.km(view.cityId, r.cityId) })).sort((a, b) => (a.km ?? 9999) - (b.km ?? 9999));
-                if (!rows.length) return <p className="muted small">{t("market.noBuyers")}</p>;
-                return <div className="col tight">{rows.map(({ r, km }) => (
-                  <div key={r.cityId} className="li click" role="button" tabIndex={0} onClick={() => setView({ ...view, cityId: r.cityId })} onKeyDown={(e) => { if (e.key === "Enter") setView({ ...view, cityId: r.cityId }); }}>
-                    <div className="grow col tight"><b>{cat.city(r.cityId)}</b><span className="xs muted">{km === 0 ? t("market.sameCity") : `${km ?? "?"} km`} · {t("market.systemDemand")}: {r.systemBidRemainingKg ? i.qty(r.systemBidRemainingKg) : "—"}</span></div>
-                    <div className="col tight" style={{ textAlign: "right" }}><b className="num">{r.bestBid ? i.price(r.bestBid) : i.price(r.refPricePerKg)}</b><span className="xs muted">{r.bestBid ? t("market.bestBid") : t("market.ref")}</span></div>
-                  </div>
-                ))}</div>;
-              }}
-            </Async>
-            <Button onClick={() => open("logistics")}>{t("market.haulToBuyer")}</Button>
-
-            <h4>{t("market.recent")}</h4>
-            {m.recentTrades.length ? m.recentTrades.map((x, n) => (
-              <div key={n} className="li"><span className="xs muted grow">{i.date(x.at)}</span><span className="small">★{x.quality} · {i.qty(x.qtyKg)}</span><b className="num small">{i.price(x.pricePerKg)}</b>{x.system ? <SystemBadge /> : null}</div>
-            )) : <p className="muted small">{t("common.none")}</p>}
-          </div>
-        )}
-      </Async>
-      <TradeSheet kind="buy" listing={buying} onClose={() => setBuying(null)} view={view} />
-      <TradeSheet kind="sell" listing={selling} onClose={() => setSelling(null)} view={view} />
-      <CreateSheet side={createSide} onClose={() => setCreateSide(null)} view={view} refPrice={res.data?.refPricePerKg ?? null} />
-    </div>
+    <>
+      <div className="row between"><b style={{ fontSize: "var(--fs-lg)" }}>{cat.product(d.productId)}</b><span className="muted">{t("common.quality")} {r.quality}</span></div>
+      <KV k={d.side === "buy" ? t("offers.seller") : t("offers.buyer")} v={<span className="row" style={{ justifyContent: "flex-end" }}>{r.companyName}{r.isSystem ? <SystemBadge /> : null}</span>} />
+      <KV k={t("offers.city")} v={`${cat.city(r.cityId)}${r.km ? ` · ${r.km} km` : ""}`} />
+      <KV k={t("market.qty")} v={<span>{i.qty(r.fillKg)}{r.fillKg < d.qtyKg ? <span className="muted"> ({t("offers.notes.partial")})</span> : null}</span>} />
+      <KV k={t("market.price")} v={<span>{i.price(r.pricePerKg)}</span>} />
+    </>
   );
 }
 
-function useStock(cityId: string, productId: string) {
-  const inv = useData<HoldingDto[]>("/inventory", undefined, ["inventory"]);
-  return useMemo(() => (inv.data ?? []).filter((h) => h.cityId === cityId && h.productId === productId && h.availableKg > 0).sort((a, b) => b.quality - a.quality), [inv.data, cityId, productId]);
-}
-
-/** Bir ilandan alım / bir alım emrine satış */
-function TradeSheet({ kind, listing, onClose, view }: { kind: "buy" | "sell"; listing: ListingDto | null; onClose: () => void; view: NonNullable<View> }) {
+function BuySheet({ row, data, onClose, reload }: { row: OfferRowDto | null; data: OffersDto; onClose: () => void; reload: () => void }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
   const { run, busy } = useAction();
-  const stock = useStock(view.cityId, view.productId);
-  const usable = listing ? stock.filter((h) => h.quality >= listing.quality) : [];
-  const [qty, setQty] = useState<number | null>(null);
-  const [q, setQ] = useState<number | null>(null);
-  useEffect(() => { setQty(null); setQ(null); }, [listing?.id]);
-  const quality = q ?? usable[0]?.quality ?? null;
-  const max = kind === "sell" ? Math.min(listing?.remainingKg ?? 0, usable.find((h) => h.quality === quality)?.availableKg ?? 0) : listing?.remainingKg ?? 0;
-  const ok = !!listing && !!qty && qty <= max && (kind === "buy" || quality !== null);
+  const same = !!row && row.notes.includes("SAME_CITY");
   const go = async () => {
-    if (!listing || !qty) return;
-    const body = kind === "buy" ? { qtyKg: qty, expectedPricePerKg: Number(listing.pricePerKg) } : { qtyKg: qty, quality, expectedPricePerKg: Number(listing.pricePerKg) };
-    const r = await run(() => api.post(kind === "buy" ? `/market/listings/${listing.id}/buy` : `/market/orders/${listing.id}/sell`, body), { ok: kind === "buy" ? "market.bought" : "market.sold" });
-    if (r) onClose();
+    if (!row) return;
+    const r = await run(() => api.post(`/market/listings/${row.orderId}/buy`, { qtyKg: row.fillKg, expectedPricePerKg: Number(row.pricePerKg), ...(same ? {} : { deliverToCityId: data.cityId }) }), { ok: same ? "offers.boughtHere" : "offers.boughtDeliver" });
+    if (r) onClose(); else reload();
   };
+  const dest = cat.city(data.cityId);
   return (
-    <Sheet open={!!listing} onClose={onClose} closeLabel={t("common.close")} title={`${kind === "buy" ? t("market.buy") : t("market.sell")} · ${cat.product(view.productId)}`}>
-      {listing ? (
-        <div className="col">
-          <KV k={t("market.company")} v={<>{listing.companyName} {listing.isSystem ? <SystemBadge /> : null}</>} />
-          <KV k={t("market.price")} v={<b>{i.price(listing.pricePerKg)}</b>} />
-          <KV k={t("market.remaining")} v={i.qty(listing.remainingKg)} />
-          {kind === "sell" ? (usable.length ? (
-            <SelectField label={t("common.quality")} value={String(quality)} onChange={(v) => setQ(Number(v))} options={usable.map((h) => ({ id: String(h.quality), label: `★${h.quality} — ${i.qty(h.availableKg)}` }))} />
-          ) : <Notice tone="warn">{t("market.noStockHere")}</Notice>) : null}
-          <QtyInput label={t("market.qty")} value={qty} onChange={setQty} max={max} hint={t("market.maxQty", { q: i.qty(max) })} />
-          <Notice tone="steel">{t("market.feeNote", { pct: i.pct(cat.world.marketFeeBp) })}</Notice>
-          <Button variant="primary" size="lg" loading={busy} disabled={!ok} onClick={() => void go()}>{kind === "buy" ? t("market.buy") : t("market.sell")}</Button>
+    <Sheet open={!!row} onClose={onClose} closeLabel={t("common.close")} title={t("market.buy")}
+      footer={<Button variant="primary" size="lg" loading={busy} onClick={() => void go()}>{same ? t("offers.buyHere") : t("offers.buyDeliver", { city: dest })}</Button>}>
+      {row ? (
+        <div className="col tight">
+          <RowSummary r={row} d={data} />
+          <KV k={t("offers.goods")} v={i.money(row.goods)} />
+          {!same ? <KV k={`${t("offers.freight")}${row.loads > 1 ? ` (${t("offers.notes.split", { n: row.loads })})` : ""}`} v={i.money(row.freight)} /> : null}
+          <hr className="sep" />
+          <KV k={<b>{t("offers.total")}</b>} v={<b className="num" style={{ fontSize: "var(--fs-lg)" }}>{i.money(row.total)}</b>} />
+          <KV k={t("offers.deliveredPerT")} v={i.price(row.perKg)} />
+          <KV k={same ? t("offers.available") : t("offers.arrives")} v={same ? t("offers.now") : <span>{i.dur(row.etaMinutes)} · {i.date(row.arrivesAt)}</span>} />
+          {!same ? <span className="muted small">{t("offers.freightNote")}</span> : null}
         </div>
       ) : null}
     </Sheet>
   );
 }
 
-function CreateSheet({ side, onClose, view, refPrice }: { side: "sell" | "buy" | null; onClose: () => void; view: NonNullable<View>; refPrice: string | null }) {
+function SellSheet({ row, data, onClose, reload }: { row: OfferRowDto | null; data: OffersDto; onClose: () => void; reload: () => void }) {
   const i = useT();
   const { t } = i;
-  const cat = useCat();
   const { run, busy } = useAction();
-  const stock = useStock(view.cityId, view.productId);
-  const [quality, setQuality] = useState<number | null>(null);
-  const [qty, setQty] = useState<number | null>(null);
-  const [price, setPrice] = useState<number | null>(null);
-  useEffect(() => { if (side) { setQty(null); setPrice(refPrice ? Number(refPrice) : null); } }, [side, refPrice]);
-  const q = quality ?? (side === "sell" ? stock[0]?.quality : 2) ?? 2;
-  const avail = side === "sell" ? stock.find((h) => h.quality === q)?.availableKg ?? 0 : undefined;
-  const ok = !!qty && !!price && (side === "buy" || (avail !== undefined && qty <= avail));
   const go = async () => {
-    if (!side || !qty || !price) return;
-    const r = side === "sell"
-      ? await run(() => api.post("/market/listings", { cityId: view.cityId, productId: view.productId, quality: q, qtyKg: qty, pricePerKg: price }), { ok: "market.listed" })
-      : await run(() => api.post("/market/orders", { cityId: view.cityId, productId: view.productId, minQuality: q, qtyKg: qty, maxPricePerKg: price }), { ok: "market.ordered" });
-    if (r) onClose();
+    if (!row) return;
+    const r = await run(() => api.post(`/market/orders/${row.orderId}/sell`, { qtyKg: row.fillKg, quality: row.quality, expectedPricePerKg: Number(row.pricePerKg) }), { ok: "market.sold" });
+    if (r) onClose(); else reload();
   };
   return (
-    <Sheet open={!!side} onClose={onClose} closeLabel={t("common.close")} title={`${side === "sell" ? t("market.newListing") : t("market.newOrder")} · ${cat.product(view.productId)} · ${cat.city(view.cityId)}`}>
-      <div className="col">
-        <Notice tone="steel">{side === "sell" ? t("market.listingNote") : t("market.orderNote")}</Notice>
-        {side === "sell" ? (stock.length ? <SelectField label={t("common.quality")} value={String(q)} onChange={(v) => setQuality(Number(v))} options={stock.map((h) => ({ id: String(h.quality), label: `★${h.quality} — ${i.qty(h.availableKg)}` }))} />
-          : <Notice tone="warn">{t("market.noStockHere")}</Notice>)
-          : <SelectField label={t("market.minQuality")} value={String(q)} onChange={(v) => setQuality(Number(v))} options={[1, 2, 3, 4, 5].map((n) => ({ id: String(n), label: `★${n}` }))} />}
-        <QtyInput label={t("market.qty")} value={qty} onChange={setQty} max={avail} />
-        <PriceInput label={side === "sell" ? t("market.price") : t("market.maxPrice")} value={price} onChange={setPrice} hint={refPrice ? `${t("market.ref")}: ${i.price(refPrice)}` : undefined} />
-        <Button variant="primary" size="lg" loading={busy} disabled={!ok} onClick={() => void go()}>{side === "sell" ? t("market.newListing") : t("market.newOrder")}</Button>
-      </div>
+    <Sheet open={!!row} onClose={onClose} closeLabel={t("common.close")} title={t("market.sell")}
+      footer={<Button variant="primary" size="lg" loading={busy} onClick={() => void go()}>{t("offers.sellNow", { q: row ? i.qty(row.fillKg) : "" })}</Button>}>
+      {row ? (
+        <div className="col tight">
+          <RowSummary r={row} d={data} />
+          <KV k={t("offers.goods")} v={i.money(row.goods)} />
+          <KV k={t("offers.fee")} v={`− ${i.money(row.fee)}`} />
+          <hr className="sep" />
+          <KV k={<b>{t("offers.youReceive")}</b>} v={<b className="num" style={{ fontSize: "var(--fs-lg)" }}>{i.money(row.total)}</b>} />
+          {row.profit !== null ? <KV k={t("offers.profit")} v={<Trend value={row.profit} text={i.signed(row.profit)} />} /> : null}
+        </div>
+      ) : null}
     </Sheet>
   );
 }

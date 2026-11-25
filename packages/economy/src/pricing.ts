@@ -61,3 +61,32 @@ export function nextDriftBp(currentDriftBp: number, vwapRatioBp: number | null, 
   const next = currentDriftBp + Math.round((target - currentDriftBp) * 0.2);
   return clampN(next, 6000, 15000);
 }
+
+/**
+ * Sistem alış fiyatı, kalite q için (H1 düzeltmesi). Üst sınır KALİTE 2 TABANINA uygulanır, sonra kalite çarpanı gelir:
+ * fiyat = kalite çarpanı × min(taban alış, cap). Böylece cap'in koruduğu şey (kalite 2 alış < kalite 2 satış) aynen korunur
+ * ve kalite 4–5 primi silinmez. Sistem yalnızca kalite 2 sattığı için sistemden al-sisteme sat döngüsü kalite primiyle
+ * kârlı olamaz: kalite ancak üretimle (tesis kalitesi, araştırma) elde edilir.
+ */
+export function systemBidForQuality(bidQ2: bigint, quality: number, cap: bigint | null, qualityBp: readonly number[]): bigint {
+  const base = cap !== null && bidQ2 > cap ? cap : bidQ2;
+  return qualityAdjusted(base, quality, qualityBp);
+}
+
+/**
+ * Sistem tekrarlayan alım sözleşmesi fiyatı (kuruş/kg, kalite 2 tabanı).
+ * bid: doygunluksuz, cap'li sistem alış fiyatı. Prim (bp) = 300 taban + 1200 × pazar doygunluğu (0..10000, dünkü/bugünkü doluluk)
+ * + (itibar − 9000) / 2 (itibar ≥ 9000 şart; en çok +500). Doygun pazarda spot düşerken sözleşme sabit kalır; doygun olmayan
+ * pazarda prim küçüktür (spot rahatça yarışır). Üst sınır: en düşük sistem satış fiyatının %95'i, böylece sistemden al, sözleşmeye sat kârlı olmaz.
+ */
+export function systemContractPrice(bid: bigint, minSystemAsk: bigint | null, reputationBp: number, saturationBp: number): bigint {
+  const sat = clampN(Math.round(saturationBp), 0, 10000);
+  const rep = clampN(reputationBp, 9000, 10000);
+  const premium = 300 + Math.floor((1200 * sat) / 10000) + Math.floor((rep - 9000) / 2);
+  let v = applyBp(bid, 10000 + premium);
+  if (minSystemAsk !== null) {
+    const hard = applyBp(minSystemAsk, 9500);
+    if (v > hard) v = hard;
+  }
+  return v < 1n ? 1n : v;
+}

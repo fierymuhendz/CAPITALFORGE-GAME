@@ -57,6 +57,12 @@ export interface BuildingTypeDef {
     upgradeCost: number;
     upgradeSteelKg: number;
     upgradeMinutes: number;
+    /** seviye bonusları (bp, isteğe bağlı; yoksa 0): çıktı +, enerji/işçilik −, girdi tasarrufu */
+    yieldBp?: number;
+    efficiencyBp?: number;
+    inputSavingBp?: number;
+    /** tesis kalite seviyesine eklenir (tam sayı, isteğe bağlı) */
+    qualityBonus?: number;
   }>;
   /** kalite iyileştirme maliyetleri: index 0 → kalite seviyesi 2, index 1 → 3 */
   qualityUpgradeCosts: number[];

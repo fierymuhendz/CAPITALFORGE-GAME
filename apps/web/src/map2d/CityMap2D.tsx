@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import type { PlotDto, VehicleMapDto } from "@capitalforge/shared";
+import { translate, type PlotDto, type VehicleMapDto } from "@capitalforge/shared";
 import type { CitySelection, CityViewProps } from "../scene/types";
 import {
   CELL, PAD_HALF, cityCenters, hashStr, parkIndexes, plotOffset, roadEndpoints, vehiclePose, worldBounds, type CityCenters,
@@ -75,6 +75,7 @@ function activate(e: KeyboardEvent, fn: () => void): void {
 /* ---------------------------------------------------------------- bina simgeleri */
 
 function Glyph({ type, level, crop }: { type: string; level: number; crop: string }): ReactNode {
+  const ore = crop;
   const L = Math.max(1, Math.min(3, level));
   switch (type) {
     case "field": {
@@ -94,7 +95,7 @@ function Glyph({ type, level, crop }: { type: string; level: number; crop: strin
           <rect x={-0.4} y={-0.12} width={0.62} height={0.5} fill={PAL.barnRed} />
           <polygon points="-0.46,-0.12 -0.09,-0.46 0.28,-0.12" fill={PAL.roofDark} />
           <circle cx={0.34} cy={0.04} r={0.15} fill={PAL.steel} />
-          {L >= 2 && <rect x={0.1} y={0.3} width={0.34} height={0.14} fill="#7c2f23" />}
+          {[0, 1, 2].map((i) => <rect key={i} x={-0.4 + i * 0.22} y={0.34} width={0.16} height={0.1} rx={0.03} fill={PAL.white} stroke="#222" strokeWidth={0.02} />)}
           {L >= 3 && <circle cx={0.34} cy={-0.27} r={0.12} fill={PAL.concrete} />}
         </g>
       );
@@ -104,8 +105,8 @@ function Glyph({ type, level, crop }: { type: string; level: number; crop: strin
           <polygon points="-0.26,0.38 0,-0.44 0.26,0.38" fill="none" stroke={PAL.steel} strokeWidth={0.07} />
           <line x1={-0.18} y1={0.12} x2={0.18} y2={0.12} stroke={PAL.steel} strokeWidth={0.05} />
           <circle cx={0} cy={-0.3} r={0.12} fill="none" stroke={PAL.forge} strokeWidth={0.06} />
-          <polygon points="-0.46,0.4 -0.3,0.1 -0.14,0.4" fill={PAL.oreIron} />
-          {L >= 2 && <polygon points="0.14,0.4 0.3,0.16 0.46,0.4" fill={PAL.oreCoal} />}
+          <polygon points="-0.5,0.42 -0.28,0.0 -0.06,0.42" fill={ore} />
+          {L >= 2 && <polygon points="0.1,0.42 0.28,0.1 0.46,0.42" fill={ore} opacity={0.7} />}
           {L >= 3 && <rect x={-0.48} y={-0.3} width={0.14} height={0.14} fill={PAL.concrete} />}
         </g>
       );
@@ -141,6 +142,7 @@ function Glyph({ type, level, crop }: { type: string; level: number; crop: strin
           <rect x={-0.26} y={0.06} width={0.52} height={0.32} fill="#0e1216" />
           <line x1={-0.26} y1={0.1} x2={0.26} y2={0.1} stroke={PAL.forge} strokeWidth={0.04} />
           {L >= 2 && <rect x={0.44} y={-0.02} width={0.12} height={0.4} fill="#b7c3cc" />}
+          <rect x={-0.4} y={0.4} width={0.2} height={0.1} rx={0.03} fill={PAL.forge} /><rect x={-0.1} y={0.4} width={0.3} height={0.1} rx={0.03} fill="#d7dde3" /><rect x={0.26} y={0.4} width={0.2} height={0.1} rx={0.03} fill="#d7dde3" />
         </g>
       );
     default:
@@ -174,20 +176,24 @@ interface PlotCellProps {
   selectedPlot: boolean;
   selectedFacility: boolean;
   cityName: string;
+  colorOf: (id: string | null | undefined) => string | undefined;
   d: Dict;
   suppress: React.MutableRefObject<boolean>;
   onSelect: (s: CitySelection) => void;
 }
 
-const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot, selectedFacility, cityName, d, suppress, onSelect }: PlotCellProps) {
+const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot, selectedFacility, cityName, colorOf, d, suppress, onSelect }: PlotCellProps) {
   const b = plot.building;
-  const fill = mine ? "#3d4650" : plot.owner?.isSystem ? PAL.tileSystem : plot.owner ? PAL.tileOther : locked || plot.minLevel >= 3 ? PAL.tileLockedHigh : plot.minLevel === 2 ? PAL.tileLockedMid : PAL.tile;
+  const fill = mine ? "#6a4e38" : plot.owner?.isSystem ? PAL.tileSystem : plot.owner ? PAL.tileOther : locked || plot.minLevel >= 3 ? PAL.tileLockedHigh : plot.minLevel === 2 ? PAL.tileLockedMid : PAL.tile;
   const pos = `${plot.gx + 1}-${plot.gz + 1}`;
   const ownerTxt = plot.owner ? `${plot.owner.isSystem ? d.system : plot.owner.companyName}${mine ? `, ${d.mine}` : ""}` : null;
   const plotLabel = plot.owner
     ? `${d.plot} ${cityName} ${pos}, ${d.owner}: ${ownerTxt}`
     : `${d.freePlot}, ${cityName} ${pos}${plot.minLevel > 1 ? `, ${d.needsLevel} ${plot.minLevel}` : ""}${locked ? `, ${d.locked}` : ""}`;
-  const crop = b && hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder;
+  const outCol = colorOf(b?.outputProductId);
+  const crop = b?.type === "mine"
+    ? (outCol ?? (plot.deposit?.kind === "coal" ? PAL.oreCoal : PAL.oreIron))
+    : (outCol ?? (b && hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder));
   const sz = CELL - 0.2;
   const pick = (s: CitySelection) => () => { if (!suppress.current) onSelect(s); };
   const selP = { type: "plot", plotId: plot.id } as const;
@@ -197,9 +203,9 @@ const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot
         className="cf2d-btn" role="button" tabIndex={0} aria-label={plotLabel} aria-pressed={selectedPlot}
         onClick={pick(selP)} onKeyDown={(e) => activate(e, pick(selP))}
       >
-        <rect x={-sz / 2} y={-sz / 2} width={sz} height={sz} rx={0.06} fill={fill} stroke={mine ? PAL.forge : "none"} strokeWidth={mine ? 0.07 : 0} />
+        <rect x={-sz / 2} y={-sz / 2} width={sz} height={sz} rx={0.06} fill={fill} stroke={mine ? PAL.forge : "none"} strokeWidth={mine ? 0.1 : 0} />
         {!plot.owner && (
-          <g>
+          <g opacity={0.6}>
             <rect x={-sz / 2 + 0.05} y={-sz / 2 + 0.05} width={sz - 0.1} height={sz - 0.1} rx={0.04} fill="none" stroke={locked ? "#e5604f" : "#7d8c9c"} strokeWidth={0.04} strokeDasharray="0.14 0.1" />
             {/* satılık işareti: ok yerine "$" benzeri tabela; kilitliyse çarpı */}
             {locked
@@ -224,7 +230,7 @@ const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot
           {b.status === "constructing" && <rect x={-0.5} y={-0.5} width={1} height={1} fill="#000" opacity={0.35} />}
           {b.status === "constructing" && <rect x={-0.5} y={-0.5} width={1} height={1} fill="none" stroke={PAL.scaffold} strokeWidth={0.06} strokeDasharray="0.12 0.08" />}
           {b.status === "stalled" && <rect x={-0.52} y={-0.52} width={1.04} height={1.04} fill="none" stroke={PAL.warn} strokeWidth={0.07} />}
-          <Badge status={b.status} />
+          <g opacity={mine ? 1 : 0.7} transform={mine ? "translate(-0.06 0.06) scale(1.3)" : undefined}><Badge status={b.status} /></g>
           {Array.from({ length: b.level }, (_, i) => <rect key={i} x={-0.46 + i * 0.14} y={0.5} width={0.1} height={0.1} fill={mine ? PAL.forge : "#c3ccd6"} />)}
           <rect className="cf2d-focus" x={-0.54} y={-0.54} width={1.08} height={1.08} rx={0.05} />
         </g>
@@ -236,7 +242,8 @@ const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot
 
 /* ---------------------------------------------------------------- araçlar */
 
-const VLEN: Record<string, number> = { van: 0.45, truck: 0.7, semi: 1.15 };
+const VLEN: Record<string, number> = { van: 0.5, truck: 0.85, semi: 1.4 };
+const VWID: Record<string, number> = { van: 0.26, truck: 0.34, semi: 0.38 };
 
 function useTick(ms: number): number {
   const [t, setT] = useState(0);
@@ -251,9 +258,10 @@ function useTick(ms: number): number {
   return t;
 }
 
-function Vehicles({ vehicles, centers, offsetMs, selectedId, d, cityNames, suppress, onSelect, myCompanyId }: {
+function Vehicles({ vehicles, centers, offsetMs, selectedId, d, cityNames, suppress, onSelect, myCompanyId, colorOf }: {
   vehicles: VehicleMapDto[]; centers: CityCenters; offsetMs: number; selectedId: string | null; d: Dict;
   cityNames: Map<string, string>; suppress: React.MutableRefObject<boolean>; onSelect: (s: CitySelection) => void; myCompanyId: string | null;
+  colorOf: (id: string | null | undefined) => string | undefined;
 }) {
   useTick(250);
   const park = useMemo(() => parkIndexes(vehicles), [vehicles]);
@@ -270,18 +278,31 @@ function Vehicles({ vehicles, centers, offsetMs, selectedId, d, cityNames, suppr
         const state = v.status === "in_transit" && s ? `${d.moving}, ${d.to} ${cityNames.get(s.destCityId) ?? s.destCityId}` : v.status === "loading" ? d.loading : d.parked;
         const label = `${modelName(d, v.modelId)}, ${state}${mine ? `, ${d.mine}` : `, ${v.ownerName}`}`;
         const act = () => { if (!suppress.current) onSelect({ type: "vehicle", vehicleId: v.id }); };
+        const wd = VWID[v.modelId] ?? 0.32;
+        const cargoCol = colorOf(s?.cargo?.[0]?.productId) ?? PAL.concrete;
+        const cabLen = Math.min(0.32, len * 0.35);
+        const destName = mine && s && v.status === "in_transit" ? cityNames.get(s.destCityId) : undefined;
         return (
-          <g
-            key={v.id} className="cf2d-btn" role="button" tabIndex={0} aria-label={label} aria-pressed={sel}
-            transform={`translate(${pose.x} ${pose.z}) rotate(${(-pose.heading * 180) / Math.PI})`}
-            onClick={act} onKeyDown={(e) => activate(e, act)}
-          >
-            <circle r={0.55} fill="transparent" />
-            <rect x={-0.15} y={-len / 2} width={0.3} height={len} rx={0.07} fill={mine ? PAL.mineVeh : PAL.otherVeh} stroke="#0b121b" strokeWidth={0.04} />
-            <rect x={-0.11} y={len / 2 - 0.2} width={0.22} height={0.1} rx={0.03} fill="#9fd0ff" />
-            {pose.moving && <polygon points={`0,${len / 2 + 0.16} 0.1,${len / 2 + 0.02} -0.1,${len / 2 + 0.02}`} fill="#fff" opacity={0.85} />}
-            {sel && <circle r={Math.max(0.55, len * 0.62)} fill="none" stroke={PAL.forge} strokeWidth={0.09} className="cf2d-pulse" />}
-            <circle className="cf2d-focus" r={Math.max(0.5, len * 0.6)} />
+          <g key={v.id}>
+            <g
+              className="cf2d-btn" role="button" tabIndex={0} aria-label={label} aria-pressed={sel}
+              transform={`translate(${pose.x} ${pose.z}) rotate(${(-pose.heading * 180) / Math.PI})`}
+              onClick={act} onKeyDown={(e) => activate(e, act)}
+            >
+              <circle r={0.7} fill="transparent" />
+              {mine && <rect x={-wd / 2 - 0.09} y={-len / 2 - 0.09} width={wd + 0.18} height={len + 0.18} rx={0.14} fill="none" stroke={PAL.forge} strokeWidth={0.07} />}
+              <rect x={-wd / 2} y={-len / 2} width={wd} height={len - cabLen} rx={0.05} fill={cargoCol} stroke="#0b121b" strokeWidth={0.04} />
+              <rect x={-wd / 2} y={len / 2 - cabLen} width={wd} height={cabLen} rx={0.06} fill={mine ? PAL.mineVeh : PAL.otherVeh} stroke="#0b121b" strokeWidth={0.04} />
+              <rect x={-wd / 2 + 0.04} y={len / 2 - 0.12} width={wd - 0.08} height={0.07} rx={0.02} fill="#9fd0ff" />
+              {pose.moving && <polygon points={`0,${len / 2 + 0.18} 0.1,${len / 2 + 0.04} -0.1,${len / 2 + 0.04}`} fill="#fff" opacity={0.85} />}
+              {sel && <circle r={Math.max(0.6, len * 0.62)} fill="none" stroke={PAL.forge} strokeWidth={0.09} className="cf2d-pulse" />}
+              <circle className="cf2d-focus" r={Math.max(0.55, len * 0.6)} />
+            </g>
+            {destName && (
+              <text x={pose.x} y={pose.z - len / 2 - 0.3} textAnchor="middle" fontSize={0.34} fontWeight={700} fill="#fff" stroke="#0b121b" strokeWidth={0.08} paintOrder="stroke" style={{ pointerEvents: "none" }}>
+                {`${translate(d === T.tr ? "tr" : "en", "city3d.to")} ${destName}`}
+              </text>
+            )}
           </g>
         );
       })}
@@ -308,7 +329,11 @@ export default function CityMap2D(props: CityMap2DProps) {
   const sizeRef = useRef(size);
   sizeRef.current = size;
   const tweenRaf = useRef(0);
+  const mapRef = useRef(map);
+  mapRef.current = map;
 
+  const prodColor = useMemo(() => new Map(world.products.map((p) => [p.id, p.color])), [world.products]);
+  const colorOf = useCallback((id: string | null | undefined) => (id ? prodColor.get(id) : undefined), [prodColor]);
   const cityNames = useMemo(() => new Map(world.cities.map((c) => [c.id, c.name[locale]])), [world.cities, locale]);
 
   const overview = useCallback((): View => {
@@ -350,8 +375,23 @@ export default function CityMap2D(props: CityMap2DProps) {
     if (!first && lastFocus.current === focusCityId) return;
     lastFocus.current = focusCityId;
     const c = focusCityId ? centers.get(focusCityId) : undefined;
-    animateTo(c ? { cx: c.x, cz: c.z + 0.5, w: Math.min(maxW, Math.max(10, (PAD_HALF * 2 + 2.4))) } : overview(), first);
-  }, [focusCityId, centers, size.w, animateTo, overview, maxW]);
+    let to: View = c ? { cx: c.x, cz: c.z + 0.5, w: Math.min(maxW, Math.max(10, (PAD_HALF * 2 + 2.4))) } : overview();
+    if (c && myCompanyId) {
+      // kendi arsalarıma çerçevele
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      for (const p of mapRef.current.plots) {
+        if (p.cityId !== focusCityId || p.owner?.companyId !== myCompanyId) continue;
+        const o = plotOffset(p.gx, p.gz);
+        x0 = Math.min(x0, c.x + o.x); x1 = Math.max(x1, c.x + o.x); z0 = Math.min(z0, c.z + o.z); z1 = Math.max(z1, c.z + o.z);
+      }
+      if (isFinite(x0)) {
+        const s = sizeRef.current;
+        const w = Math.max(6, x1 - x0 + 3.4, ((z1 - z0 + 3.4) * s.w) / s.h);
+        to = { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, w: Math.min(to.w, w) };
+      }
+    }
+    animateTo(to, first);
+  }, [focusCityId, centers, size.w, animateTo, overview, maxW, myCompanyId]);
   useEffect(() => () => cancelAnimationFrame(tweenRaf.current), []);
 
   const vw = view?.w ?? 40;
@@ -502,7 +542,7 @@ export default function CityMap2D(props: CityMap2DProps) {
                   <PlotCell
                     key={pl.id} plot={pl} x={p.x + off.x} z={p.z + off.z} mine={mine} locked={locked}
                     selectedPlot={selPlotId === pl.id} selectedFacility={selFacilityPlot === pl.id}
-                    cityName={name} d={d} suppress={suppress} onSelect={onSelect}
+                    cityName={name} colorOf={colorOf} d={d} suppress={suppress} onSelect={onSelect}
                   />
                 );
               })}
@@ -520,7 +560,7 @@ export default function CityMap2D(props: CityMap2DProps) {
         })}
         <Vehicles
           vehicles={map.vehicles} centers={centers} offsetMs={serverOffsetMs} selectedId={selVehicle} d={d}
-          cityNames={cityNames} suppress={suppress} onSelect={onSelect} myCompanyId={myCompanyId}
+          cityNames={cityNames} suppress={suppress} onSelect={onSelect} myCompanyId={myCompanyId} colorOf={colorOf}
         />
       </svg>
       <div style={{ position: "absolute", right: 10, bottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>

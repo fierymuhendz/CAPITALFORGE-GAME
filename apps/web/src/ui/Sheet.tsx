@@ -13,7 +13,7 @@ interface Props {
   wide?: boolean;
 }
 
-/** Modal: telefonda alt sayfa (bottom sheet), masaüstünde ortada pencere. Esc ile kapanır, odak içeri alınır. */
+/** Modal: telefonda alt sayfa, masaüstünde ortada pencere. Gövde kayar; `footer` (eylem düğmeleri) hep görünür kalır, güvenli alanı gözetir. */
 export function Sheet({ open, onClose, title, closeLabel, children, footer, wide }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const prev = useRef<Element | null>(null);
@@ -36,7 +36,7 @@ export function Sheet({ open, onClose, title, closeLabel, children, footer, wide
           <button type="button" className="btn ghost icon sm" aria-label={closeLabel} onClick={onClose}><Icon name="x" /></button>
         </div>
         <div className="sheet-body">{children}</div>
-        {footer ? <div className="sheet-head" style={{ borderTop: "1px solid var(--line)", borderBottom: 0 }}>{footer}</div> : null}
+        {footer ? <div className="sheet-foot">{footer}</div> : null}
       </div>
     </div>,
     document.body,

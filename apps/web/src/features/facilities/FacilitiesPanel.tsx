@@ -20,15 +20,21 @@ export function FacilitiesPanel() {
         return (
           <div className="col">
             {c.facilities.map((x) => {
-              const next = x.jobs.filter((j) => j.status === "running").sort((a, b) => a.endsAt.localeCompare(b.endsAt))[0];
+              const runningJobs = x.jobs.filter((j) => j.status === "running").sort((a, b) => a.endsAt.localeCompare(b.endsAt));
+              const next = runningJobs[0];
+              const canStart = x.lines > 0 && x.status !== "constructing" && runningJobs.length < x.lines;
               return (
-                <Card key={x.id} onClick={() => setSel(x.id)}>
+                <Card key={x.id}>
                   <div className="col tight">
-                    <div className="row between"><b>{cat.building(x.type)}</b><Badge tone={x.status === "stalled" ? "bad" : x.status === "working" ? "good" : undefined}>{x.status === "stalled" ? "⚠ " : x.status === "working" ? "▶ " : ""}{t(`facility.status.${x.status}`)}</Badge></div>
+                    <div className="row between"><b className="nm">{cat.building(x.type)}</b><Badge tone={x.status === "stalled" ? "bad" : x.status === "working" ? "good" : undefined}>{x.status === "stalled" ? "⚠ " : x.status === "working" ? "▶ " : ""}{t(`facility.status.${x.status}`)}</Badge></div>
                     <span className="muted small">{cat.city(x.cityId)} · {t("common.level")} {x.level}</span>
                     {next ? <span className="small">{cat.recipe(next.recipeId)} — <Countdown until={next.endsAt} /></span> : null}
                     {x.constructionEndsAt && x.status === "constructing" ? <span className="small">{t("facility.constructing")} <Countdown until={x.constructionEndsAt} /></span> : null}
                     {x.stalledReason ? <span className="small warn">⚠ {t(`facility.stalled.${x.stalledReason.code}`)}</span> : null}
+                    <div className="row wrap">
+                      {canStart ? <Button variant="primary" size="sm" onClick={() => setSel(x.id)}>{t("facility.startJob")}</Button> : null}
+                      <Button size="sm" variant={canStart ? "ghost" : "secondary"} onClick={() => setSel(x.id)}>{t("facility.open")}</Button>
+                    </div>
                   </div>
                 </Card>
               );

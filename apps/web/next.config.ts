@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   output: "standalone",
   transpilePackages: ["@capitalforge/shared", "@capitalforge/economy"],
+  devIndicators: false,
   async rewrites() {
     // Yerel geliştirme: /api/* → oyun sunucusu (önek kırpılır). Üretimde Caddy bu yolu doğrudan sunucuya yollar.
     return [{ source: "/api/:path*", destination: `${gameServerUrl}/:path*` }];

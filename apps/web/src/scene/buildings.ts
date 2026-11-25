@@ -25,11 +25,12 @@ function empty(): Omit<BuildingDef, "geometry" | "height"> {
   return { smoke: [], glows: [], lamps: [], wheels: [], fans: [], tractor: false, shutter: null };
 }
 
-export function buildDef(type: string, level: number, cropColor: string): BuildingDef {
+export function buildDef(type: string, level: number, accent: string): BuildingDef {
   const b = new PartBuilder();
   const extra = empty();
   let height = 0.5;
   const L = Math.max(1, Math.min(3, level));
+  const cropColor = accent;
 
   switch (type) {
     case "field": {
@@ -38,7 +39,7 @@ export function buildDef(type: string, level: number, cropColor: string): Buildi
       const rh = 0.07 + L * 0.02;
       for (let i = 0; i < rows; i++) {
         const x = -0.45 + (0.9 / (rows - 1)) * i;
-        b.box(0.075, rh, 0.95, x, 0.04, 0, i % 2 ? cropColor : PAL.soil === cropColor ? PAL.grain : shade(cropColor, 0.82));
+        b.box(0.075, rh, 0.95, x, 0.04, 0, i % 2 ? cropColor : shade(cropColor, 0.78));
       }
       if (L >= 2) { b.box(0.3, 0.2, 0.22, 0.38, 0.04, 0.47, PAL.concrete); b.gable(0.34, 0.12, 0.26, 0.38, 0.24, 0.47, PAL.roofDark); }
       if (L >= 3) { b.cyl(0.07, 0.07, 0.42, -0.44, 0.04, 0.46, PAL.steel); b.cyl(0.14, 0.14, 0.1, -0.44, 0.46, 0.46, PAL.concrete); height = 0.6; }
@@ -54,8 +55,17 @@ export function buildDef(type: string, level: number, cropColor: string): Buildi
       b.gable(0.7 * s, 0.24 * s, 0.9 * s, -0.12, 0.38 * s, 0, PAL.roofDark);
       b.cyl(0.13, 0.13, 0.62 * s, 0.36, 0.04, -0.2, PAL.steel, 10);
       b.cone(0.14, 0.14, 0.36, 0.04 + 0.62 * s, -0.2, PAL.concrete, 10);
-      if (L >= 2) { b.box(0.34, 0.24, 0.6, 0.3, 0.04, 0.3, PAL.barnRed); b.gable(0.4, 0.16, 0.66, 0.3, 0.28, 0.3, PAL.roofDark); }
+      if (L >= 2) { b.box(0.3, 0.24, 0.3, 0.3, 0.04, 0.06, PAL.barnRed); b.gable(0.34, 0.16, 0.34, 0.3, 0.28, 0.06, PAL.roofDark); }
       if (L >= 3) { b.cyl(0.11, 0.11, 0.5, 0.36, 0.04, -0.45, PAL.steel, 10); b.cone(0.12, 0.12, 0.36, 0.54, -0.45, PAL.concrete, 10); }
+      // yem alanı çiti ve süt sığırları (beyaz gövde, siyah leke)
+      const cows = 2 + L;
+      for (let i = 0; i < cows; i++) {
+        const cx = -0.36 + i * 0.2, cz = 0.46;
+        b.box(0.16, 0.09, 0.08, cx, 0.07, cz, PAL.white);
+        b.box(0.07, 0.05, 0.085, cx - 0.02, 0.1, cz, PAL.dark);
+        b.box(0.05, 0.06, 0.06, cx + 0.1, 0.1, cz, PAL.white);
+        for (const lx of [-0.05, 0.05]) b.box(0.02, 0.04, 0.02, cx + lx, 0.04, cz, "#3a3030");
+      }
       extra.lamps.push({ x: -0.12, y: 0.2, z: 0.43 * s, s: 0.09 });
       height = 0.04 + 0.62 * s + 0.14;
       break;
@@ -69,13 +79,17 @@ export function buildDef(type: string, level: number, cropColor: string): Buildi
       b.box(0.36, 0.05, 0.36, 0, 0.98 * k, -0.1, PAL.dark);
       b.box(0.3, 0.14, 0.3, 0, 1.0 * k, -0.1, PAL.forge);
       // cevher yığını
-      b.cone(0.32, 0.26, -0.3, 0.05, 0.3, PAL.oreIron, 7);
-      b.cone(0.22, 0.2, 0.0, 0.05, 0.42, PAL.oreCoal, 7);
+      b.cone(0.38, 0.4, -0.3, 0.05, 0.3, accent, 7);
+      b.cone(0.26, 0.3, 0.02, 0.05, 0.4, shade(accent, 0.7), 7);
+      b.box(0.16, 0.1, 0.12, 0.34, 0.07, 0.1, PAL.steel); // maden arabası
+      b.box(0.14, 0.05, 0.1, 0.34, 0.17, 0.1, accent);
+      // kule tepesinde A çatı
+      b.gable(0.4, 0.16, 0.4, 0, 1.15 * k, -0.1, PAL.dark);
       b.box(0.5, 0.03, 0.08, 0.2, 0.05, 0.1, PAL.roofDark); // ray
-      if (L >= 2) { b.box(0.34, 0.22, 0.3, 0.38, 0.05, 0.3, PAL.concrete); b.cone(0.26, 0.2, 0.34, 0.05, -0.34, PAL.oreIron, 7); }
-      if (L >= 3) { b.box(0.7, 0.05, 0.1, 0.0, 0.3, 0.45, PAL.steel); b.cone(0.2, 0.18, -0.42, 0.05, -0.38, PAL.oreCoal, 7); }
+      if (L >= 2) { b.box(0.34, 0.22, 0.3, 0.38, 0.05, 0.3, PAL.concrete); b.cone(0.26, 0.26, 0.34, 0.05, -0.34, accent, 7); }
+      if (L >= 3) { b.box(0.7, 0.05, 0.1, 0.0, 0.3, 0.45, PAL.steel); b.cone(0.2, 0.22, -0.42, 0.05, -0.38, shade(accent, 0.6), 7); }
       extra.wheels.push({ x: 0, y: 0.98 * k + 0.2, z: -0.1 + 0.2, r: 0.17 });
-      height = 1.15 * k;
+      height = 1.3 * k;
       break;
     }
     case "food_plant": {
@@ -108,6 +122,9 @@ export function buildDef(type: string, level: number, cropColor: string): Buildi
       for (let i = 0; i < 3; i++) b.cyl(0.08 - i * 0.004, 0.09 - i * 0.004, 0.1, -0.3, 0.3 + i * 0.3 * (ch / 1.1), -0.28, "#c0392b", 10);
       if (L >= 2) { b.cyl(0.06, 0.08, ch * 0.8, -0.08, 0.04, -0.34, PAL.white, 10); b.box(0.3, 0.26, 0.3, -0.4, 0.04, 0.42, "#3c4650"); }
       if (L >= 3) { b.box(0.3, 0.4, 0.34, 0.5, 0.04, 0.3, "#4b3a33"); b.box(0.2, 0.16, 0.04, 0.5, 0.1, 0.48, "#140d0a"); }
+      // külçe yığını ve potalar
+      for (let i = 0; i < 3; i++) for (let j = 0; j <= i; j++) b.box(0.14, 0.05, 0.07, -0.1 + (j - i / 2) * 0.16, 0.04 + (2 - i) * 0.05, 0.43, "#c5ced8");
+      b.cyl(0.07, 0.05, 0.1, 0.12, 0.04, 0.42, "#e0702a", 8);
       extra.glows.push({ w: 0.2, h: 0.18, d: 0.03, x: 0.3, y: 0.2, z: 0.045 });
       if (L >= 3) extra.glows.push({ w: 0.18, h: 0.14, d: 0.03, x: 0.5, y: 0.18, z: 0.49 });
       extra.smoke.push({ x: -0.3, y: 0.04 + ch, z: -0.28, dark: true });
@@ -124,9 +141,14 @@ export function buildDef(type: string, level: number, cropColor: string): Buildi
       b.box(w * 0.66, 0.03, 0.05, 0, 0.24, 0.31, PAL.forge);
       if (L >= 2) { b.box(0.24, 0.34, 0.3, -w / 2 - 0.1, 0.04, 0.28, "#b7c3cc"); }
       if (L >= 3) { b.box(0.16, 0.5, 0.16, w / 2 + 0.12, 0.04, 0.3, "#b7c3cc"); b.box(0.2, 0.04, 0.2, w / 2 + 0.12, 0.54, 0.3, PAL.forge); height = 0.6; }
+      // park halindeki araçlar (kamyonet, kamyon) ve turuncu çatı bandı
+      b.box(w + 0.06, 0.03, 0.78, 0, 0.46, -0.05, PAL.forge);
+      b.box(0.1, 0.06, 0.2, -0.3, 0.04, 0.44, PAL.forge); b.box(0.1, 0.05, 0.08, -0.3, 0.1, 0.5, "#9fd0ff");
+      b.box(0.12, 0.08, 0.3, 0.0, 0.04, 0.44, "#d7dde3"); b.box(0.1, 0.06, 0.08, 0.0, 0.1, 0.55, PAL.forge);
+      b.box(0.1, 0.06, 0.2, 0.3, 0.04, 0.44, "#d7dde3");
       extra.shutter = { w: w * 0.6, h: 0.2, x: 0, y: 0.04, z: 0.325 };
       extra.lamps.push({ x: 0, y: 0.14, z: 0.31, s: 0.1 });
-      height = Math.max(height, 0.5);
+      height = Math.max(height, 0.55);
       break;
     }
     default: {
@@ -162,7 +184,7 @@ export function buildScaffold(size: number): BufferGeometry {
 /** Uyarı üçgeni (sarı, ünlemli) */
 export function buildWarning(): BufferGeometry {
   const b = new PartBuilder();
-  b.cone(0.17, 0.3, 0, 0, 0, PAL.warn, 3);
+  b.cone(0.26, 0.45, 0, 0, 0, PAL.warn, 3);
   b.box(0.035, 0.1, 0.035, 0, 0.09, 0.0, "#1a1a1a");
   b.box(0.035, 0.035, 0.035, 0, 0.04, 0.0, "#1a1a1a");
   return b.build();
@@ -171,12 +193,12 @@ export function buildWarning(): BufferGeometry {
 /** Satılık tabelası */
 export function buildSign(color: string): BufferGeometry {
   const b = new PartBuilder();
-  b.box(0.04, 0.34, 0.04, 0, 0, 0, PAL.concrete);
-  b.box(0.3, 0.17, 0.03, 0, 0.26, 0, color);
-  b.box(0.2, 0.04, 0.035, 0, 0.32, 0.0, PAL.white);
+  // satılık tabela küçük ve soluk: kendi binalarım öne çıksın
+  b.box(0.03, 0.2, 0.03, 0, 0, 0, "#6c7885");
+  b.box(0.18, 0.1, 0.02, 0, 0.16, 0, shade(color, 0.55));
   // çit direkleri (köşeler)
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(0.04, 0.12, 0.04, sx * 0.55, 0, sz * 0.55, "#6c7885");
-  for (const s of [-1, 1]) { b.box(1.1, 0.02, 0.02, 0, 0.09, s * 0.55, "#566270"); b.box(0.02, 0.02, 1.1, s * 0.55, 0.09, 0, "#566270"); }
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) b.box(0.04, 0.12, 0.04, sx * 0.55, 0, sz * 0.55, "#4a5663");
+  for (const s of [-1, 1]) { b.box(1.1, 0.02, 0.02, 0, 0.09, s * 0.55, "#3f4a56"); b.box(0.02, 0.02, 1.1, s * 0.55, 0.09, 0, "#3f4a56"); }
   return b.build();
 }
 

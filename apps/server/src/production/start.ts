@@ -12,8 +12,10 @@ import { AppError, fail } from "../errors";
 import type { UnitOfWork } from "../events/bus";
 import { removeStock } from "../inventory/holdings";
 import { co, post } from "../ledger/post";
+import { writeOutcome } from "../finance/outcomes";
 import { m } from "../lib/serialize";
 import { evaluateProduction } from "./eval";
+import { estimateSale } from "./quote";
 
 export interface StartInput {
   companyId: string;
@@ -75,6 +77,16 @@ export async function startProduction(tx: Tx, uow: UnitOfWork, catalog: Catalog,
       costBreakdown: breakdown, costTotal: total, startTransactionId: startTx.id,
     })
     .returning();
+  // tahmin ↔ gerçekleşen: teklifin aynı hesabı (maliyet, süre, en iyi alıcıya satış tahmini)
+  const est = await estimateSale(tx, catalog, p.companyId, facility.cityId, ev.recipe.output.productId, plan.outputQuality, plan.outputKg, total, plan.minutes);
+  await writeOutcome(tx, {
+    companyId: p.companyId, kind: "production", refType: "production_job", refId: jobId, productId: ev.recipe.output.productId, recipeId: ev.recipe.id, cityId: facility.cityId,
+    expected: {
+      qtyKg: plan.outputKg, cost: total, minutes: plan.minutes, at: job!.endsAt,
+      revenue: est ? BigInt(est.revenue) : null, fees: est ? BigInt(est.fee) : null, profit: est ? BigInt(est.profit) : null,
+    },
+    at: p.now,
+  });
   await tx.update(facilities).set({ stalledReason: null }).where(eq(facilities.id, facility.id));
   uow.invalidate(p.companyId, "company", "inventory", "facilities", "finance");
   uow.world("map");

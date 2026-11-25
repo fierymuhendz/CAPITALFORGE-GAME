@@ -11,6 +11,7 @@ import { registerTasks } from "./http/modules";
 import { startScheduler } from "./scheduler/scheduler";
 import { registerAdminSetupCode } from "./auth/routes";
 import { seedWorld } from "./db/seed";
+import { applyCatalogRevisions } from "./db/catalogRevision";
 
 const config = loadConfig();
 const log = pino({ level: config.logLevel, redact: ["req.headers.cookie", "req.headers.authorization", "*.password", "*.setupCode"] });
@@ -22,6 +23,7 @@ const catalog = new Catalog();
 const deps: Deps = { db, redis, clock, catalog, events: new EventBus(), config, log };
 
 await seedWorld(db);
+await applyCatalogRevisions(db);
 await catalog.reload(db);
 await clock.load(db);
 await registerAdminSetupCode(deps);

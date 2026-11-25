@@ -32,12 +32,16 @@ export const DEFAULT_SETTINGS = {
     lateFeeBp: 1000,
     windowHoursBeforeDue: 12,
   },
+  /** deneme dönemi tempo kuralı: oyun süreleri en çok bu kadar dk (0 = sınır yok); yol süreleri sıkıştırılır */
+  pace: { maxMinutes: 60 },
   freight: {
     /** sistem taşımacısı ücret tarifesi: kalkış ücreti + km başına (kamyon dolusu) */
     systemBaseFee: 45_000,
     systemPerKm: 3200,
     systemPickupAfterMinutes: 120,
     driverHoursPerTrip: 1,
+    /** yükleme + boşaltma süresi (dk): araç bu kadar daha meşgul. Yeni anahtar: canlıda varsayılanla tamamlanır; sunucu startShipment'ta kullanır. */
+    handlingMinutes: 40,
   },
   system: {
     /** sistem alış fiyatı = referans × bidBp; sistem satış = referans × askBp */

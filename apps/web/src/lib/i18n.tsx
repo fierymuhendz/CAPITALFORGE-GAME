@@ -65,6 +65,8 @@ export interface I18n {
   date: (iso: string) => string;
   time: (iso: string) => string;
   num: (n: number) => string;
+  /** dakika → "45 dk" / "2 sa 10 dk" (0 → "şimdi") */
+  dur: (min: number) => string;
   err: (e: unknown) => string;
   notif: (n: NotificationDto) => string;
   /** işlem türü kodu → okunur ad (yoksa kodun kendisi) */
@@ -89,6 +91,13 @@ export function useT(): I18n {
       date: (iso) => new Intl.DateTimeFormat(tag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso)),
       time: (iso) => new Intl.DateTimeFormat(tag, { timeStyle: "medium" }).format(new Date(iso)),
       num: (n) => new Intl.NumberFormat(tag).format(n),
+      dur: (min) => {
+        const m = Math.max(0, Math.round(min));
+        if (m === 0) return t("offers.now");
+        if (m < 60) return t("common.minutes", { n: m });
+        const h = Math.floor(m / 60), r = m % 60;
+        return r ? `${h} ${t("common.hourShort")} ${t("common.minutes", { n: r })}` : `${h} ${t("common.hourShort")}`;
+      },
       err: (e) => {
         const code: ErrorCode = e instanceof ApiError ? e.code : "INTERNAL";
         const key = `errors.${code}`;

@@ -52,7 +52,7 @@ export const ProductionStartReq = ProductionQuoteReq.extend({ repeat: z.boolean(
 
 export const ListingReq = z.object({ cityId: id, productId: id, quality, qtyKg, pricePerKg, idempotencyKey });
 export const BuyOrderReq = z.object({ cityId: id, productId: id, minQuality: quality, qtyKg, maxPricePerKg: pricePerKg, idempotencyKey });
-export const BuyFromListingReq = z.object({ qtyKg, expectedPricePerKg: pricePerKg, idempotencyKey });
+export const BuyFromListingReq = z.object({ qtyKg, expectedPricePerKg: pricePerKg, deliverToCityId: id.optional(), idempotencyKey });
 export const SellToOrderReq = z.object({ qtyKg, quality, expectedPricePerKg: pricePerKg, idempotencyKey });
 export const CancelReq = z.object({ idempotencyKey });
 

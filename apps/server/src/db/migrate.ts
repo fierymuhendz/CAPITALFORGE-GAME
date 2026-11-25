@@ -8,6 +8,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { fileURLToPath } from "node:url";
 import * as schema from "./schema";
+import { applyCatalogRevisions } from "./catalogRevision";
 import { seedWorld } from "./seed";
 
 export const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
@@ -19,6 +20,7 @@ export async function runMigrations(url: string): Promise<void> {
     const db = drizzle(client, { schema });
     await migrate(db, { migrationsFolder, migrationsSchema: "cf_migrations", migrationsTable: "migrations" });
     await seedWorld(db);
+    await applyCatalogRevisions(db);
   } finally {
     await client.end({ timeout: 2 }).catch(() => {});
   }

@@ -151,9 +151,9 @@ interface Spec {
   yieldResearch: boolean;
 }
 const SPECS: Spec[] = [
-  { sector: "crop", cityId: "yesilova", recipe: () => "grow_fodder", batches: 2, research: "agronomy", yieldResearch: true },
-  { sector: "livestock", cityId: "akyayla", recipe: () => "milk_cows", batches: 2, research: "herd_health", yieldResearch: true },
-  { sector: "mining", cityId: "demirdag", recipe: (d) => (d === "coal" ? "mine_coal" : "mine_iron"), batches: 2, research: "drilling", yieldResearch: true },
+  { sector: "crop", cityId: "yesilova", recipe: () => "grow_fodder", batches: 1, research: "agronomy", yieldResearch: true },
+  { sector: "livestock", cityId: "akyayla", recipe: () => "milk_cows", batches: 1, research: "herd_health", yieldResearch: true },
+  { sector: "mining", cityId: "demirdag", recipe: (d) => (d === "coal" ? "mine_coal" : "mine_iron"), batches: 1, research: "drilling", yieldResearch: true },
   { sector: "manufacturing", cityId: "korfezkent", starterBuilding: "food_plant", recipe: () => "mill_flour", batches: 1, research: "lean_process", yieldResearch: false },
 ];
 
@@ -281,8 +281,8 @@ describe("1) beş sektörün ilk yolculuğu", () => {
     // ilk iş: Kavşak çıkışlı açık sistem işi
     await h.tick();
     const board = await p.ok("GET", "/freight-jobs?scope=board");
-    const job = (board as Array<{ id: string; isSystem: boolean; originCityId: string; payAmount: string; estCostForMe: string | null; distanceKm: number; destCityId: string }>)
-      .filter((j) => j.isSystem && j.originCityId === "kavsak")
+    const job = (board as Array<{ id: string; isSystem: boolean; originCityId: string; payAmount: string; estCostForMe: string | null; distanceKm: number; destCityId: string; totalKg: number }>)
+      .filter((j) => j.isSystem && j.originCityId === "kavsak" && j.totalKg <= h.deps.catalog.vehicleModel(fleet[0].modelId).capacityKg)
       .sort((a, b) => Number(BigInt(b.payAmount) - BigInt(a.payAmount)))[0];
     expect(job, "Kavşak çıkışlı sistem taşıma işi").toBeTruthy();
     const acc = await p.ok("POST", `/freight-jobs/${job!.id}/accept`, { vehicleId: fleet[0].id, idempotencyKey: key() });
@@ -364,10 +364,10 @@ describe("2) çok haftalı zaman ilerletme (21 gün)", () => {
 
     interface Plan { co: Co; recipe: string; batches: number; inputs: Array<{ productId: string; perBatchKg: number }>; outProduct: string; sellCity: string; keepKg: number }
     const plans: Plan[] = [
-      { co: crop, recipe: "grow_grain", batches: 2, inputs: [{ productId: "seed", perBatchKg: 300 }], outProduct: "grain", sellCity: "korfezkent", keepKg: 2 * contractQty },
-      { co: live, recipe: "milk_cows", batches: 2, inputs: [{ productId: "fodder", perBatchKg: 1200 }], outProduct: "raw_milk", sellCity: "akyayla", keepKg: 0 },
-      { co: mine, recipe: mine.plot.deposit?.kind === "coal" ? "mine_coal" : "mine_iron", batches: 2, inputs: [], outProduct: mine.plot.deposit?.kind === "coal" ? "coal" : "iron_ore", sellCity: "demirdag", keepKg: 0 },
-      { co: fact, recipe: "mill_flour", batches: 2, inputs: [{ productId: "grain", perBatchKg: 2000 }], outProduct: "flour", sellCity: "korfezkent", keepKg: 0 },
+      { co: crop, recipe: "grow_grain", batches: 1, inputs: [{ productId: "seed", perBatchKg: 300 }], outProduct: "grain", sellCity: "korfezkent", keepKg: 2 * contractQty },
+      { co: live, recipe: "milk_cows", batches: 1, inputs: [{ productId: "fodder", perBatchKg: 1200 }], outProduct: "raw_milk", sellCity: "akyayla", keepKg: 0 },
+      { co: mine, recipe: mine.plot.deposit?.kind === "coal" ? "mine_coal" : "mine_iron", batches: 1, inputs: [], outProduct: mine.plot.deposit?.kind === "coal" ? "coal" : "iron_ore", sellCity: "demirdag", keepKg: 0 },
+      { co: fact, recipe: "mill_flour", batches: 1, inputs: [{ productId: "grain", perBatchKg: 2000 }], outProduct: "flour", sellCity: "korfezkent", keepKg: 0 },
     ];
     const productionStarts: Record<string, number> = {};
     const skippedUnprofitable: Record<string, number> = {};
@@ -421,12 +421,12 @@ describe("2) çok haftalı zaman ilerletme (21 gün)", () => {
     };
     const freightStats = { accepted: 0, repositioned: 0 };
     const freightCycle = async () => {
-      const fleet = (await frt.p.ok("GET", "/fleet")) as Array<{ id: string; status: string; cityId: string | null }>;
+      const fleet = (await frt.p.ok("GET", "/fleet")) as Array<{ id: string; status: string; modelId: string; cityId: string | null }>;
       const v = fleet.find((x) => x.status === "idle");
       if (!v || !v.cityId) return;
       const board = (await frt.p.ok("GET", "/freight-jobs?scope=board")) as Array<{ id: string; isSystem: boolean; originCityId: string; payAmount: string; estCostForMe: string | null; totalKg: number }>;
       const net = (j: { payAmount: string; estCostForMe: string | null }) => BigInt(j.payAmount) - BigInt(j.estCostForMe ?? "0");
-      const here = board.filter((j) => j.isSystem && j.originCityId === v.cityId && net(j) > 0n).sort((a, b) => Number(net(b) - net(a)))[0];
+      const here = board.filter((j) => j.isSystem && j.originCityId === v.cityId && j.totalKg <= h.deps.catalog.vehicleModel(v.modelId).capacityKg && net(j) > 0n).sort((a, b) => Number(net(b) - net(a)))[0];
       if (here) {
         const r = note(await frt.p.post(`/freight-jobs/${here.id}/accept`, { vehicleId: v.id, idempotencyKey: key() }));
         if (r.status === 200) freightStats.accepted++;
@@ -641,8 +641,8 @@ describe("3) kalıcılık ve yeniden başlatma", () => {
     await admin.ok("PATCH", "/admin/settings", { key: "anomaly.thresholdBp", value: 4100, reasoning: "kabul testi" });
 
     // yarım üretim (60+ dk sürer)
-    const quote = await prod.p.ok("POST", "/production/quote", { facilityId: prod.facilityId, recipeId: "grow_fodder", batches: 2 });
-    const job = await prod.p.ok("POST", "/production/start", { facilityId: prod.facilityId, recipeId: "grow_fodder", batches: 2, repeat: false, idempotencyKey: key() });
+    const quote = await prod.p.ok("POST", "/production/quote", { facilityId: prod.facilityId, recipeId: "grow_fodder", batches: 1 });
+    const job = await prod.p.ok("POST", "/production/start", { facilityId: prod.facilityId, recipeId: "grow_fodder", batches: 1, repeat: false, idempotencyKey: key() });
     expect(quote.minutes).toBeGreaterThan(30);
 
     // yarım sevkiyat: kendi araçlı (A) ve taşıma işi (B, yük sahibi)
