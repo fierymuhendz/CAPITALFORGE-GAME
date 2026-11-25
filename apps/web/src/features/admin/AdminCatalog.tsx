@@ -105,7 +105,7 @@ export function AuditTab() {
       {(d) => !d.rows.length ? <p className="muted">{t("common.none")}</p> : (
         <div className="col">{d.rows.map((r) => (
           <Card key={r.id} tight><div className="col tight">
-            <div className="row between wrap"><b className="small">{r.action}</b><span className="xs muted">{r.adminUsername} · {i.date(r.at)}</span></div>
+            <div className="row between wrap"><b className="small">{auditLabel(t, r.action)}</b><span className="xs muted">{r.adminUsername} · {i.date(r.at)}</span></div>
             <span className="small muted2">{r.target}</span>
             {r.reasoning ? <span className="small">{r.reasoning}</span> : null}
             {r.before !== null || r.after !== null ? <details><summary className="small">{t("admin.beforeAfter")}</summary><pre className="xs" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{JSON.stringify({ before: r.before, after: r.after }, null, 1)}</pre></details> : null}
@@ -129,4 +129,11 @@ export function TimeTab() {
       <Button variant="primary" loading={busy} disabled={!AdminTimeReq.safeParse(body).success} onClick={() => void run(() => api.post("/admin/time/advance", body), { ok: "admin.timeAdvanced" })}>{t("admin.advance")}</Button>
     </div></Card>
   );
+}
+
+/** Denetim eylem kodunu çevirir; bilinmeyen kod ham gösterilir */
+function auditLabel(t: (k: string) => string, action: string): string {
+  const key = `admin.auditAction.${action.replace(/\./g, "_")}`;
+  const v = t(key);
+  return v === key ? action : v;
 }
