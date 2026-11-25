@@ -3,6 +3,7 @@
  * Kilit sırası: ilan satırı → stok → defter (buyFromListing), ardından taşıma işi (stok rezervi → emanet).
  * Nakit mal bedelini ve navlun emanetini birlikte karşılamıyorsa hiçbir şey yazılmadan INSUFFICIENT_FUNDS.
  */
+import { minutesToMs } from "../catalog/pace";
 import { and, eq } from "drizzle-orm";
 import { systemCarrierQuote } from "@capitalforge/economy";
 import type { BuyFromListingReq, BuyResultDto } from "@capitalforge/shared";
@@ -16,7 +17,7 @@ import { writeOutcome } from "../finance/outcomes";
 import { balanceOf, co } from "../ledger/post";
 import { createFreightJob } from "../logistics/jobs";
 import { m } from "../lib/serialize";
-import { MIN, type CompanyRow } from "./common";
+import type { CompanyRow } from "./common";
 import { loadChunks, systemFreightEstimate } from "./offers";
 import { buyFromListing } from "./spot";
 
@@ -59,7 +60,7 @@ export async function buyWithDelivery(
       jobIds.push(job.id);
       freightPay += pay;
     }
-    arrivesBy = new Date(now.getTime() + est.etaMinutes * MIN);
+    arrivesBy = new Date(now.getTime() + minutesToMs(est.etaMinutes));
   }
 
   let outcomeId: string | null = null;

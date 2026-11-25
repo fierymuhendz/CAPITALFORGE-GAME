@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capMinutes, scaleTravelMinutes, travelScaleBp } from "./pace";
+import { capMinutes, capWaitMinutes, capWaitMs, scaleTravelMinutes, travelScaleBp } from "./pace";
 
 describe("tempo", () => {
   it("capMinutes: tavan, 0 = kapalı, en az 1", () => {
@@ -17,5 +17,18 @@ describe("tempo", () => {
     expect(travelScaleBp(60, 50)).toBe(10000);
     expect(scaleTravelMinutes(0, s)).toBe(0);
     expect(scaleTravelMinutes(1, s)).toBe(1);
+  });
+  it("capWaitMinutes / capWaitMs: min(özgün süre, 60 sn); 0 = kapalı", () => {
+    // 15 saniyelik iş 15 saniye kalır
+    expect(capWaitMinutes(0.25, 60)).toBe(0.25);
+    expect(capWaitMs(15_000, 60)).toBe(15_000);
+    // tam 60 sn değişmez, çok saatlik iş 60 sn olur
+    expect(capWaitMinutes(1, 60)).toBe(1);
+    expect(capWaitMinutes(6 * 60, 60)).toBe(1);
+    expect(capWaitMs(72 * 3_600_000, 60)).toBe(60_000);
+    // kapalı: özgün süre
+    expect(capWaitMinutes(6 * 60, 0)).toBe(360);
+    expect(capWaitMs(72 * 3_600_000, 0)).toBe(72 * 3_600_000);
+    expect(capWaitMinutes(0, 60)).toBe(0);
   });
 });

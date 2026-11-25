@@ -12,7 +12,15 @@ import { route } from "../http/route";
 import type { Catalog } from "../catalog/catalog";
 import { starterBuildingFor, starterInputsKey } from "../company/found";
 import { m } from "../lib/serialize";
-import { paceDuration, paceMax, paceTravelScaleBp } from "../catalog/pace";
+import { paceDuration, paceMax, paceTravelScaleBp, playtestSeconds } from "../catalog/pace";
+
+/** kesirli dakika → "45 sn" / "12 dk" (oyun testi kipinde kısa süreler) */
+const durText = (min: number, l: "tr" | "en"): string => {
+  const sec = Math.round(min * 60);
+  if (sec < 60) return l === "tr" ? `${sec} sn` : `${sec} s`;
+  const mm = Math.round(sec / 60);
+  return l === "tr" ? `${mm} dk` : `${mm} min`;
+};
 
 export function worldDto(cat: Catalog, now: Date): WorldDto {
   const s = cat.settings;
@@ -37,7 +45,7 @@ export function worldDto(cat: Catalog, now: Date): WorldDto {
     marketFeeBp: s.marketFeeBp,
     qualityPriceBp: [...QUALITY_PRICE_BP],
     freight: { systemBaseFee: m(s.freight.systemBaseFee), systemPerKm: m(s.freight.systemPerKm), driverHoursPerTrip: s.freight.driverHoursPerTrip },
-    pace: { maxMinutes: paceMax(cat), travelScaleBp: paceTravelScaleBp(cat) },
+    pace: { maxMinutes: paceMax(cat), travelScaleBp: paceTravelScaleBp(cat), playtestSeconds: playtestSeconds(cat) },
     startingCash: m(s.startingCash),
   };
 }
@@ -216,8 +224,8 @@ async function onboarding(deps: Deps, cityId: string, sector: z.infer<typeof sec
       estRevenue: m(bid * BigInt(plan.outputKg)),
       minutes: plan.minutes,
       hint: {
-        tr: `${recipe.name.tr}: ${plan.minutes} dk sürer. Çıktıyı ${buyer ? cat.city(buyer.cityId).name.tr : city.name.tr} pazarına satabilirsin.`,
-        en: `${recipe.name.en}: takes ${plan.minutes} min. Sell the output in ${buyer ? cat.city(buyer.cityId).name.en : city.name.en}.`,
+        tr: `${recipe.name.tr}: ${durText(plan.minutes, "tr")} sürer. Çıktıyı ${buyer ? cat.city(buyer.cityId).name.tr : city.name.tr} pazarına satabilirsin.`,
+        en: `${recipe.name.en}: takes ${durText(plan.minutes, "en")}. Sell the output in ${buyer ? cat.city(buyer.cityId).name.en : city.name.en}.`,
       },
     };
   }

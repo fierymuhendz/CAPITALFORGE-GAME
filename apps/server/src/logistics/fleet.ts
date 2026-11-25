@@ -7,7 +7,7 @@ import {
 } from "@capitalforge/shared";
 import type { z } from "zod";
 import type { Catalog } from "../catalog/catalog";
-import { paceTrip } from "../catalog/pace";
+import { minutesToMs, paceTrip } from "../catalog/pace";
 import type { DbOrTx, Tx } from "../db/client";
 import { facilities, shipmentCargo, shipments, vehicles } from "../db/schema";
 import { fail } from "../errors";
@@ -141,7 +141,7 @@ export async function freightQuote(
       const veh = mine.find((x) => x.modelId === md.id);
       return {
         modelId: md.id, capacityKg: md.capacityKg, loadsNeeded: loads, minutes: paceTrip(catalog, t.minutes), fuel: m(t.fuel * BigInt(loads)), driver: m(t.driver * BigInt(loads)),
-        total: m(t.total * BigInt(loads)), arrivesAt: new Date(now.getTime() + paceTrip(catalog, t.minutes) * 60_000).toISOString(), vehicleId: veh && q.kg <= md.capacityKg ? veh.id : null,
+        total: m(t.total * BigInt(loads)), arrivesAt: new Date(now.getTime() + minutesToMs(paceTrip(catalog, t.minutes))).toISOString(), vehicleId: veh && q.kg <= md.capacityKg ? veh.id : null,
       };
     }),
   };

@@ -166,7 +166,7 @@ export function FoundWizard() {
                   <div className="grid3">
                     <div className="stat"><span className="k">{t("found.estCost")}</span><span className="v">{money(d.starter.firstJob.estCost)}</span></div>
                     <div className="stat"><span className="k">{t("found.estRevenue")}</span><span className="v">{money(d.starter.firstJob.estRevenue)}</span></div>
-                    <div className="stat"><span className="k">{t("found.duration")}</span><span className="v">{t("common.minutes", { n: d.starter.firstJob.minutes })}</span></div>
+                    <div className="stat"><span className="k">{t("found.duration")}</span><span className="v">{i.dur(d.starter.firstJob.minutes)}</span></div>
                   </div>
                 ) : null}
                 <Notice tone="steel">{t("found.estNote")}</Notice>

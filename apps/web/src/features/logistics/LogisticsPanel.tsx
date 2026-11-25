@@ -101,7 +101,7 @@ function Send({ intent }: { intent: ShipIntent | null }) {
           {model && kg > model.capacityKg ? <Notice tone="bad">{t("errors.VEHICLE_CAPACITY")} ({i.qty(model.capacityKg)})</Notice> : null}
           {mine ? <Card flat tight><div className="col tight" aria-live="polite">
             <KV k={t("logistics.estCost")} v={<b>{i.money(mine.total)}</b>} /><KV k={t("logistics.fuelCost")} v={i.money(mine.fuel)} /><KV k={t("logistics.driverCost")} v={i.money(mine.driver)} />
-            <KV k={t("logistics.eta")} v={`${t("common.minutes", { n: mine.minutes })} (${i.date(mine.arrivesAt)})`} />
+            <KV k={t("logistics.eta")} v={`${i.dur(mine.minutes)} (${i.date(mine.arrivesAt)})`} />
             <KV k={t("logistics.systemQuote")} v={i.money(quote.data!.systemQuote)} />
           </div></Card> : null}
           <ActionBar><Button variant="primary" loading={busy} disabled={!ok} onClick={() => void run(() => api.post("/shipments", body), { ok: "logistics.shipped" }).then((r) => { if (r) setLines([]); })}>{lines.length ? t("logistics.shipBtn") : t("logistics.moveEmpty")}</Button></ActionBar>

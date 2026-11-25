@@ -7,7 +7,7 @@ import { and, eq, lte, sql } from "drizzle-orm";
 import { allocate, applyBp, estimateOwnTrip, mulDiv } from "@capitalforge/economy";
 import { roadDistanceKm } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
-import { paceTrip } from "../catalog/pace";
+import { minutesToMs, paceTrip } from "../catalog/pace";
 import type { Tx } from "../db/client";
 import { contractInstallments, freightJobs, sales, shipmentCargo, shipments, vehicles } from "../db/schema";
 import type { Deps } from "../deps";
@@ -94,7 +94,7 @@ export async function startShipment(tx: Tx, uow: UnitOfWork, catalog: Catalog, a
   });
   const id = randomUUID();
   const tripMinutes = paceTrip(catalog, trip.minutes);
-  const arrivesAt = new Date(a.now.getTime() + tripMinutes * 60_000);
+  const arrivesAt = new Date(a.now.getTime() + minutesToMs(tripMinutes));
   const own = a.purpose === "own";
   const led = await post(tx, {
     kind: "shipment_depart", idempotencyKey: `ship-depart:${id}`, refType: "shipment", refId: id, at: a.now,

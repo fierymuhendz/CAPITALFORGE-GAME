@@ -69,7 +69,8 @@ export interface WorldDto {
   qualityPriceBp: number[];
   freight: { systemBaseFee: Money; systemPerKm: Money; driverHoursPerTrip: number };
   /** tempo kuralı: oyun süreleri en çok maxMinutes (0 = sınır yok); yol süreleri travelScaleBp/10000 ile sıkıştırılır. Bu yanıttaki dakikalar zaten tempolu. */
-  pace: { maxMinutes: number; travelScaleBp: number };
+  /** playtestSeconds > 0: oyun testi kipi, her bekleme en çok bu kadar sn (süre alanları kesirli dakika olabilir) */
+  pace: { maxMinutes: number; travelScaleBp: number; playtestSeconds: number };
   startingCash: Money;
 }
 
@@ -405,6 +406,46 @@ export interface AdminSearchDto {
   accounts: Array<{ id: string; username: string; role: "player" | "admin"; frozen: boolean; createdAt: Iso; companyId: string | null; companyName: string | null }>;
   companies: Array<{ id: string; name: string; sector: Sector; homeCityId: string; level: number; isSystem: boolean; dissolved: boolean; accountId: string | null; username: string | null }>;
 }
+
+/** GET /admin/players — Oyuncu Yönetimi listesi (sistem şirketleri hariç) */
+export interface AdminPlayerRowDto {
+  accountId: string;
+  username: string;
+  role: "player" | "admin";
+  suspended: boolean;
+  createdAt: Iso;
+  lastLoginAt: Iso | null;
+  company: null | { id: string; name: string; sector: Sector; homeCityId: string; level: number };
+  /** nakit (kuruş); şirketi yoksa null */
+  cash: Money | null;
+}
+export interface AdminPlayersDto { rows: AdminPlayerRowDto[] }
+
+/** Bakiye ayarı kaydı (defter işlemi + denetim kaydı) */
+export interface AdminBalanceAdjustmentDto {
+  id: string;
+  at: Iso;
+  adminUsername: string;
+  mode: "add" | "deduct" | "set";
+  amount: Money;
+  /** işaretli değişim (kuruş) */
+  delta: Money;
+  before: Money;
+  after: Money;
+  reason: string;
+  transactionId: string | null;
+}
+
+/** GET /admin/players/:accountId */
+export interface AdminPlayerDetailDto {
+  player: AdminPlayerRowDto;
+  suspendedAt: Iso | null;
+  adjustments: AdminBalanceAdjustmentDto[];
+  statusHistory: Array<{ at: Iso; adminUsername: string; suspended: boolean; reason: string }>;
+}
+
+/** POST /admin/players/:accountId/balance */
+export interface AdminBalanceResultDto { companyId: string; before: Money; after: Money; delta: Money; transactionId: string | null }
 
 /** GET /admin/companies/:id */
 export interface AdminCompanyDetailDto {

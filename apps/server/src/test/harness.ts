@@ -13,7 +13,9 @@
 import pino from "pino";
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { DEFAULT_SETTINGS } from "@capitalforge/shared";
+import { settings } from "../db/schema";
 import { createDb } from "../db/client";
 import { runMigrations } from "../db/migrate";
 import { Clock } from "../clock";
@@ -74,7 +76,7 @@ export interface Harness {
  * keepDb: true → şema silinmez (sunucu yeniden başlatma / ikinci yayın simülasyonu). Migration + tohumlama
  * yine çalışır (idempotent olmalı); saat ofseti veritabanından yüklenir.
  */
-export async function createHarness(opts?: { schedulerTasks?: boolean; keepDb?: boolean }): Promise<Harness> {
+export async function createHarness(opts?: { schedulerTasks?: boolean; keepDb?: boolean; playtestSeconds?: number }): Promise<Harness> {
   const url = process.env.DATABASE_URL ?? "postgres://capitalforge:capitalforge@localhost:5432/capitalforge_test";
   if (!/test/.test(url)) throw new Error("Test DATABASE_URL adı 'test' içermeli");
   if (!opts?.keepDb) {
@@ -86,6 +88,13 @@ export async function createHarness(opts?: { schedulerTasks?: boolean; keepDb?: 
   await runMigrations(url);
   const config = { ...loadConfig({ ...process.env, NODE_ENV: "test", ALLOW_TIME_TRAVEL: "1", DATABASE_URL: url }), secureCookies: false };
   const { db, sql: client } = createDb(url, 5);
+  // Oyun testi kipi (varsayılan ayar 60 sn) testlerde varsayılan olarak kapalı: mevcut senaryolar normal tempoyu doğrular.
+  // Kipi deneyen testler { playtestSeconds: 60 } verir.
+  {
+    const cur = (await db.select().from(settings).where(eq(settings.key, "pace")).limit(1))[0];
+    const value = { ...DEFAULT_SETTINGS.pace, ...((cur?.value as object | undefined) ?? {}), playtestSeconds: opts?.playtestSeconds ?? 0 };
+    await db.insert(settings).values({ key: "pace", value, updatedAt: new Date() }).onConflictDoUpdate({ target: settings.key, set: { value } });
+  }
   const clock = new Clock(true);
   const catalog = new Catalog();
   await catalog.reload(db);

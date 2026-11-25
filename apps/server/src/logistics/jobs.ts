@@ -101,7 +101,7 @@ export async function acceptFreightJob(
       cityId: job.originCityId, destCityId: job.destCityId,
       expected: {
         qtyKg: job.totalKg, revenue: job.payAmount, fees: fee, cost: tripTotal, profit: job.payAmount - fee - tripTotal,
-        minutes: Math.round((shipment.arrivesAt.getTime() - now.getTime()) / 60_000), at: shipment.arrivesAt,
+        minutes: Math.round((shipment.arrivesAt.getTime() - now.getTime()) / 1000) / 60, at: shipment.arrivesAt,
       },
       at: now,
     });
@@ -179,7 +179,7 @@ export async function jobDtos(db: DbOrTx, catalog: Catalog, rows: JobRow[], me: 
       // araç boş gidiş + yükleme/boşaltma + iş yolu boyunca bağlı (yükleme/boşaltma = handlingMinutes, trip.minutes içinde)
       const minutes = paceTrip(catalog, repo.minutes + trip.minutes);
       if (minutes <= 0) continue;
-      const netPerHour = ((j.payAmount - repo.total - trip.total) * 60n) / BigInt(minutes);
+      const netPerHour = ((j.payAmount - repo.total - trip.total) * 3600n) / BigInt(Math.max(1, Math.round(minutes * 60)));
       if (!best || netPerHour > best.netPerHour || (netPerHour === best.netPerHour && minutes < best.minutes)) best = { vehicleId: v.id, minutes, netPerHour };
     }
     return best;

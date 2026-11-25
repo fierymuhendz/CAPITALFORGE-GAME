@@ -14,6 +14,7 @@ import { settleDueJobs } from "../../production/settle";
 import { researchCompletionTask } from "../../research/research";
 import { registerResearchRoutes } from "../../research/routes";
 import { registerTask } from "../../scheduler/scheduler";
+import { clampActiveWaits } from "../../catalog/playtest";
 
 export function register(app: FastifyInstance, deps: Deps): void {
   registerCompanyViewRoutes(app, deps);
@@ -27,6 +28,8 @@ export function register(app: FastifyInstance, deps: Deps): void {
 
 /** registerTask(...) çağrıları */
 export function tasks(): void {
+  // oyun testi kipi: çalışan işlerin kalan süresi tavana çekilir (yerleşmeden önce çalışır)
+  registerTask({ name: "playtest.clamp", everyMs: 0, run: (deps, now) => clampActiveWaits(deps, now) });
   registerTask({ name: "production.settle", everyMs: 0, run: (deps, now) => settleDueJobs(deps, now) });
   registerTask({ name: "facilities.complete", everyMs: 0, run: (deps, now) => facilityCompletionTask(deps, now) });
   registerTask({ name: "research.complete", everyMs: 0, run: (deps, now) => researchCompletionTask(deps, now) });

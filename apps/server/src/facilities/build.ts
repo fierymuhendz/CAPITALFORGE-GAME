@@ -7,7 +7,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { z } from "zod";
 import type { BuyPlotReq, FacilityDto } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
-import { paceDuration } from "../catalog/pace";
+import { minutesToMs, paceDuration } from "../catalog/pace";
 import type { Tx } from "../db/client";
 import { companies, facilities, plots } from "../db/schema";
 import { fail } from "../errors";
@@ -19,7 +19,6 @@ import { m } from "../lib/serialize";
 import { selectLots } from "../production/lots";
 import { facilityDto } from "./dto";
 
-const MIN = 60_000;
 
 /** Çeliği şehir deposundan düşer; yetersizse INSUFFICIENT_STEEL. Döndürür: toplam çelik maliyeti. */
 async function consumeSteel(tx: Tx, companyId: string, cityId: string, kg: number, refType: string, refId: string, now: Date): Promise<bigint> {
@@ -64,7 +63,7 @@ export async function buyPlot(tx: Tx, uow: UnitOfWork, catalog: Catalog, company
     .insert(facilities)
     .values({
       companyId, plotId: plot.id, cityId: plot.cityId, type: bt.id, level: 1, qualityLevel: 1, state: "constructing",
-      constructionEndsAt: new Date(now.getTime() + paceDuration(catalog, bt.buildMinutes) * MIN), createdAt: now,
+      constructionEndsAt: new Date(now.getTime() + minutesToMs(paceDuration(catalog, bt.buildMinutes))), createdAt: now,
     })
     .returning();
   const steelCost = await consumeSteel(tx, companyId, plot.cityId, bt.buildSteelKg, "facility", fac!.id, now);
@@ -119,7 +118,7 @@ export async function startUpgrade(tx: Tx, uow: UnitOfWork, catalog: Catalog, co
   });
   const [u] = await tx
     .update(facilities)
-    .set({ upgradeKind: kind, upgradeTarget: target, upgradeEndsAt: new Date(now.getTime() + paceDuration(catalog, minutes) * MIN) })
+    .set({ upgradeKind: kind, upgradeTarget: target, upgradeEndsAt: new Date(now.getTime() + minutesToMs(paceDuration(catalog, minutes))) })
     .where(eq(facilities.id, f.id))
     .returning();
   uow.invalidate(companyId, "company", "inventory", "facilities", "finance", "map");

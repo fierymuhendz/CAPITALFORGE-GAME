@@ -38,7 +38,7 @@ export function ResearchPanel() {
               {r.inProgress ? <span className="small">{t("research.inProgress", { n: r.inProgress.targetLevel })} <Countdown until={r.inProgress.endsAt} /></span> : maxed ? <span className="small good">✓ {t("errors.RESEARCH_MAXED")}</span> : (
                 <>
                   <KV k={t("research.cost")} v={i.money(r.nextCost!)} />
-                  <KV k={t("facility.remaining")} v={t("common.minutes", { n: r.nextMinutes ?? 0 })} />
+                  <KV k={t("facility.remaining")} v={i.dur(r.nextMinutes ?? 0)} />
                   {locked ? <span className="small warn">⚠ {t("research.needLevel", { n: r.minCompanyLevel })}</span> : null}
                   <Button variant="primary" loading={busy} disabled={locked || anyBusy} onClick={() => void run(() => api.post(`/research/${r.researchId}/start`), { ok: "research.started" })}>{t("research.start")}</Button>
                 </>

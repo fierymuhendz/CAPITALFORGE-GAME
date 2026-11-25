@@ -2,6 +2,7 @@
  * Üretim başlatma (elle veya tekrar modunda). Kilit sırası: tesis satırı → stok → defter.
  * Defter: wip +(girdi + enerji + su + ücret), inventory −girdi, cash −(enerji + su + ücret).
  */
+import { minutesToMs } from "../catalog/pace";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { CostBreakdownDto } from "@capitalforge/shared";
@@ -72,7 +73,7 @@ export async function startProduction(tx: Tx, uow: UnitOfWork, catalog: Catalog,
     .values({
       id: jobId, facilityId: facility.id, companyId: p.companyId, cityId: facility.cityId, recipeId: ev.recipe.id,
       recipeVersion: ev.recipe.version, recipeSnapshot: { ...ev.recipe }, batches: p.batches, repeat: p.repeat, status: "running",
-      startedAt: p.now, endsAt: new Date(p.now.getTime() + plan.minutes * 60_000),
+      startedAt: p.now, endsAt: new Date(p.now.getTime() + minutesToMs(plan.minutes)),
       outputProductId: ev.recipe.output.productId, outputKg: plan.outputKg, outputQuality: plan.outputQuality,
       costBreakdown: breakdown, costTotal: total, startTransactionId: startTx.id,
     })

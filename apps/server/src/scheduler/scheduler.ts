@@ -4,6 +4,7 @@
  * gecikmiş işler ilk turda yerleşir. Testler `runDue(deps, now)` ile zamanı elle ilerletir.
  */
 import type { Deps } from "../deps";
+import { playtestSeconds } from "../catalog/pace";
 
 export interface Task {
   name: string;
@@ -60,10 +61,21 @@ export function startScheduler(deps: Deps): () => void {
       running = false;
     }
   };
-  const h = setInterval(() => void tick(), deps.config.schedulerIntervalMs);
-  void tick();
+  // Oyun testi kipinde tur aralığı en çok 1 sn: kısa işler geri sayımla aynı anda biter.
+  let h: ReturnType<typeof setTimeout> | null = null;
+  const loop = async () => {
+    try {
+      await tick();
+    } catch (err) {
+      deps.log.error({ err }, "zamanlayıcı turu başarısız");
+    }
+    if (stopped) return;
+    const base = deps.config.schedulerIntervalMs;
+    h = setTimeout(() => void loop(), playtestSeconds(deps.catalog) > 0 ? Math.min(base, 1000) : base);
+  };
+  void loop();
   return () => {
     stopped = true;
-    clearInterval(h);
+    if (h) clearTimeout(h);
   };
 }

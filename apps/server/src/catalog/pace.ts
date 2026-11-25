@@ -1,12 +1,28 @@
-/** Tempo kuralı (settings.pace): süre tavanı ve yol sıkıştırması. Saf formüller packages/economy/pace.ts içinde. */
-import { capMinutes, scaleTravelMinutes, travelMinutes, travelScaleBp } from "@capitalforge/economy";
+/**
+ * Tempo kuralı (settings.pace): süre tavanı, yol sıkıştırması ve oyun testi kipi. Saf formüller packages/economy/pace.ts içinde.
+ *
+ * Oyun testi kipi (`pace.playtestSeconds` > 0): her oyun beklemesi min(özgün, tavan). Bu dosyadaki süre işlevleri
+ * (paceDuration, paceTrip, pickupMinutes) tavanı zaten uygular ve KESİRLİ dakika döndürebilir (15 sn = 0,25 dk).
+ * Çalışan işlerin kalan süresi `playtest.ts` içindeki görevle aynı tavana çekilir.
+ * Oturum, güvenlik sınırları ve altyapı zamanlamaları bu kurala tabi değildir.
+ */
+import { capMinutes, capWaitMinutes, capWaitMs, scaleTravelMinutes, travelMinutes, travelScaleBp } from "@capitalforge/economy";
 import { roadDistanceKm } from "@capitalforge/shared";
 import type { Catalog } from "./catalog";
 
 export const paceMax = (c: Catalog): number => c.settings.pace?.maxMinutes ?? 0;
 
-/** üretim, inşaat, yükseltme, araştırma, taşıyıcı bekleme */
-export const paceDuration = (c: Catalog, minutes: number): number => capMinutes(minutes, paceMax(c));
+/** oyun testi kipi tavanı (sn); 0 = kapalı */
+export const playtestSeconds = (c: Catalog): number => {
+  const v = (c.settings.pace as { playtestSeconds?: number } | undefined)?.playtestSeconds ?? 0;
+  return Number.isFinite(v) && v > 0 ? v : 0;
+};
+
+/** zaman damgasından türetilen beklemeler (soğuma, sistemin devralma beklemesi): min(ms, tavan) */
+export const playtestMs = (c: Catalog, ms: number): number => capWaitMs(ms, playtestSeconds(c));
+
+/** üretim, inşaat, yükseltme, araştırma, taşıyıcı bekleme (dk; oyun testi kipinde kesirli olabilir) */
+export const paceDuration = (c: Catalog, minutes: number): number => capWaitMinutes(capMinutes(minutes, paceMax(c)), playtestSeconds(c));
 
 /** yol ölçeği (bp): en uzun yol × en yavaş araç + yükleme/boşaltma = tavan */
 /** sistem taşımacısı bekleme bütçesi: tavanın dörtte biri; bekleme + en uzun sefer ≤ tavan */
@@ -24,12 +40,16 @@ export function paceTravelScaleBp(c: Catalog): number {
 }
 
 /** sefer dakikası (yol + yükleme/boşaltma) → tempolu dakika */
-export const paceTrip = (c: Catalog, minutes: number): number => scaleTravelMinutes(minutes, paceTravelScaleBp(c));
+export const paceTrip = (c: Catalog, minutes: number): number => capWaitMinutes(scaleTravelMinutes(minutes, paceTravelScaleBp(c)), playtestSeconds(c));
 
 /** sistem taşımacısının üstlenme beklemesi (tempolu): tavan < 4 dk ise 0; aksi halde yolculuğa en az 1 dk bırakır */
 export const pickupMinutes = (c: Catalog): number => {
   const max = paceMax(c);
   const raw = c.settings.freight.systemPickupAfterMinutes;
   if (max > 0 && max < 4) return 0;
-  return max > 0 ? Math.min(paceDuration(c, raw), max - 1) : raw;
+  const base = max > 0 ? Math.min(capMinutes(raw, max), max - 1) : raw;
+  return capWaitMinutes(base, playtestSeconds(c));
 };
+
+/** dakika → ms (kesirli dakikada tam ms) */
+export const minutesToMs = (minutes: number): number => Math.round(minutes * 60_000);

@@ -83,7 +83,8 @@ function figuresFromExpected(raw: unknown): OutcomeFiguresDto {
 }
 
 const metaOf = (raw: unknown): Record<string, unknown> => ((raw as { meta?: Record<string, unknown> } | null)?.meta ?? {});
-const minutesBetween = (a: Date, b: Date): number => Math.max(0, Math.round((b.getTime() - a.getTime()) / 60_000));
+/** saniye hassasiyetinde dakika (oyun testi kipinde kısa süreler 0 görünmesin) */
+const minutesBetween = (a: Date, b: Date): number => Math.max(0, Math.round((b.getTime() - a.getTime()) / 1000) / 60);
 
 interface Resolved { status: OutcomeDto["status"]; actual: OutcomeFiguresDto | null; saleIds: string[]; txIds: string[] }
 const PENDING: Resolved = { status: "pending", actual: null, saleIds: [], txIds: [] };

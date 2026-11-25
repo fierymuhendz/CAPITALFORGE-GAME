@@ -14,9 +14,7 @@ import type { UnitOfWork } from "../events/bus";
 import { co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
-import { paceDuration } from "../catalog/pace";
-
-const MIN = 60_000;
+import { minutesToMs, paceDuration } from "../catalog/pace";
 
 export const researchCost = (baseCost: number, level: number): bigint => BigInt(baseCost) * BigInt(level) * BigInt(level);
 export const researchMinutes = (baseMinutes: number, level: number): number => baseMinutes * level;
@@ -58,7 +56,7 @@ export async function startResearch(tx: Tx, uow: UnitOfWork, catalog: Catalog, c
     memo: `Araştırma ${researchId} → ${target}`,
     lines: [{ account: co(companyId, "exp_research"), amount: cost }, { account: co(companyId, "cash"), amount: -cost }],
   });
-  const endsAt = new Date(now.getTime() + paced(catalog, def.baseMinutes, target) * MIN);
+  const endsAt = new Date(now.getTime() + minutesToMs(paced(catalog, def.baseMinutes, target)));
   await tx
     .insert(research)
     .values({ companyId, researchId, level, targetLevel: target, endsAt })

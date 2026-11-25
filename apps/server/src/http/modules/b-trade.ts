@@ -274,8 +274,8 @@ export function register(app: FastifyInstance, deps: Deps): void {
 
 /** Zamanlayıcı görevleri. Sıra önemlidir: önce varışlar, sonra taksit kapanışları. */
 export function tasks(): void {
-  registerTask({ name: "b.shipments.arrive", everyMs: 5_000, run: (d, now) => processArrivals(d, now) });
-  registerTask({ name: "b.contracts.windows", everyMs: 30_000, run: (d, now) => openWindows(d, now) });
+  registerTask({ name: "b.shipments.arrive", everyMs: 0, run: (d, now) => processArrivals(d, now) });
+  registerTask({ name: "b.contracts.windows", everyMs: 0, run: (d, now) => openWindows(d, now) });
   registerTask({ name: "b.contracts.close", everyMs: 5_000, run: (d, now) => closeInstallments(d, now) });
   registerTask({ name: "b.contracts.expire", everyMs: 30_000, run: (d, now) => expireProposals(d, now) });
   registerTask({ name: "b.freight.expire", everyMs: 30_000, run: (d, now) => expireJobs(d, now) });

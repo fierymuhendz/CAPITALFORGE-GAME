@@ -13,6 +13,7 @@ import { AdminSetup } from "../more/AdminSetup";
 import { Alerts, Overview } from "./AdminOverview";
 import { Cases, Connections, SearchTab } from "./AdminPeople";
 import { AuditTab, CatalogTab, TimeTab } from "./AdminCatalog";
+import { PlayersTab } from "./AdminPlayers";
 
 export function AdminApp() {
   const ok = useGate("account");
@@ -42,8 +43,8 @@ export function AdminApp() {
     <main className="page">{top}
       <div className="page-inner" style={{ width: "min(1200px, 100%)" }}>
         <h1>{t("admin.title")}</h1>
-        <Tabs label={t("admin.title")} value={tab} onChange={setTab} items={["overview", "alerts", "search", "connections", "cases", "catalog", "audit", "time"].map((id) => ({ id, label: t(`admin.tabs.${id}`) }))} />
-        {tab === "overview" ? <Overview /> : tab === "alerts" ? <Alerts goCases={() => setTab("cases")} /> : tab === "search" ? <SearchTab goCases={() => setTab("cases")} /> : tab === "connections" ? <Connections goCases={() => setTab("cases")} />
+        <Tabs label={t("admin.title")} value={tab} onChange={setTab} items={["overview", "players", "alerts", "search", "connections", "cases", "catalog", "audit", "time"].map((id) => ({ id, label: t(`admin.tabs.${id}`) }))} />
+        {tab === "overview" ? <Overview /> : tab === "players" ? <PlayersTab /> : tab === "alerts" ? <Alerts goCases={() => setTab("cases")} /> : tab === "search" ? <SearchTab goCases={() => setTab("cases")} /> : tab === "connections" ? <Connections goCases={() => setTab("cases")} />
           : tab === "cases" ? <Cases /> : tab === "catalog" ? <CatalogTab /> : tab === "audit" ? <AuditTab /> : tab === "time" ? <TimeTab /> : <EmptyState title="?" />}
       </div>
     </main>
