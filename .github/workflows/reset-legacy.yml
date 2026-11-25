@@ -55,36 +55,38 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          # Uzak betik sonuna kadar çalışmazsa (ör. stdin erken tükenirse) iş başarısız sayılır.
+          ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes "$USER@$HOST" 'bash -s' <<'REMOTE' | tee /tmp/reset.log
           set -euo pipefail
           cd /opt/capitalforge
           die() { echo "DURDU: $*" >&2; exit 1; }
-          docker compose ps --status running --services | grep -qx postgres || die "postgres servisi çalışmıyor"
-          PSQL="docker compose exec -T postgres psql -U capitalforge -d capitalforge -v ON_ERROR_STOP=1 -Atc"
+          # Uzak betik ssh'nin stdin'inden okunur; docker compose exec stdin'i yutmasın diye her çağrı </dev/null ile.
+          docker compose ps --status running --services </dev/null | grep -qx postgres || die "postgres servisi çalışmıyor"
+          PSQL() { docker compose exec -T postgres psql -U capitalforge -d capitalforge -v ON_ERROR_STOP=1 -Atc "$1" </dev/null; }
 
-          db=$($PSQL "SELECT current_database()")
+          db=$(PSQL "SELECT current_database()")
           [ "$db" = "capitalforge" ] || die "beklenmeyen veritabanı: $db"
 
           # Zaten sıfırlandıysa (işaret varsa) hiçbir şey yapma
-          done_mark=$($PSQL "SELECT count(*) FROM information_schema.tables WHERE table_schema='cf' AND table_name='meta'")
+          done_mark=$(PSQL "SELECT count(*) FROM information_schema.tables WHERE table_schema='cf' AND table_name='meta'")
           if [ "$done_mark" = "1" ]; then
-            already=$($PSQL "SELECT count(*) FROM cf.meta WHERE key='legacy_reset'")
-            if [ "$already" = "1" ]; then echo "Eski oyun daha önce silinmiş (cf.meta legacy_reset). Yapılacak bir şey yok."; exit 0; fi
+            already=$(PSQL "SELECT count(*) FROM cf.meta WHERE key='legacy_reset'")
+            if [ "$already" = "1" ]; then echo "Eski oyun daha önce silinmiş (cf.meta legacy_reset). Yapılacak bir şey yok."; echo "SIFIRLAMA-TAMAM"; exit 0; fi
           fi
 
           # Eski migration karmaları (bu depodaki v1 dosyalarının sha256'sı)
           EXPECTED="c028e41013bd996396da8a22dd68dfdc76765fd1b692af3fc223cac661492490
           483c64ebfa6801aece71985028912283e6d2dd085a3b8500ed33d45d0d0f0882
           9a742e0f45e0d0e9337744146cfb7d79f94dd664c047b3b0d8b884f245954310"
-          has_mig=$($PSQL "SELECT count(*) FROM information_schema.tables WHERE table_schema='drizzle' AND table_name='__drizzle_migrations'")
+          has_mig=$(PSQL "SELECT count(*) FROM information_schema.tables WHERE table_schema='drizzle' AND table_name='__drizzle_migrations'")
           [ "$has_mig" = "1" ] || die "drizzle.__drizzle_migrations yok: eski oyun bulunamadı, silme yapılmadı"
-          got=$($PSQL "SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at")
+          got=$(PSQL "SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at")
           exp_clean=$(echo "$EXPECTED" | sed 's/^ *//')
           [ "$got" = "$exp_clean" ] || die "migration karmaları bu projenin eski sürümüyle eşleşmiyor; silme yapılmadı"
           echo "Doğrulandı: veritabanı Capital Forge v1 migration geçmişine sahip"
 
           KNOWN="accounts companies facilities game_clock inventories ledger_entries player_actions players price_history production_jobs products relief_claims trades transfers"
-          tables=$($PSQL "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY 1")
+          tables=$(PSQL "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY 1")
           for t in $tables; do
             echo " $KNOWN " | grep -q " $t " || die "public şemasında bilinmeyen tablo: $t (silme yapılmadı)"
           done
@@ -98,11 +100,13 @@ jobs:
             echo "INSERT INTO cf.meta (key, value, updated_at) VALUES ('legacy_reset', jsonb_build_object('at', now()), now()) ON CONFLICT (key) DO NOTHING;"
             echo "COMMIT;"
           } | docker compose exec -T postgres psql -U capitalforge -d capitalforge -v ON_ERROR_STOP=1 -q
-          left=$($PSQL "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+          left=$(PSQL "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
           echo "public şemasında kalan tablo: $left"
 
           # Redis: v2 anahtarları "cf:" öneklidir; diğerleri eski oyuna aittir.
           # Parola komut satırına yazılmaz: redis konteynerindeki REDIS_PASSWORD ortam değişkeni kullanılır.
-          docker compose exec -T redis sh -c 'export REDISCLI_AUTH="$REDIS_PASSWORD"; n=0; for k in $(redis-cli --no-auth-warning --scan); do case "$k" in cf:*) ;; *) redis-cli --no-auth-warning DEL "$k" > /dev/null; n=$((n+1)) ;; esac; done; echo "Silinen eski Redis anahtarı: $n"'
+          docker compose exec -T redis sh -c </dev/null 'export REDISCLI_AUTH="$REDIS_PASSWORD"; n=0; for k in $(redis-cli --no-auth-warning --scan); do case "$k" in cf:*) ;; *) redis-cli --no-auth-warning DEL "$k" > /dev/null; n=$((n+1)) ;; esac; done; echo "Silinen eski Redis anahtarı: $n"'
           echo "Eski oyun verisi silindi. v2 dünyası (cf şeması) korunuyor."
+          echo "SIFIRLAMA-TAMAM"
           REMOTE
+          grep -qx "SIFIRLAMA-TAMAM" /tmp/reset.log || { echo "::error::Uzak betik sonuna kadar çalışmadı; sonuç belirsiz."; exit 1; }
