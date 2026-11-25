@@ -115,26 +115,6 @@
     "label": "Start research"
   },
   {
-    "panel": "research",
-    "label": "Start research"
-  },
-  {
-    "panel": "research",
-    "label": "Start research"
-  },
-  {
-    "panel": "research",
-    "label": "Start research"
-  },
-  {
-    "panel": "research",
-    "label": "Start research"
-  },
-  {
-    "panel": "research",
-    "label": "Start research"
-  },
-  {
     "panel": "notifications",
     "label": "Mark all as read"
   },
@@ -153,14 +133,6 @@
   {
     "panel": "notifications",
     "label": "Open"
-  },
-  {
-    "panel": "account",
-    "label": "Türkçe"
-  },
-  {
-    "panel": "account",
-    "label": "English"
   },
   {
     "panel": "account",

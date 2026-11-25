@@ -22,7 +22,7 @@
       "flow": 1,
       "step": "sihirbaz: ad, şehir, sektör, uygun arsa; seçimde fiyat+konum+uzaklık görünür; /play şehir görünümü",
       "ok": true,
-      "detail": "16 arsa; ayrıntı: Kavsak 4·3 ₺20,000.00 Size 16 ha Efficiency — To city center 9 km Nearest supply Grain: Kavsak 0 km · Grain: Yesilova 90 km · Grain: Korfezkent 120 km · Raw mil",
+      "detail": "16 arsa; ayrıntı: Kavsak 2·1 ₺18,500.00 Size 12 ha Efficiency — To city center 9 km Nearest supply Grain: Kavsak 0 km · Grain: Yesilova 90 km · Grain: Korfezkent 120 km · Raw mil",
       "shot": ""
     },
     {
@@ -86,7 +86,7 @@
       "flow": 2,
       "step": "finans: satış satırı ve gelir görünür",
       "ok": true,
-      "detail": "gelir 604500, net 33705",
+      "detail": "gelir 446000, net 65040",
       "shot": ""
     },
     {
@@ -149,7 +149,7 @@
       "flow": 4,
       "step": "satıcının satış satırı tahsilat, COGS, ücret ve net kârı gösterir",
       "ok": true,
-      "detail": "tahsilat 383625 COGS 282375 ücret 3836 net 97414",
+      "detail": "tahsilat 525000 COGS 376500 ücret 5250 net 143250",
       "shot": ""
     },
     {
@@ -190,6 +190,14 @@
       "ok": true,
       "detail": "GET overview=403 advance=403",
       "shot": ""
+    },
+    {
+      "cfg": "desktop-en",
+      "flow": 6,
+      "step": "metin taraması: admin-audit",
+      "ok": false,
+      "detail": "ham anahtar: admin.totp_verify, admin.totp_enable, admin.claim ",
+      "shot": "docs/screenshots/e2e-desktop-en-f6-rawkey-admin-audit.png"
     },
     {
       "cfg": "desktop-en",
@@ -260,20 +268,8 @@
       "flow": 7,
       "step": "panel taraması: research (ham anahtar, konsol, API hatası, düğmeler)",
       "ok": true,
-      "detail": "7 düğme tıklandı ; UYARI konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity) | konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity) | konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity) | konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity) | konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity) | POST /research/drilling/start 422 RESEARCH_BUSY | POST /research/lean_process/start 422 RESEARCH_BUSY | POST /research/quality_control/start 422 RESEARCH_BUSY | POST /research/eco_driving/start 422 RESEARCH_BUSY | POST /research/route_planning/start 422 RESEARCH_BUSY",
-      "shot": "",
-      "noise": [
-        "konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "konsol: Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "POST /research/drilling/start 422 RESEARCH_BUSY",
-        "POST /research/lean_process/start 422 RESEARCH_BUSY",
-        "POST /research/quality_control/start 422 RESEARCH_BUSY",
-        "POST /research/eco_driving/start 422 RESEARCH_BUSY",
-        "POST /research/route_planning/start 422 RESEARCH_BUSY"
-      ]
+      "detail": "7 düğme tıklandı",
+      "shot": ""
     },
     {
       "cfg": "desktop-en",
@@ -316,67 +312,18 @@
       "shot": ""
     }
   ],
-  "bugs": [],
+  "bugs": [
+    {
+      "cfg": "desktop-en",
+      "flow": 6,
+      "step": "metin taraması: admin-audit",
+      "detail": "ham anahtar: admin.totp_verify, admin.totp_enable, admin.claim ",
+      "shot": "docs/screenshots/e2e-desktop-en-f6-rawkey-admin-audit.png"
+    }
+  ],
   "monitor": {
-    "console": [
-      {
-        "text": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "url": "http://localhost:3100/play?tab=research"
-      },
-      {
-        "text": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "url": "http://localhost:3100/play?tab=research"
-      },
-      {
-        "text": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "url": "http://localhost:3100/play?tab=research"
-      },
-      {
-        "text": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "url": "http://localhost:3100/play?tab=research"
-      },
-      {
-        "text": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)",
-        "url": "http://localhost:3100/play?tab=research"
-      }
-    ],
+    "console": [],
     "pageErrors": [],
-    "api": [
-      {
-        "status": 422,
-        "method": "POST",
-        "path": "/research/drilling/start",
-        "code": "RESEARCH_BUSY",
-        "page": "/play?tab=research"
-      },
-      {
-        "status": 422,
-        "method": "POST",
-        "path": "/research/lean_process/start",
-        "code": "RESEARCH_BUSY",
-        "page": "/play?tab=research"
-      },
-      {
-        "status": 422,
-        "method": "POST",
-        "path": "/research/quality_control/start",
-        "code": "RESEARCH_BUSY",
-        "page": "/play?tab=research"
-      },
-      {
-        "status": 422,
-        "method": "POST",
-        "path": "/research/eco_driving/start",
-        "code": "RESEARCH_BUSY",
-        "page": "/play?tab=research"
-      },
-      {
-        "status": 422,
-        "method": "POST",
-        "path": "/research/route_planning/start",
-        "code": "RESEARCH_BUSY",
-        "page": "/play?tab=research"
-      }
-    ]
+    "api": []
   }
 }

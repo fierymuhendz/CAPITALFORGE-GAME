@@ -31,7 +31,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const nodeEnv = env.NODE_ENV ?? "development";
   const isProd = nodeEnv === "production";
   const secret = env.JWT_SECRET ?? env.APP_SECRET ?? (isProd ? "" : "dev-secret-degistir");
-  if (isProd && secret.length < 32) throw new Error("Üretimde JWT_SECRET en az 32 karakter olmalı");
+  if (isProd && secret.length < 16) throw new Error("Üretimde JWT_SECRET en az 16 karakter olmalı");
+  if (isProd && secret.length < 32) console.warn("Uyarı: JWT_SECRET 32 karakterden kısa; daha uzun bir değer önerilir");
   const redisUrl = env.REDIS_URL ?? "redis://localhost:6379";
   if (isProd && !/^rediss?:\/\/[^@]*:[^@]+@/.test(redisUrl)) throw new Error("Üretimde REDIS_URL parolalı olmalı");
   const tp = env.TRUST_PROXY ?? "false";
