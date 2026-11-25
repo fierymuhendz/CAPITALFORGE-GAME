@@ -70,6 +70,8 @@ export const idempotencyKeys = cf.table(
     scope: text("scope").notNull(),
     status: integer("status").notNull(),
     response: jsonb("response").notNull(),
+    /** istek gövdesi + gerçek yol karması; aynı anahtarla farklı istek → IDEMPOTENCY_MISMATCH (eski satırlarda null) */
+    requestHash: text("request_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("idem_uq").on(t.accountId, t.key)],

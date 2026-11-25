@@ -76,3 +76,8 @@ export async function linkMovements(tx: Tx, refType: string, refId: string, tran
     .set({ transactionId })
     .where(and(eq(inventoryMovements.refType, refType), eq(inventoryMovements.refId, refId), isNull(inventoryMovements.transactionId)));
 }
+
+/** Sayaç kontrollerinden (açık emir sayısı, filo, açık teklif) önce şirket satırını kilitler: eşzamanlı istekler sınırı aşamaz */
+export async function lockCompanyRow(tx: Tx, companyId: string): Promise<void> {
+  await tx.select({ id: companies.id }).from(companies).where(eq(companies.id, companyId)).for("update");
+}

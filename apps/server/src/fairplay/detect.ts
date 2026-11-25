@@ -2,13 +2,13 @@
  * Adil oyun tespit görevleri. Hepsi uyarı (alerts) yazar; hiçbir otomatik yaptırım uygulamaz.
  * Uyarılar dedupe_key ile tekrar yazılmaz.
  */
-import { and, eq, gt, lt, lte, sql } from "drizzle-orm";
-import { growthBp } from "@capitalforge/economy";
+import { and, eq, gt, isNotNull, lt, lte, sql } from "drizzle-orm";
+import { growthBp, systemCarrierQuote } from "@capitalforge/economy";
 import type { Deps } from "../deps";
-import { connectionRecords, contracts, meta, trades } from "../db/schema";
+import { connectionRecords, contracts, freightJobs, meta, trades } from "../db/schema";
 import { m } from "../lib/serialize";
 import { registerTask } from "../scheduler/scheduler";
-import { evaluateAnomaly } from "./anomaly";
+import { evaluateAnomaly, sameGroup } from "./anomaly";
 import { raiseAlert } from "./alerts";
 
 const HOUR = 3600_000;
@@ -126,6 +126,40 @@ export async function scanPriceAnomalies(deps: Deps, now: Date): Promise<number>
     if (rows.length < BATCH) break;
     cFrom = last;
   }
+
+  // --- taşıma ilanları: aynı bağlantı grubundaki şirketler arasındaki ilan ücreti (değer aktarımı kanalı) ---
+  const fKey = "fairplay.cursor.freight";
+  let fFrom = new Date(((await getCursor(deps, fKey)) ?? fallback).getTime() - CURSOR_OVERLAP_MS);
+  const fq = s.freight;
+  for (let loop = 0; loop < 20; loop++) {
+    const rows = await deps.db
+      .select()
+      .from(freightJobs)
+      .where(and(gt(freightJobs.acceptedAt, fFrom), lte(freightJobs.acceptedAt, now), eq(freightJobs.isSystem, false), isNotNull(freightJobs.carrierCompanyId)))
+      .orderBy(freightJobs.acceptedAt, freightJobs.id)
+      .limit(BATCH);
+    for (const j of rows) {
+      const carrierId = j.carrierCompanyId!;
+      if (!(await sameGroup(deps.db, carrierId, j.shipperCompanyId))) continue;
+      const quote = systemCarrierQuote(j.distanceKm, j.totalKg, fq.systemBaseFee, fq.systemPerKm);
+      const devBp = quote > 0n ? Number(((j.payAmount - quote) * 10000n) / quote) : 0;
+      const ok = await raiseAlert(deps.db, {
+        kind: "price_anomaly", severity: "high", cityId: j.originCityId, companyIds: [carrierId, j.shipperCompanyId],
+        details: {
+          explanation: "Aynı bağlantı grubundaki şirketler arasında taşıma ilanı: ücret değer aktarımı için kullanılıyor olabilir",
+          freightJobId: j.id, payAmount: m(j.payAmount), systemQuote: m(quote), refPricePerKg: m(quote), deviationBp: devBp, comparables: 0, insufficientData: false,
+          sellerCompanyId: carrierId, buyerCompanyId: j.shipperCompanyId, sameConnectionGroup: true,
+        },
+        dedupeKey: `price_anomaly:freight:${j.id}`, at: now,
+      });
+      if (ok) raised++;
+    }
+    if (rows.length === 0) break;
+    const last = rows[rows.length - 1]!.acceptedAt!;
+    await setCursor(deps, fKey, last, now);
+    if (rows.length < BATCH) break;
+    fFrom = last;
+  }
   return raised;
 }
 
@@ -238,11 +272,11 @@ export async function scanMarketWatch(deps: Deps, now: Date): Promise<number> {
   return raised;
 }
 
-/** ipRetentionDays öncesi son görülen bağlantı kayıtlarını sil */
+/** ipRetentionDays öncesi ilk görülen bağlantı kayıtlarını sil (sürekli bağlanan hesap için de karma 30 günde yenilenir) */
 export async function cleanupConnectionRecords(deps: Deps, now: Date): Promise<number> {
   const days = deps.catalog.settings.ipRetentionDays;
   const cutoff = new Date(now.getTime() - days * DAY);
-  const del = await deps.db.delete(connectionRecords).where(lt(connectionRecords.lastSeenAt, cutoff)).returning({ id: connectionRecords.id });
+  const del = await deps.db.delete(connectionRecords).where(lt(connectionRecords.firstSeenAt, cutoff)).returning({ id: connectionRecords.id });
   return del.length;
 }
 

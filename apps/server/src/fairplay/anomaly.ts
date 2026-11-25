@@ -30,7 +30,7 @@ export interface AnomalyEval extends AnomalyResult {
 const HOUR = 3600_000;
 
 /** İki şirketin hesapları ortak bir IP karmasını paylaşıyor mu (sütun adları sabit, kullanıcı girdisi değil) */
-const sameGroupExpr = (sellerCol: string, buyerCol: string): SQL => sql.raw(`EXISTS (
+export const sameGroupExpr = (sellerCol: string, buyerCol: string): SQL => sql.raw(`EXISTS (
   SELECT 1 FROM cf.companies gcs
   JOIN cf.connection_records grs ON grs.account_id = gcs.account_id
   JOIN cf.companies gcb ON gcb.id = ${buyerCol}

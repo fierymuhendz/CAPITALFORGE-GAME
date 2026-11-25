@@ -18,14 +18,15 @@ import {
   companies, contractDeliveries, contractInstallments, contracts, freightJobs, notifications, sales,
 } from "../db/schema";
 import type { Deps } from "../deps";
-import { fail } from "../errors";
+import { AppError, fail } from "../errors";
 import { UnitOfWork } from "../events/bus";
 import { addXp } from "../company/found";
+import { sameGroup } from "../fairplay/anomaly";
 import { addStock, lockHolding, removeStock, type HoldingKey } from "../inventory/holdings";
-import { co, post } from "../ledger/post";
+import { balanceOf, co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
-import { afterCashIn, companyBriefs, HOUR, linkMovements, type CompanyRow } from "../market/common";
+import { afterCashIn, companyBriefs, HOUR, linkMovements, lockCompanyRow, type CompanyRow } from "../market/common";
 
 export type ContractRow = typeof contracts.$inferSelect;
 export type InstRow = typeof contractInstallments.$inferSelect;
@@ -81,6 +82,7 @@ export async function proposeContract(
     const cp = (await tx.select().from(companies).where(eq(companies.id, req.counterpartyCompanyId)))[0];
     if (!cp || cp.dissolvedAt || cp.isSystem) fail("NOT_FOUND");
   }
+  await lockCompanyRow(tx, company.id);
   const open = await tx.select({ n: sql<number>`count(*)::int` }).from(contracts).where(and(eq(contracts.proposerCompanyId, company.id), eq(contracts.status, "proposed")));
   if ((open[0]?.n ?? 0) >= 50) fail("CONFLICT");
   const cpId = req.counterpartyCompanyId ?? null;
@@ -117,13 +119,24 @@ export async function acceptContract(tx: Tx, uow: UnitOfWork, catalog: Catalog, 
   const price = c.pricePerKg;
   const esc = contractEscrows({ qtyPerInstallmentKg: c.qtyPerInstallmentKg, pricePerKg: price, installments: c.installments, penaltyBp: c.penaltyBp, lateFeeBp: c.lateFeeBp });
   // Emanet + teminat: tek işlem; hesaplar post() içinde sıralı kilitlenir
-  await post(tx, {
-    kind: "contract_accept", idempotencyKey: `contract-accept:${c.id}`, refType: "contract", refId: c.id, at: now, memo: "Sözleşme emaneti ve teminatı",
-    lines: [
-      { account: co(buyerId, "escrow"), amount: esc.buyerEscrow }, { account: co(buyerId, "cash"), amount: -esc.buyerEscrow },
-      { account: co(sellerId, "escrow"), amount: esc.sellerDeposit }, { account: co(sellerId, "cash"), amount: -esc.sellerDeposit },
-    ],
-  });
+  // Teklif sahibinin eksik tutarı kabul edene sızmaz: yetersizlik teklif sahibindeyse teklif "açık değil" gibi görünür
+  try {
+    await post(tx, {
+      kind: "contract_accept", idempotencyKey: `contract-accept:${c.id}`, refType: "contract", refId: c.id, at: now, memo: "Sözleşme emaneti ve teminatı",
+      lines: [
+        { account: co(buyerId, "escrow"), amount: esc.buyerEscrow }, { account: co(buyerId, "cash"), amount: -esc.buyerEscrow },
+        { account: co(sellerId, "escrow"), amount: esc.sellerDeposit }, { account: co(sellerId, "cash"), amount: -esc.sellerDeposit },
+      ],
+    });
+  } catch (err) {
+    if (err instanceof AppError && err.code === "INSUFFICIENT_FUNDS") {
+      const need = company.id === buyerId ? esc.buyerEscrow : esc.sellerDeposit;
+      const have = await balanceOf(tx, co(company.id, "cash"));
+      if (have < need) fail("INSUFFICIENT_FUNDS", { missing: (need - have).toString() });
+      fail("CONTRACT_NOT_OPEN");
+    }
+    throw err;
+  }
   const dues = installmentSchedule(c.firstDueAt.getTime(), c.intervalHours, c.installments);
   const perQty = BigInt(c.qtyPerInstallmentKg) * price;
   const schedule = dues.map((d, i) => ({
@@ -251,7 +264,6 @@ export async function applyContractDelivery(tx: Tx, uow: UnitOfWork, catalog: Ca
       paidToSeller: inst.paidToSeller + dp.net, lateFees: inst.lateFees + dp.lateFee, status: "open",
     })
     .where(eq(contractInstallments.id, inst.id));
-  await addXp(tx, sellerId, catalog.settings.xp.delivery, catalog.settings.levelXp);
   await notify(tx, uow, buyerId, "contract_delivery_received", { contractId: c.id, productId: t.productId, qtyKg: a.qtyKg, late: late ? 1 : 0 }, a.at, `/play?tab=contracts&id=${c.id}`);
   uow.invalidate(sellerId, "contracts", "inventory", "finance", "company");
   uow.invalidate(buyerId, "contracts", "inventory", "finance", "company");
@@ -300,12 +312,16 @@ export async function settleInstallmentTx(tx: Tx, uow: UnitOfWork, catalog: Cata
     .update(contractInstallments)
     .set({ status: r.status, penalty: r.penaltyToBuyer, refundedToBuyer: r.refundToBuyer, escrowRemaining: 0n, settledAt: now, settleTransactionId: led.id })
     .where(eq(contractInstallments.id, inst.id));
+  // İtibar sayaçları ve deneyim yalnızca taksit kapanınca; küçük taksit ve aynı bağlantı grubundaki taraflar sayılmaz
+  const instValue = BigInt(inst.qtyDueKg) * t.price;
+  const eligible = instValue >= BigInt(catalog.settings.xp.minInstallmentValue) && !(await sameGroup(tx, sellerId, buyerId));
   const onTime = r.status === "fulfilled" && inst.qtyLateKg === 0;
-  await tx
-    .update(companies)
-    .set(onTime ? { onTimeDeliveries: sql`${companies.onTimeDeliveries} + 1` } : { lateOrMissed: sql`${companies.lateOrMissed} + 1` })
-    .where(eq(companies.id, sellerId));
-  if (r.status === "fulfilled") {
+  if (!onTime) {
+    await tx.update(companies).set({ lateOrMissed: sql`${companies.lateOrMissed} + 1` }).where(eq(companies.id, sellerId));
+  } else if (eligible) {
+    await tx.update(companies).set({ onTimeDeliveries: sql`${companies.onTimeDeliveries} + 1` }).where(eq(companies.id, sellerId));
+  }
+  if (r.status === "fulfilled" && eligible) {
     await addXp(tx, sellerId, catalog.settings.xp.contractInstallment, catalog.settings.levelXp);
     await addXp(tx, buyerId, catalog.settings.xp.contractInstallment, catalog.settings.levelXp);
   }

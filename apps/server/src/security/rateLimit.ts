@@ -8,7 +8,8 @@ import { fail } from "../errors";
 const mem = new Map<string, { n: number; until: number }>();
 
 export async function rateLimit(deps: Deps, key: string, limit: number, windowSec: number): Promise<void> {
-  if (process.env.DISABLE_RATE_LIMIT === "1") return;
+  // Üretimde hız sınırı kapatılamaz: DISABLE_RATE_LIMIT yalnızca üretim dışında geçerli
+  if (process.env.DISABLE_RATE_LIMIT === "1" && process.env.NODE_ENV !== "production") return;
   const k = `cf:rl:${key}:${Math.floor(Date.now() / 1000 / windowSec)}`;
   let n: number;
   if (deps.redis) {

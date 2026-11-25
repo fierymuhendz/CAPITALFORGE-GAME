@@ -4,7 +4,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, lte, sql } from "drizzle-orm";
-import { allocate, estimateOwnTrip, mulDiv } from "@capitalforge/economy";
+import { allocate, applyBp, estimateOwnTrip, mulDiv } from "@capitalforge/economy";
 import { roadDistanceKm } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
 import type { Tx } from "../db/client";
@@ -13,6 +13,7 @@ import type { Deps } from "../deps";
 import { fail } from "../errors";
 import { UnitOfWork } from "../events/bus";
 import { addXp } from "../company/found";
+import { sameGroup } from "../fairplay/anomaly";
 import { addStock } from "../inventory/holdings";
 import { co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
@@ -197,7 +198,12 @@ export async function arriveShipment(deps: Deps, shipmentId: string, now: Date):
         { account: co(payerId, "inventory"), amount: capTotal },
       ];
       if (job) {
-        ledLines.push({ account: co(sh.carrierCompanyId, "cash"), amount: job.payAmount }, { account: co(sh.carrierCompanyId, "revenue_freight"), amount: -job.payAmount });
+        // piyasa komisyonu navlun ilanı ücretinden de alınır (taşıyıcı öder)
+        const jobFee = applyBp(job.payAmount, cat.settings.marketFeeBp);
+        ledLines.push(
+          { account: co(sh.carrierCompanyId, "cash"), amount: job.payAmount - jobFee }, { account: co(sh.carrierCompanyId, "exp_fees"), amount: jobFee },
+          { account: co(sh.carrierCompanyId, "revenue_freight"), amount: -job.payAmount },
+        );
       }
       const led = await post(tx, { kind: "shipment_arrive", idempotencyKey: `ship-arrive:${sh.id}`, refType: "shipment", refId: sh.id, at, memo: "Navlun yerleşimi", lines: ledLines });
       arriveTx = led.id;
@@ -220,7 +226,9 @@ export async function arriveShipment(deps: Deps, shipmentId: string, now: Date):
 
     if (job) {
       await tx.update(freightJobs).set({ status: "delivered", closedAt: at }).where(eq(freightJobs.id, job.id));
-      await addXp(tx, sh.carrierCompanyId, cat.settings.xp.freightJob, cat.settings.levelXp);
+      if (job.payAmount >= BigInt(cat.settings.xp.minJobValue) && !(await sameGroup(tx, job.shipperCompanyId, sh.carrierCompanyId))) {
+        await addXp(tx, sh.carrierCompanyId, cat.settings.xp.freightJob, cat.settings.levelXp);
+      }
       await notify(tx, uow, sh.carrierCompanyId, "freight_delivered", { jobId: job.id, pay: job.payAmount.toString(), cityId: sh.destCityId, role: "carrier" }, now, "/play?tab=freight");
       await notify(tx, uow, job.shipperCompanyId, "freight_delivered", { jobId: job.id, pay: job.payAmount.toString(), cityId: sh.destCityId, role: "shipper" }, now, "/play?tab=freight");
       await afterCashIn(tx, uow, sh.carrierCompanyId, now);

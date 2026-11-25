@@ -70,13 +70,19 @@ export interface Harness {
   key(): string;
 }
 
-export async function createHarness(opts?: { schedulerTasks?: boolean }): Promise<Harness> {
+/**
+ * keepDb: true → şema silinmez (sunucu yeniden başlatma / ikinci yayın simülasyonu). Migration + tohumlama
+ * yine çalışır (idempotent olmalı); saat ofseti veritabanından yüklenir.
+ */
+export async function createHarness(opts?: { schedulerTasks?: boolean; keepDb?: boolean }): Promise<Harness> {
   const url = process.env.DATABASE_URL ?? "postgres://capitalforge:capitalforge@localhost:5432/capitalforge_test";
   if (!/test/.test(url)) throw new Error("Test DATABASE_URL adı 'test' içermeli");
-  const admin = createDb(url, 1);
-  await admin.db.execute(sql`DROP SCHEMA IF EXISTS cf CASCADE`);
-  await admin.db.execute(sql`DROP SCHEMA IF EXISTS cf_migrations CASCADE`);
-  await admin.sql.end();
+  if (!opts?.keepDb) {
+    const admin = createDb(url, 1);
+    await admin.db.execute(sql`DROP SCHEMA IF EXISTS cf CASCADE`);
+    await admin.db.execute(sql`DROP SCHEMA IF EXISTS cf_migrations CASCADE`);
+    await admin.sql.end();
+  }
   await runMigrations(url);
   const config = { ...loadConfig({ ...process.env, NODE_ENV: "test", ALLOW_TIME_TRAVEL: "1", DATABASE_URL: url }), secureCookies: false };
   const { db, sql: client } = createDb(url, 5);

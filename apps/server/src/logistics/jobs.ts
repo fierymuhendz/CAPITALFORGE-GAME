@@ -1,7 +1,7 @@
 /** Taşıma işi panosu: açma (emanet + yük rezervi), kabul, iptal, süre dolumu, DTO. */
 import { randomUUID } from "node:crypto";
 import { and, eq, lte, or } from "drizzle-orm";
-import { estimateOwnTrip } from "@capitalforge/economy";
+import { estimateOwnTrip, systemCarrierQuote } from "@capitalforge/economy";
 import { roadDistanceKm, type AcceptFreightReq, type CancelReq, type FreightJobDto, type FreightJobReq } from "@capitalforge/shared";
 import type { z } from "zod";
 import type { Catalog } from "../catalog/catalog";
@@ -16,6 +16,9 @@ import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
 import { companyBriefs, researchBonuses, type CompanyRow } from "../market/common";
 import { lockVehicle, mergeLines, startShipment, validateLink, type CargoIn } from "./shipping";
+
+/** oyuncu ilanı ücret üst sınırı: sistem taşımacısı fiyatı × bu çarpan */
+export const JOB_PAY_CAP_MULT = 3n;
 
 export type JobRow = typeof freightJobs.$inferSelect;
 
@@ -40,6 +43,12 @@ export async function createFreightJob(
   for (const l of lines) await reserveStock(tx, { companyId: company.id, cityId: req.originCityId, productId: l.productId, quality: l.quality }, l.qtyKg);
   const id = randomUUID();
   const pay = BigInt(req.payAmount);
+  // Değer aktarımı sınırı: ilan ücreti sistem taşımacısı fiyatının 3 katını aşamaz
+  if (!opts?.isSystem) {
+    const f = catalog.settings.freight;
+    const cap = JOB_PAY_CAP_MULT * systemCarrierQuote(roadDistanceKm(req.originCityId, req.destCityId), total, f.systemBaseFee, f.systemPerKm, catalog.vehicleModel("truck").capacityKg);
+    if (pay > cap) fail("BAD_REQUEST", { issue: "payAmount", max: cap.toString() });
+  }
   await post(tx, {
     kind: "freight_escrow", idempotencyKey: `freight-open:${id}`, refType: "freight_job", refId: id, at: now, memo: "Taşıma işi ücreti emaneti",
     lines: [{ account: co(company.id, "escrow"), amount: pay }, { account: co(company.id, "cash"), amount: -pay }],

@@ -49,11 +49,15 @@ export function systemShareFactorBp(playerShareBp: number, shareDampBp: number):
   return Math.max(2000, 10000 - Math.round((playerShareBp * shareDampBp) / 10000));
 }
 
-/** Referans kayması: oyuncu VWAP oranına doğru %20 adımla; 6000..15000 */
+/**
+ * Referans kayması (bp, 6000..15000): her saat hedefe %20 yaklaşır.
+ * Hedef: bağımsız oyuncu işlemlerinin VWAP oranı; işlem yoksa 10000'e (taban) döner.
+ * Sistem alıcıları doydukça hedef en fazla 1000 bp aşağı itilir; böylece fiyat kalıcı olarak
+ * tabana çökmez, talep tazelendiğinde geri toparlanır.
+ */
 export function nextDriftBp(currentDriftBp: number, vwapRatioBp: number | null, systemSaturationBp: number): number {
-  let target = vwapRatioBp ?? currentDriftBp;
-  // sistem alıcıları doydukça fiyat aşağı itilir
-  target = target - Math.round(systemSaturationBp / 10);
+  const push = Math.round(clampN(systemSaturationBp, 0, 10000) / 10);
+  const target = (vwapRatioBp ?? 10000) - push;
   const next = currentDriftBp + Math.round((target - currentDriftBp) * 0.2);
   return clampN(next, 6000, 15000);
 }

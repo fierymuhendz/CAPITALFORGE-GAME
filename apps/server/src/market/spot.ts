@@ -20,15 +20,19 @@ import { co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
 import { bookSystemFill } from "../system/daily";
-import { afterCashIn, companyBriefs, linkMovements, type CompanyRow } from "./common";
+import { productBidCap } from "../system/pricing";
+import { afterCashIn, companyBriefs, linkMovements, lockCompanyRow, type CompanyRow } from "./common";
 
 export type OrderRow = typeof marketOrders.$inferSelect;
 
 const MAX_OPEN_ORDERS = 100;
 
 /** Emrin bu kalitedeki fiyatı: sistem alım emri kalite 2 tabanıdır, kaliteye göre çarpılır */
-export function effectivePrice(o: OrderRow, quality: number): bigint {
-  return o.isSystem && o.side === "buy" ? qualityAdjusted(o.pricePerKg, quality, QUALITY_PRICE_BP) : o.pricePerKg;
+export function effectivePrice(o: OrderRow, quality: number, bidCap: bigint | null = null): bigint {
+  if (!(o.isSystem && o.side === "buy")) return o.pricePerKg;
+  // risksiz arbitraj yok: üst sınır kalite çarpanından SONRA uygulanır
+  const v = qualityAdjusted(o.pricePerKg, quality, QUALITY_PRICE_BP);
+  return bidCap !== null && v > bidCap ? bidCap : v;
 }
 
 export function orderDto(o: OrderRow, name: string, myCompanyId: string | null): ListingDto {
@@ -52,7 +56,10 @@ export async function createListing(
 ): Promise<OrderRow> {
   catalog.city(req.cityId);
   catalog.product(req.productId);
-  if (!opts?.isSystem && (await openCount(tx, company.id)) >= MAX_OPEN_ORDERS) fail("CONFLICT");
+  if (!opts?.isSystem) {
+    await lockCompanyRow(tx, company.id);
+    if ((await openCount(tx, company.id)) >= MAX_OPEN_ORDERS) fail("CONFLICT");
+  }
   await reserveStock(tx, { companyId: company.id, cityId: req.cityId, productId: req.productId, quality: req.quality }, req.qtyKg);
   const [row] = await tx
     .insert(marketOrders)
@@ -71,6 +78,7 @@ export async function createBuyOrder(
 ): Promise<OrderRow> {
   catalog.city(req.cityId);
   catalog.product(req.productId);
+  await lockCompanyRow(tx, company.id);
   if ((await openCount(tx, company.id)) >= MAX_OPEN_ORDERS) fail("CONFLICT");
   const id = randomUUID();
   const budget = BigInt(req.qtyKg) * BigInt(req.maxPricePerKg);
@@ -212,7 +220,7 @@ export async function sellToOrder(
   if (o.status !== "open" || o.remainingKg <= 0) fail("ORDER_CLOSED");
   if (o.companyId === seller.id) fail("OWN_ORDER");
   if (req.quality < o.quality) fail("QUALITY_TOO_LOW", { minQuality: o.quality });
-  const unit = effectivePrice(o, req.quality);
+  const unit = effectivePrice(o, req.quality, o.isSystem ? await productBidCap(tx, catalog, o.productId) : null);
   if (unit < BigInt(req.expectedPricePerKg)) fail("PRICE_CHANGED", { pricePerKg: unit.toString() });
   if (req.qtyKg > o.remainingKg) fail("INSUFFICIENT_STOCK", { availableKg: o.remainingKg, requiredKg: req.qtyKg });
   const names = await companyBriefs(tx, [o.companyId]);

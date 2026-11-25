@@ -3,7 +3,7 @@
  * şirket + hesap planı + başlangıç sermayesi + arsa alımı + başlangıç bağışı (bina, garajda kamyon,
  * ilk işin girdileri). Bağış starter_grants birincil anahtarıyla şirket başına bir kez verilir.
  */
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { FoundCompanyReq, Sector } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
@@ -47,7 +47,7 @@ export async function foundCompany(
   accountId: string,
   req: z.infer<typeof FoundCompanyReq>,
   now: Date,
-): Promise<{ companyId: string; facilityId: string; vehicleId: string | null }> {
+): Promise<{ companyId: string; facilityId: string | null; vehicleId: string | null }> {
   const s = catalog.settings;
   const existing = await tx
     .select({ id: companies.id })
@@ -55,6 +55,24 @@ export async function foundCompany(
     .where(and(eq(companies.accountId, accountId), isNull(companies.dissolvedAt)))
     .limit(1);
   if (existing[0]) fail("COMPANY_EXISTS");
+  // Yeniden kurma bekleme süresi: son kapatılan şirketin kapanışından itibaren
+  const lastClosed = (await tx
+    .select({ at: companies.dissolvedAt })
+    .from(companies)
+    .where(and(eq(companies.accountId, accountId), isNotNull(companies.dissolvedAt)))
+    .orderBy(desc(companies.dissolvedAt))
+    .limit(1))[0]?.at;
+  if (lastClosed) {
+    const until = new Date(lastClosed.getTime() + s.refoundCooldownHours * 3_600_000);
+    if (now.getTime() < until.getTime()) fail("COMPANY_COOLDOWN", { until: until.toISOString() });
+  }
+  // Başlangıç bağışı hesap başına bir kez: bu hesabın herhangi bir şirketi bağış aldıysa tekrar verilmez
+  const grantedBefore = (await tx
+    .select({ id: starterGrants.companyId })
+    .from(starterGrants)
+    .innerJoin(companies, eq(companies.id, starterGrants.companyId))
+    .where(eq(companies.accountId, accountId))
+    .limit(1))[0];
   catalog.city(req.cityId);
   const nameLower = req.name.trim().toLowerCase();
   const taken = await tx.select({ id: companies.id }).from(companies).where(and(eq(companies.nameLower, nameLower), isNull(companies.dissolvedAt))).limit(1);
@@ -103,59 +121,71 @@ export async function foundCompany(
     lines: [{ account: co(cid, "fixed_assets"), amount: plot.price }, { account: co(cid, "cash"), amount: -plot.price }],
   });
 
-  // 3) Başlangıç bağışı: bina (+ garajda kamyon) + ilk işin girdileri
-  const [facility] = await tx
-    .insert(facilities)
-    .values({ companyId: cid, plotId: plot.id, cityId: plot.cityId, type: buildingType, level: 1, qualityLevel: 1, state: "ready", createdAt: now })
-    .returning();
-  let vehicleId: string | null = null;
-  let grantValue = BigInt(bt.buildCost);
-  if (req.sector === "freight") {
-    const vm = catalog.vehicleModel("truck");
-    const [v] = await tx
-      .insert(vehicles)
-      .values({ companyId: cid, modelId: vm.id, cityId: plot.cityId, status: "idle", garageFacilityId: facility!.id, purchasedAt: now })
+  const grantStarter = async (): Promise<{ facilityId: string; vehicleId: string | null }> => {
+    const [facility] = await tx
+      .insert(facilities)
+      .values({ companyId: cid, plotId: plot.id, cityId: plot.cityId, type: buildingType, level: 1, qualityLevel: 1, state: "ready", createdAt: now })
       .returning();
-    vehicleId = v!.id;
-    grantValue += BigInt(vm.price);
-  }
-  const inputs = s.starterInputs[starterInputsKey(req.sector, buildingType)] ?? [];
-  const grantTx = await post(tx, {
-    kind: "starter_grant", idempotencyKey: `starter:${cid}`, refType: "company", refId: cid, at: now,
-    memo: "Başlangıç bağışı",
-    lines: [{ account: co(cid, "fixed_assets"), amount: grantValue }, { account: co(cid, "equity"), amount: -grantValue }],
-  });
-  let inputsValue = 0n;
-  for (const inp of inputs) {
-    const ref = (await tx.select().from(priceRefs).where(and(eq(priceRefs.productId, inp.productId), eq(priceRefs.cityId, plot.cityId))).limit(1))[0];
-    const cost = (ref?.refPricePerKg ?? BigInt(catalog.product(inp.productId).basePricePerKg)) * BigInt(inp.kg);
-    inputsValue += cost;
-    await addStock(tx, { companyId: cid, cityId: plot.cityId, productId: inp.productId, quality: 2 }, inp.kg, cost, {
-      kind: "starter_grant", refType: "company", refId: cid, at: now, transactionId: grantTx.id,
-      breakdown: { inputs: [], energy: "0", water: "0", labor: "0", purchase: cost.toString(), total: cost.toString() },
+    let vehicleId: string | null = null;
+    let grantValue = BigInt(bt.buildCost);
+    if (req.sector === "freight") {
+      const vm = catalog.vehicleModel("truck");
+      const [v] = await tx
+        .insert(vehicles)
+        .values({ companyId: cid, modelId: vm.id, cityId: plot.cityId, status: "idle", garageFacilityId: facility!.id, purchasedAt: now })
+        .returning();
+      vehicleId = v!.id;
+      grantValue += BigInt(vm.price);
+    }
+    const inputs = s.starterInputs[starterInputsKey(req.sector, buildingType)] ?? [];
+    const grantTx = await post(tx, {
+      kind: "starter_grant", idempotencyKey: `starter:${cid}`, refType: "company", refId: cid, at: now,
+      memo: "Başlangıç bağışı",
+      lines: [{ account: co(cid, "fixed_assets"), amount: grantValue }, { account: co(cid, "equity"), amount: -grantValue }],
     });
+    let inputsValue = 0n;
+    for (const inp of inputs) {
+      const ref = (await tx.select().from(priceRefs).where(and(eq(priceRefs.productId, inp.productId), eq(priceRefs.cityId, plot.cityId))).limit(1))[0];
+      const cost = (ref?.refPricePerKg ?? BigInt(catalog.product(inp.productId).basePricePerKg)) * BigInt(inp.kg);
+      inputsValue += cost;
+      await addStock(tx, { companyId: cid, cityId: plot.cityId, productId: inp.productId, quality: 2 }, inp.kg, cost, {
+        kind: "starter_grant", refType: "company", refId: cid, at: now, transactionId: grantTx.id,
+        breakdown: { inputs: [], energy: "0", water: "0", labor: "0", purchase: cost.toString(), total: cost.toString() },
+      });
+    }
+    if (inputsValue > 0n) {
+      await post(tx, {
+        kind: "starter_grant_inputs", idempotencyKey: `starter-inputs:${cid}`, refType: "company", refId: cid, at: now,
+        memo: "Başlangıç girdileri",
+        lines: [{ account: co(cid, "inventory"), amount: inputsValue }, { account: co(cid, "equity"), amount: -inputsValue }],
+      });
+    }
+    const g = await tx
+      .insert(starterGrants)
+      .values({
+        companyId: cid, grantedAt: now, facilityId: facility!.id, vehicleId, transactionId: grantTx.id,
+        details: { buildingType, vehicle: vehicleId ? "truck" : null, inputs, value: (grantValue + inputsValue).toString() },
+      })
+      .onConflictDoNothing()
+      .returning({ c: starterGrants.companyId });
+    if (!g[0]) throw new Error("başlangıç bağışı zaten verilmiş");
+    return { facilityId: facility!.id, vehicleId };
+
+  };
+
+  // 3) Başlangıç bağışı: bina (+ garajda kamyon) + ilk işin girdileri (hesap başına bir kez)
+  let facilityId: string | null = null;
+  let vehicleId: string | null = null;
+  if (!grantedBefore) {
+    const r = await grantStarter();
+    facilityId = r.facilityId;
+    vehicleId = r.vehicleId;
   }
-  if (inputsValue > 0n) {
-    await post(tx, {
-      kind: "starter_grant_inputs", idempotencyKey: `starter-inputs:${cid}`, refType: "company", refId: cid, at: now,
-      memo: "Başlangıç girdileri",
-      lines: [{ account: co(cid, "inventory"), amount: inputsValue }, { account: co(cid, "equity"), amount: -inputsValue }],
-    });
-  }
-  const g = await tx
-    .insert(starterGrants)
-    .values({
-      companyId: cid, grantedAt: now, facilityId: facility!.id, vehicleId, transactionId: grantTx.id,
-      details: { buildingType, vehicle: vehicleId ? "truck" : null, inputs, value: (grantValue + inputsValue).toString() },
-    })
-    .onConflictDoNothing()
-    .returning({ c: starterGrants.companyId });
-  if (!g[0]) throw new Error("başlangıç bağışı zaten verilmiş");
 
   await notify(tx, uow, cid, "welcome", { company: company.name, building: buildingType }, now, "/play?tab=facilities");
   uow.invalidate(cid, "company", "inventory", "facilities", "finance", "map");
   uow.world("map");
-  return { companyId: cid, facilityId: facility!.id, vehicleId };
+  return { companyId: cid, facilityId, vehicleId };
 }
 
 /** Deneyim ekle ve seviyeyi güncelle */

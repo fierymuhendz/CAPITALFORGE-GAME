@@ -96,11 +96,24 @@ export async function repayLoan(tx: Tx, uow: UnitOfWork, companyId: string, loan
     uow.invalidate(companyId, "company", "finance");
     return loanDto(u!);
   }
+  // Kısmi ödeme: önce tahakkuk eden faiz alınır (anapara azalınca faiz tahakkuku yutulamaz), kalanı anaparaya gider
+  const hours = Math.floor((now.getTime() - l.lastPaymentAt.getTime()) / 3_600_000);
+  const accrued = accruedInterest(l.outstanding, l.dailyInterestBp, hours);
+  const interestPart = accrued < amount ? accrued : amount;
+  const principalPart = amount - interestPart;
   await post(tx, {
     kind: "loan_repay", idempotencyKey: key, refType: "loan", refId: l.id, at: now, memo: "Kredi kısmi ödeme",
-    lines: [{ account: co(companyId, "loans"), amount }, { account: co(companyId, "cash"), amount: -amount }],
+    lines: [
+      { account: co(companyId, "loans"), amount: principalPart },
+      { account: co(companyId, "exp_interest"), amount: interestPart },
+      { account: co(companyId, "cash"), amount: -amount },
+    ],
   });
-  const [u] = await tx.update(loans).set({ outstanding: l.outstanding - amount }).where(eq(loans.id, l.id)).returning();
+  const [u] = await tx
+    .update(loans)
+    .set({ outstanding: l.outstanding - principalPart, interestPaid: l.interestPaid + interestPart, lastPaymentAt: interestPart > 0n || hours > 0 ? now : l.lastPaymentAt })
+    .where(eq(loans.id, l.id))
+    .returning();
   uow.invalidate(companyId, "company", "finance");
   return loanDto(u!);
 }

@@ -63,6 +63,8 @@ describe("kabul senaryosu: ortalama maliyet, navlun, net kâr", () => {
 
 describe("üç taraflı sözleşme: üretici, alıcı, taşımacı", () => {
   it("çoklu teslim, gecikmeli teslim, kısmi teslim; mutabakat", async () => {
+    // küçük taksit değerleri de sayılsın (itibar eşiği güvenlik testinde ayrıca doğrulanır)
+    h.deps.catalog.settings = { ...h.deps.catalog.settings, xp: { ...h.deps.catalog.settings.xp, minInstallmentValue: 0 } } as unknown as typeof h.deps.catalog.settings;
     const prod = await h.player(); const prodId = await found(h, prod, "livestock", "akyayla");
     const buyer = await h.player(); const buyerId = await found(h, buyer, "crop", "yesilova");
     const carrier = await h.player(); const carrierId = await found(h, carrier, "freight", "akyayla");

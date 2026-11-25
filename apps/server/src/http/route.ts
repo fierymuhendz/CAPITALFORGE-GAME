@@ -12,6 +12,7 @@ import { AppError, fail } from "../errors";
 import { UnitOfWork } from "../events/bus";
 import { sessionFromRequest, type SessionInfo } from "../auth/session";
 import { rateLimit } from "../security/rateLimit";
+import { sha256 } from "../auth/crypto";
 
 export type AuthLevel = "none" | "account" | "company" | "admin";
 
@@ -112,11 +113,16 @@ export function route<S extends z.ZodTypeAny>(app: FastifyInstance, deps: Deps, 
 
       const idemKey = typeof (body as { idempotencyKey?: unknown })?.idempotencyKey === "string" ? (body as { idempotencyKey: string }).idempotencyKey : null;
       const uow = new UnitOfWork();
+      const scope = `${def.method} ${def.url}`;
+      // gerçek yol + gövde (anahtar hariç) karması: aynı anahtarın başka bir isteğe yeniden kullanımı reddedilir
+      const { idempotencyKey: _ik, ...bodyRest } = (body ?? {}) as Record<string, unknown>;
+      void _ik;
+      const requestHash = sha256(JSON.stringify([req.url.split("?")[0], bodyRest]));
       const result = await deps.db.transaction(async (tx) => {
         if (idemKey && auth.account) {
           const ins = await tx
             .insert(idempotencyKeys)
-            .values({ accountId: auth.account.id, key: idemKey, scope: `${def.method} ${def.url}`, status: 0, response: {} })
+            .values({ accountId: auth.account.id, key: idemKey, scope, requestHash, status: 0, response: {} })
             .onConflictDoNothing()
             .returning({ key: idempotencyKeys.key });
           if (!ins[0]) {
@@ -125,7 +131,9 @@ export function route<S extends z.ZodTypeAny>(app: FastifyInstance, deps: Deps, 
               .from(idempotencyKeys)
               .where(and(eq(idempotencyKeys.accountId, auth.account.id), eq(idempotencyKeys.key, idemKey)))
               .limit(1);
-            return { replay: true as const, value: prev[0]?.response ?? {} };
+            const p0 = prev[0];
+            if (p0 && (p0.scope !== scope || (p0.requestHash !== null && p0.requestHash !== requestHash))) fail("IDEMPOTENCY_MISMATCH");
+            return { replay: true as const, value: p0?.response ?? {} };
           }
         }
         const value = await (def as MutRoute<S>).handler({ ...(base as Ctx<z.infer<S>>), tx, uow });

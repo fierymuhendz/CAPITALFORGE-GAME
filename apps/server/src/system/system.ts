@@ -10,7 +10,7 @@ import {
 } from "@capitalforge/economy";
 import { QUALITY_PRICE_BP, SYSTEM_CARRIER, SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, SYSTEM_PROFILES, roadDistanceKm, type SystemProfile } from "@capitalforge/shared";
 import type { Tx } from "../db/client";
-import { companies, contracts, freightJobs, holdings, marketOrders, shipments, trades, vehicles } from "../db/schema";
+import { companies, contracts, freightJobs, holdings, marketOrders, meta, shipments, trades, vehicles } from "../db/schema";
 import type { Deps } from "../deps";
 import { AppError } from "../errors";
 import { UnitOfWork } from "../events/bus";
@@ -19,7 +19,7 @@ import { balanceOf, co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { acceptFreightJob, createFreightJob } from "../logistics/jobs";
 import { startShipment } from "../logistics/shipping";
-import { dayStart, HOUR, linkMovements, MIN } from "../market/common";
+import { dayKey, dayStart, HOUR, linkMovements, MIN } from "../market/common";
 import { closeOrder, settleSpot } from "../market/spot";
 import { bidCapFromRefs, loadRefs } from "./pricing";
 import { dailyOf, spentToday } from "./daily";
@@ -31,15 +31,44 @@ async function systemCompanies(db: Deps["db"] | Tx): Promise<Map<string, Company
   return new Map(rows.filter((r) => r.systemKey).map((r) => [r.systemKey!, r]));
 }
 
-/** Sistem "hazinesi": nakit hedefin altına düşerse sermaye enjeksiyonu (equity). Defter dengeli. */
-async function topUp(tx: Tx, companyId: string, minCash: bigint, now: Date): Promise<void> {
+/** Sistem şirketinin günlük sermaye enjeksiyonu üst sınırı: profilin günlük bütçesi (profilsiz sistem şirketleri için sabit) */
+const NON_PROFILE_DAILY_MINT = 100_000_000n;
+
+/**
+ * Sistem "hazinesi": nakit hedefin altına düşerse sermaye enjeksiyonu (equity). Defter dengeli.
+ * Sınırlı: şirket başına günde en çok günlük bütçe kadar basılır; basılan toplam `meta` satırında (system.mint:<şirket>:<gün>) görünür.
+ */
+export async function topUp(tx: Tx, companyId: string, minCash: bigint, now: Date): Promise<void> {
   const cash = await balanceOf(tx, co(companyId, "cash"));
   if (cash >= minCash) return;
-  const delta = minCash * 2n - cash;
+  let delta = minCash * 2n - cash;
+  const key = `system.mint:${companyId}:${dayKey(now)}`;
+  const sysKey = (await tx.select({ k: companies.systemKey }).from(companies).where(eq(companies.id, companyId)).limit(1))[0]?.k;
+  const prof = SYSTEM_PROFILES.find((p) => p.companyKey === sysKey);
+  const cap = prof ? BigInt(prof.dailyBudget) : NON_PROFILE_DAILY_MINT;
+  await tx.insert(meta).values({ key, value: { minted: "0" }, updatedAt: now }).onConflictDoNothing();
+  const row = (await tx.select().from(meta).where(eq(meta.key, key)).for("update"))[0]!;
+  const minted = BigInt((row.value as { minted: string }).minted);
+  const room = cap - minted;
+  if (room <= 0n) return;
+  if (delta > room) delta = room;
   await post(tx, {
     kind: "system_topup", idempotencyKey: `sys-topup:${companyId}:${randomUUID()}`, refType: "company", refId: companyId, at: now, memo: "Sistem hazine takviyesi",
     lines: [{ account: co(companyId, "cash"), amount: delta }, { account: co(companyId, "equity"), amount: -delta }],
   });
+  await tx.update(meta).set({ value: { minted: (minted + delta).toString() }, updatedAt: now }).where(eq(meta.key, key));
+}
+
+/** Sistem şirketinin açık (teklif + aktif) alım sözleşmelerinde kalan toplam değer */
+async function openSystemContractValue(tx: Tx, companyId: string): Promise<bigint> {
+  const r = (await tx.execute(sql`
+    SELECT coalesce(sum(CASE WHEN c.status = 'proposed'
+        THEN c.qty_per_installment_kg::numeric * c.price_per_kg * c.installments
+        ELSE (SELECT coalesce(sum((i.qty_due_kg - i.qty_delivered_kg)::numeric * c.price_per_kg), 0)
+              FROM cf.contract_installments i WHERE i.contract_id = c.id AND i.settled_at IS NULL) END), 0)::text AS v
+    FROM cf.contracts c
+    WHERE c.is_system = true AND c.buyer_company_id = ${companyId}::uuid AND c.status IN ('proposed', 'active')`)) as unknown as Array<{ v: string }>;
+  return BigInt(r[0]?.v ?? "0");
 }
 
 /** Sistem üretimi: stok girer, defterde inventory +maliyet, equity −maliyet */
@@ -136,7 +165,9 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
       const eff = Math.floor((B * factor) / 10000);
       const d = await dailyOf(tx, comp.id, p, now);
       const bid = systemBid(refOf(p), sys.bidBp, d.boughtKg, B, bidCapFromRefs(refs, sys.askBp));
-      const maxUnit = qualityAdjusted(bid, 5, QUALITY_PRICE_BP);
+      const bidCap = bidCapFromRefs(refs, sys.askBp);
+      let maxUnit = qualityAdjusted(bid, 5, QUALITY_PRICE_BP);
+      if (bidCap !== null && maxUnit > bidCap) maxUnit = bidCap;
       const share = weightSum > 0n ? (BigInt(prof.dailyBudget) * BigInt(B) * refOf(p)) / weightSum : 0n;
       const budget = applyBp(share, factor);
       const budgetLeft = budget > d.spent ? budget - d.spent : 0n;
@@ -182,7 +213,9 @@ async function adoptOrphans(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
           const B = prof.buys[o.productId]!;
           const d = await dailyOf(tx, comp.id, o.productId, now);
           const factor = systemShareFactorBp(await playerShareBp(tx, o.productId, o.cityId, B, now), sys.shareDampBp);
-          const unitBid = qualityAdjusted(systemBid(ref, sys.bidBp, d.boughtKg, B, bidCapFromRefs(refs, sys.askBp)), o.quality, QUALITY_PRICE_BP);
+          const bidCap = bidCapFromRefs(refs, sys.askBp);
+          let unitBid = qualityAdjusted(systemBid(ref, sys.bidBp, d.boughtKg, B, bidCap), o.quality, QUALITY_PRICE_BP);
+          if (bidCap !== null && unitBid > bidCap) unitBid = bidCap;
           if (o.pricePerKg > unitBid) continue;
           const spent = await spentToday(tx, comp.id, now);
           const budgetLeft = BigInt(prof.dailyBudget) - spent;
@@ -289,6 +322,7 @@ async function freightCycle(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
       const pay = systemCarrierQuote(km, kg, cat.settings.freight.systemBaseFee, cat.settings.freight.systemPerKm, truck.capacityKg);
       const refs = await loadRefs(tx, productId);
       await topUp(tx, shipper.id, pay + BigInt(prof.dailyBudget), now);
+      if ((await balanceOf(tx, co(shipper.id, "cash"))) < pay) return 0;
       await produceStock(tx, shipper.id, c, productId, 2, kg, refs.get(c) ?? BigInt(cat.product(productId).basePricePerKg), now);
       await createFreightJob(tx, uow, cat, shipper, {
         originCityId: c, destCityId: dest, cargo: [{ productId, quality: 2, qtyKg: kg }], payAmount: Number(pay), deadlineHours: 24, allowSystemCarrier: false,
@@ -378,6 +412,10 @@ async function recurringContracts(deps: Deps, now: Date, sysCos: Map<string, Com
         if (cap !== null && price > cap) price = cap;
         const value = price * BigInt(qty) * 3n;
         if (value > BigInt(prof.dailyBudget) / 2n) continue;
+        // Açık sistem sözleşmesi toplamı: 2 × günlük bütçe × oyuncu payı çarpanı (günlük bütçeyi sözleşmeyle aşma yok)
+        const factor = systemShareFactorBp(await playerShareBp(tx, h.productId, h.cityId, B, now), sys.shareDampBp);
+        const limit = applyBp(BigInt(prof.dailyBudget) * 2n, factor);
+        if ((await openSystemContractValue(tx, comp.id)) + value > limit) continue;
         await topUp(tx, comp.id, value, now);
         const exp = new Date(now.getTime() + 24 * HOUR);
         await tx.insert(contracts).values({

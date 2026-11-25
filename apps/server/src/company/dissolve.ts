@@ -2,6 +2,7 @@
  * POST /account/dissolve: şirketi kapat.
  * - Açık piyasa emirleri iptal edilir (ilan rezervi serbest, alım emri emaneti iade).
  * - Önerilmiş (henüz kabul edilmemiş) sözleşmeler iptal edilir.
+ * - Açık kredi veya gecikmiş borç varsa kapanış reddedilir (OPEN_LOAN / ARREARS); borç kapanışla silinemez.
  * - Kabul edilmiş sözleşme, açık taşıma işi veya yoldaki araç varsa kapanış reddedilir (CONFLICT, reason ile):
  *   bu yükümlülüklerin iptal cezası Modül B kurallarıyla işlenmeden şirket kapanamaz.
  * - Çalışan üretim işleri iptal edilir (wip kapanışla silinir), süren araştırma durur.
@@ -25,6 +26,12 @@ export async function dissolveCompany(tx: Tx, uow: UnitOfWork, companyId: string
   const c = (await tx.select().from(companies).where(and(eq(companies.id, companyId), isNull(companies.dissolvedAt))).for("update"))[0];
   if (!c) fail("NOT_FOUND");
   if (confirmName.trim().toLowerCase() !== c.nameLower) fail("BAD_REQUEST", { issue: "confirmName" });
+
+  // Borç silme açığı: açık kredisi veya gecikmiş borcu olan şirket kapanamaz (önce ödenir)
+  const openLoan = await tx.select({ id: loans.id }).from(loans).where(and(eq(loans.companyId, companyId), eq(loans.status, "active"))).limit(1);
+  if (openLoan[0]) fail("CONFLICT", { reason: "OPEN_LOAN" });
+  await lockAccounts(tx, companyId, ["arrears"]);
+  if (((await rawBalances(tx, companyId)).arrears ?? 0n) !== 0n) fail("CONFLICT", { reason: "ARREARS" });
 
   const active = await tx
     .select({ id: contracts.id })

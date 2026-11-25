@@ -14,6 +14,7 @@ import { catalogHistory, catalogItems, idempotencyKeys, marketOrders, priceRefs,
 import type { Deps } from "../deps";
 import { fail } from "../errors";
 import { route, type Ctx } from "../http/route";
+import { sha256 } from "../auth/crypto";
 import { writeAudit } from "./common";
 
 /**
@@ -23,12 +24,17 @@ import { writeAudit } from "./common";
 async function catalogTx<T extends object>(deps: Deps, ctx: Ctx<{ idempotencyKey?: string }>, scope: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
   const key = ctx.body.idempotencyKey;
   const accountId = ctx.account!.id;
+  const { idempotencyKey: _ik, ...rest } = ctx.body as Record<string, unknown>;
+  void _ik;
+  const requestHash = sha256(JSON.stringify([ctx.req.url.split("?")[0], rest]));
   const out = await deps.db.transaction(async (tx) => {
     if (key) {
-      const ins = await tx.insert(idempotencyKeys).values({ accountId, key, scope, status: 0, response: {} }).onConflictDoNothing().returning({ key: idempotencyKeys.key });
+      const ins = await tx.insert(idempotencyKeys).values({ accountId, key, scope, requestHash, status: 0, response: {} }).onConflictDoNothing().returning({ key: idempotencyKeys.key });
       if (!ins[0]) {
         const prev = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.accountId, accountId), eq(idempotencyKeys.key, key))).limit(1);
-        return { replay: true as const, value: (prev[0]?.response ?? {}) as T };
+        const p0 = prev[0];
+        if (p0 && (p0.scope !== scope || (p0.requestHash !== null && p0.requestHash !== requestHash))) fail("IDEMPOTENCY_MISMATCH");
+        return { replay: true as const, value: (p0?.response ?? {}) as T };
       }
     }
     const value = await fn(tx);
@@ -62,11 +68,20 @@ function conforms(def: unknown, val: unknown, path: string): boolean {
   return false;
 }
 
-/** alan bazlı değer aralıkları [min, max] */
+/** alan bazlı değer aralıkları [min, max]: TÜM sayısal ayarlar burada sınırlıdır */
 const RANGES: Record<string, [number, number]> = {
   startingCash: [100_000, 100_000_000_000], marketFeeBp: [0, 3000], ipRetentionDays: [1, 365],
+  newAccountTradeDelaySeconds: [0, 86_400], refoundCooldownHours: [0, 24 * 30],
+  "xp.productionJob": [0, 1000], "xp.delivery": [0, 1000], "xp.contractInstallment": [0, 1000], "xp.freightJob": [0, 1000],
+  "xp.perRevenue100k": [0, 100], "xp.minInstallmentValue": [0, 1_000_000_000], "xp.minJobValue": [0, 1_000_000_000],
+  "loan.limitPerLevel": [0, 10_000_000_000], "loan.dailyInterestBp": [0, 1000], "loan.lateFeeBp": [0, 5000],
+  "contracts.minPenaltyBp": [0, 10_000], "contracts.maxPenaltyBp": [0, 10_000], "contracts.defaultGraceHours": [0, 168],
+  "contracts.lateFeeBp": [0, 5000], "contracts.windowHoursBeforeDue": [1, 168],
+  "freight.systemBaseFee": [0, 100_000_000], "freight.systemPerKm": [0, 10_000_000], "freight.systemPickupAfterMinutes": [0, 10_080],
+  "freight.driverHoursPerTrip": [0, 24],
+  "system.bidBp": [1000, 10_000], "system.askBp": [10_000, 30_000], "system.shareDampBp": [0, 10_000],
+  "system.unsoldListingHours": [1, 168], "system.unfilledOrderHours": [1, 168], "system.reputationPremiumBp": [0, 2000],
   "anomaly.thresholdBp": [100, 100_000], "anomaly.minComparables": [1, 100], "anomaly.windowHours": [1, 720],
-  "loan.dailyInterestBp": [0, 1000], "freight.driverHoursPerTrip": [0, 24],
 };
 
 function checkRanges(top: string, value: unknown): void {
@@ -76,6 +91,14 @@ function checkRanges(top: string, value: unknown): void {
     if (isObj(v)) for (const [k, x] of Object.entries(v)) walk(`${path}.${k}`, x);
   };
   walk(top, value);
+  if (top === "starterInputs") {
+    for (const list of Object.values(value as Record<string, Array<{ kg: number }>>)) if (list.some((i) => i.kg < 1 || i.kg > 1_000_000)) fail("BAD_REQUEST", { issue: "starterInputs" });
+  }
+  if (top === "levelXp" && (value as number[]).some((x) => x > 1_000_000_000)) fail("BAD_REQUEST", { issue: "levelXp" });
+  if (top === "contracts") {
+    const c = value as { minPenaltyBp: number; maxPenaltyBp: number };
+    if (c.minPenaltyBp > c.maxPenaltyBp) fail("BAD_REQUEST", { issue: "contracts.minPenaltyBp" });
+  }
   if (top === "levelXp") {
     const a = value as number[];
     if (a.length < 2 || a[0] !== 0 || a.some((x, i) => i > 0 && x <= a[i - 1]!)) fail("BAD_REQUEST", { issue: "levelXp" });
@@ -173,7 +196,8 @@ export function registerCatalogRoutes(app: FastifyInstance, deps: Deps): void {
       if (!Object.prototype.hasOwnProperty.call(DEFAULT_SETTINGS, top)) fail("BAD_REQUEST", { issue: "key" });
       return catalogTx(deps, ctx, `PATCH /admin/settings`, async (tx) => {
         const cur = (await tx.select().from(settings).where(eq(settings.key, top)).for("update").limit(1))[0];
-        const before = structuredClone(cur ? cur.value : (DEFAULT_SETTINGS as Record<string, unknown>)[top]);
+        const defTop = (DEFAULT_SETTINGS as Record<string, unknown>)[top];
+        const before = structuredClone(cur ? (isObj(defTop) && isObj(cur.value) && top !== "starterInputs" ? { ...defTop, ...cur.value } : cur.value) : defTop);
         const next = structuredClone(before);
         let after: unknown;
         if (path.length === 1) after = b.value;

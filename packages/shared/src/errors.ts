@@ -51,6 +51,9 @@ export const ERROR_CODES = [
   "RESEARCH_MAXED",
   "TRADE_COOLDOWN",
   "TIME_TRAVEL_DISABLED",
+  "COMPANY_COOLDOWN",
+  "IDEMPOTENCY_MISMATCH",
+  "CONNECTION_LIMIT",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

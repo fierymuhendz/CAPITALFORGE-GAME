@@ -142,6 +142,7 @@ export const AdminSettingReq = z.object({ key: z.string().min(1).max(80), value:
 export const AdminProductPatchReq = z.object({ basePricePerKg: pricePerKg, reasoning: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
 export const AdminTimeReq = z.object({ minutes: z.number().int().min(1).max(60 * 24 * 30) });
 export const AdminResetPasswordReq = z.object({ accountId: uuid, newPassword: passwordSchema, reasoning: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
+export const AdminConnectionsAccessReq = z.object({ enabled: z.boolean(), reason: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
 export const AdminAckReq = z.object({ idempotencyKey: idempotencyKey.optional() });
 /** GET sorguları (query string) */
 const likeText = z.string().trim().min(1).max(40);

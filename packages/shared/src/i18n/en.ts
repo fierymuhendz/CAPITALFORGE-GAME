@@ -57,5 +57,8 @@ export const en: Dict = {
     RESEARCH_MAXED: "Research is at its highest level.",
     TRADE_COOLDOWN: "New accounts must wait briefly before trading.",
     TIME_TRAVEL_DISABLED: "Time travel is only available in test environments.",
+    COMPANY_COOLDOWN: "You closed a company recently; wait for the cooldown before founding a new one.",
+    IDEMPOTENCY_MISMATCH: "This idempotency key was used for a different request.",
+    CONNECTION_LIMIT: "Too many concurrent connections.",
   },
 };

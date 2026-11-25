@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { writeAudit } from "../admin/common";
 import {
   AdminClaimReq, ChangePasswordReq, LoginReq, PrefsReq, RegisterReq, TotpCodeReq, type AccountDto, type MeDto,
 } from "@capitalforge/shared";
@@ -100,9 +101,14 @@ export function registerAuthRoutes(app: FastifyInstance, deps: Deps): void {
 
   route(app, deps, {
     method: "POST", url: "/account/password", auth: "account", body: ChangePasswordReq, rateLimitPerMin: 5,
-    handler: async ({ account, body }) => {
+    handler: async ({ account, body, session }) => {
       if (!(await verifyPassword(body.oldPassword, account!.passwordHash))) fail("INVALID_CREDENTIALS");
-      await deps.db.update(accounts).set({ passwordHash: await hashPassword(body.newPassword) }).where(eq(accounts.id, account!.id));
+      const hash = await hashPassword(body.newPassword);
+      await deps.db.transaction(async (tx) => {
+        await tx.update(accounts).set({ passwordHash: hash }).where(eq(accounts.id, account!.id));
+        // diğer tüm oturumlar sonlanır (çalıntı oturum parola değişince düşer)
+        await tx.delete(sessions).where(and(eq(sessions.accountId, account!.id), ne(sessions.id, session!.id)));
+      });
       return { ok: true };
     },
   });
@@ -119,7 +125,13 @@ export function registerAuthRoutes(app: FastifyInstance, deps: Deps): void {
         .where(and(eq(adminSetupCodes.codeHash, sha256(body.setupCode)), isNull(adminSetupCodes.usedAt)))
         .returning({ id: adminSetupCodes.id });
       if (!used[0]) fail("SETUP_CODE_INVALID");
-      await deps.db.update(accounts).set({ role: "admin", canReviewConnections: true }).where(eq(accounts.id, account!.id));
+      // İlk yönetici (kurucu sahip) bağlantı incelemesi yetkisini alır; sonraki talepler almaz
+      await deps.db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('cf-admin-claim'))`);
+        const anyAdmin = await tx.select({ id: accounts.id }).from(accounts).where(and(eq(accounts.role, "admin"), ne(accounts.id, account!.id))).limit(1);
+        await tx.update(accounts).set({ role: "admin", canReviewConnections: !anyAdmin[0] }).where(eq(accounts.id, account!.id));
+        await writeAudit(tx, { adminId: account!.id, action: "admin.claim", targetType: "account", targetId: account!.id, at: now, after: { canReviewConnections: !anyAdmin[0] } });
+      });
       deps.log.warn({ accountId: account!.id }, "yönetici kurulum kodu kullanıldı");
       return { ok: true };
     },
@@ -149,6 +161,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: Deps): void {
       if (account!.role !== "admin" || account!.totpEnabled) fail("FORBIDDEN");
       await checkCode(account!, body.code);
       await deps.db.update(accounts).set({ totpEnabled: true }).where(eq(accounts.id, account!.id));
+      await writeAudit(deps.db, { adminId: account!.id, action: "admin.totp_enable", targetType: "account", targetId: account!.id, at: deps.clock.now() });
       await deps.db.update(sessions).set({ adminVerifiedAt: deps.clock.now() }).where(eq(sessions.id, session!.id));
       return { ok: true };
     },
@@ -160,6 +173,7 @@ export function registerAuthRoutes(app: FastifyInstance, deps: Deps): void {
       if (account!.role !== "admin" || !account!.totpEnabled) fail("FORBIDDEN");
       await checkCode(account!, body.code);
       await deps.db.update(sessions).set({ adminVerifiedAt: deps.clock.now() }).where(eq(sessions.id, session!.id));
+      await writeAudit(deps.db, { adminId: account!.id, action: "admin.totp_verify", targetType: "account", targetId: account!.id, at: deps.clock.now() });
       return { ok: true };
     },
   });

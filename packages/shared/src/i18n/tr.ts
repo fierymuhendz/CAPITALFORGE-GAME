@@ -57,5 +57,8 @@ export const tr: Dict = {
     RESEARCH_MAXED: "Araştırma en yüksek seviyede.",
     TRADE_COOLDOWN: "Yeni hesaplar kısa bir süre ticaret yapamaz.",
     TIME_TRAVEL_DISABLED: "Zaman ilerletme yalnızca test ortamında.",
+    COMPANY_COOLDOWN: "Şirketinizi yakın zamanda kapattınız; yeniden kurmak için bekleme süresi dolmalı.",
+    IDEMPOTENCY_MISMATCH: "Aynı anahtar başka bir istekte kullanılmış.",
+    CONNECTION_LIMIT: "Çok fazla eşzamanlı bağlantı.",
   },
 };

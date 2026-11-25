@@ -14,7 +14,7 @@ import type { UnitOfWork } from "../events/bus";
 import { removeStock } from "../inventory/holdings";
 import { co, post } from "../ledger/post";
 import { m } from "../lib/serialize";
-import { companyBriefs, researchBonuses, type CompanyRow } from "../market/common";
+import { companyBriefs, lockCompanyRow, researchBonuses, type CompanyRow } from "../market/common";
 import { lockVehicle, mergeLines, startShipment, validateLink, type CargoIn, type VehicleRow } from "./shipping";
 
 
@@ -22,6 +22,7 @@ export async function buyVehicle(tx: Tx, uow: UnitOfWork, catalog: Catalog, comp
   const model = catalog.vehicleModel(req.modelId);
   catalog.city(req.cityId);
   if (company.level < model.minCompanyLevel) fail("LEVEL_TOO_LOW", { required: model.minCompanyLevel });
+  await lockCompanyRow(tx, company.id); // filo sayacı: eşzamanlı alımlar garaj sınırını aşamaz
   const garages = await tx
     .select()
     .from(facilities)

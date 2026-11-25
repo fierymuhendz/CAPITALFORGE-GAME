@@ -34,7 +34,12 @@ export class Catalog {
     this.vehicleModels = maps.vehicle_model as Map<string, Versioned<VehicleModelDef>>;
     const srows = await db.select().from(settingsTable);
     const merged: Record<string, unknown> = { ...DEFAULT_SETTINGS };
-    for (const s of srows) merged[s.key] = s.value;
+    // Yeni eklenen alt anahtarlar: veritabanında eski sürüm saklıysa varsayılanla tamamlanır (starterInputs hariç: yönetici tam listeyi belirler)
+    for (const s of srows) {
+      const def = (DEFAULT_SETTINGS as Record<string, unknown>)[s.key];
+      const plain = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+      merged[s.key] = plain(def) && plain(s.value) && s.key !== "starterInputs" ? { ...def, ...s.value } : s.value;
+    }
     this.settings = merged as unknown as Settings;
     this.loadedAt = Date.now();
   }

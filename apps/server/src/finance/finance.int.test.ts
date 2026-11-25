@@ -222,9 +222,12 @@ describe("şirket profili ve kapanış", () => {
   it("şirketi kapat: işler iptal, stok ve bakiye kapanır, arsa serbest, yeniden kurulabilir", async () => {
     const f = await found(h, "livestock", "akyayla");
     await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId: "milk_cows", batches: 1, repeat: true, idempotencyKey: h.key() });
-    await f.p.ok("POST", "/finance/loans", { amount: 2_000_000, termDays: 7, idempotencyKey: h.key() });
+    const loan = await f.p.ok("POST", "/finance/loans", { amount: 2_000_000, termDays: 7, idempotencyKey: h.key() });
     await grantStock(h, f.companyId, f.cityId, "steel", 2, 100, 50_000n);
     const me = await f.p.ok("GET", "/company");
+    const blocked = await f.p.post("/account/dissolve", { confirmName: me.name });
+    expect(blocked.body.error.details?.reason).toBe("OPEN_LOAN");
+    await f.p.ok("POST", `/finance/loans/${loan.id}/repay`, { amount: 2_000_000, idempotencyKey: h.key() });
     expect((await f.p.post("/account/dissolve", { confirmName: "yanlış ad" })).status).toBe(400);
     const r = await f.p.ok("POST", "/account/dissolve", { confirmName: me.name });
     expect(r.ok).toBe(true);
@@ -238,7 +241,10 @@ describe("şirket profili ve kapanış", () => {
     expect(plots[0]!.n).toBe(0);
     await h.advance(2 * DAY, 12 * HOUR); // kapanmış şirket için görev işlemez
     expect(await balance(h, f.companyId, "cash")).toBe(0n);
-    // aynı hesapla yeniden kur
+    // aynı hesapla yeniden kur (bekleme süresi dolduktan sonra)
+    const early = await f.p.post("/company", { name: me.name, cityId: "akyayla", sector: "livestock", plotId: "x", idempotencyKey: h.key() });
+    expect(early.body.error.code).toBe("COMPANY_COOLDOWN");
+    await h.advance(72 * HOUR, 12 * HOUR);
     const ob = await f.p.ok("GET", "/world/onboarding?cityId=akyayla&sector=livestock");
     const plot = ob.plots.find((x: { eligible: boolean }) => x.eligible);
     const again = await f.p.ok("POST", "/company", { name: me.name, cityId: "akyayla", sector: "livestock", plotId: plot.id, idempotencyKey: h.key() });

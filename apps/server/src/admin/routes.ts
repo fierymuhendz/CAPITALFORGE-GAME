@@ -1,8 +1,8 @@
 /** Yönetici okuma uçları (genel bakış, arama, uyarılar, bağlantı grupları, denetim) ve hesap/zaman işlemleri. */
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import {
-  AdminAckReq, AdminAlertsQuery, AdminAuditQuery, AdminOverviewQuery, AdminProductQuery, AdminResetPasswordReq, AdminSearchQuery, AdminTimeReq,
+  AdminAckReq, AdminAlertsQuery, AdminConnectionsAccessReq, AdminAuditQuery, AdminOverviewQuery, AdminProductQuery, AdminResetPasswordReq, AdminSearchQuery, AdminTimeReq,
   type AdminAlertDto, type AdminAuditDto,
 } from "@capitalforge/shared";
 import { hashPassword } from "../auth/crypto";
@@ -34,12 +34,19 @@ export function registerAdminRoutes(app: FastifyInstance, deps: Deps): void {
 
   route(app, deps, {
     method: "GET", url: "/admin/search", auth: "admin", body: AdminSearchQuery,
-    handler: async ({ body }) => search(deps.db, body.q),
+    handler: async ({ body, account, now }) => {
+      await writeAudit(deps.db, { adminId: account!.id, action: "admin.search", targetType: "search", targetId: "*", at: now, after: { q: body.q } });
+      return search(deps.db, body.q);
+    },
   });
 
   route(app, deps, {
     method: "GET", url: "/admin/companies/:id", auth: "admin",
-    handler: async ({ params }) => companyDetail(deps.db, uuidParam(params.id)),
+    handler: async ({ params, account, now }) => {
+      const id = uuidParam(params.id);
+      await writeAudit(deps.db, { adminId: account!.id, action: "company.view", targetType: "company", targetId: id, at: now });
+      return companyDetail(deps.db, id);
+    },
   });
 
   // ---- uyarılar ----
@@ -131,6 +138,29 @@ export function registerAdminRoutes(app: FastifyInstance, deps: Deps): void {
         after: { passwordReset: true, sessionsRevoked: true },
       });
       return { ok: true };
+    },
+  });
+
+  // ---- bağlantı inceleme yetkisi (yalnızca yetkisi olan yönetici verir/alır) ----
+  route(app, deps, {
+    method: "POST", url: "/admin/accounts/:id/connections-access", auth: "admin", kind: "mutation", body: AdminConnectionsAccessReq, rateLimitPerMin: 10,
+    handler: async ({ tx, account, body, params, now }) => {
+      if (!account!.canReviewConnections) fail("FORBIDDEN");
+      const id = uuidParam(params.id);
+      const a = (await tx.select().from(accounts).where(eq(accounts.id, id)).for("update").limit(1))[0];
+      if (!a) fail("NOT_FOUND");
+      if (a.role !== "admin") fail("BAD_REQUEST", { issue: "role" });
+      // en az bir yetkili yönetici kalmalı
+      if (!body.enabled && a.canReviewConnections) {
+        const others = await tx.select({ id: accounts.id }).from(accounts).where(and(eq(accounts.canReviewConnections, true), ne(accounts.id, id))).limit(1);
+        if (!others[0]) fail("CONFLICT", { reason: "LAST_REVIEWER" });
+      }
+      await tx.update(accounts).set({ canReviewConnections: body.enabled }).where(eq(accounts.id, id));
+      await writeAudit(tx, {
+        adminId: account!.id, action: "account.connections_access", targetType: "account", targetId: id, at: now, reasoning: body.reason,
+        before: { canReviewConnections: a.canReviewConnections }, after: { canReviewConnections: body.enabled },
+      });
+      return { ok: true, enabled: body.enabled };
     },
   });
 

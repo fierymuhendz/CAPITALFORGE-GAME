@@ -17,7 +17,7 @@ export const DEFAULT_SETTINGS = {
   marketFeeBp: 100,
   /** seviye eşikleri (deneyim puanı): index = seviye−1 */
   levelXp: [0, 120, 400, 1000, 2200],
-  xp: { productionJob: 10, delivery: 15, contractInstallment: 25, freightJob: 20, perRevenue100k: 4 },
+  xp: { productionJob: 10, delivery: 15, contractInstallment: 25, freightJob: 20, perRevenue100k: 4, minInstallmentValue: 500_000, minJobValue: 100_000 },
   loan: {
     /** seviye başına limit (kuruş) */
     limitPerLevel: 10_000_000,
@@ -34,8 +34,8 @@ export const DEFAULT_SETTINGS = {
   },
   freight: {
     /** sistem taşımacısı ücret tarifesi: kalkış ücreti + km başına (kamyon dolusu) */
-    systemBaseFee: 50_000,
-    systemPerKm: 3500,
+    systemBaseFee: 40_000,
+    systemPerKm: 2800,
     systemPickupAfterMinutes: 120,
     driverHoursPerTrip: 1,
   },
@@ -51,6 +51,8 @@ export const DEFAULT_SETTINGS = {
   },
   anomaly: { thresholdBp: 3500, minComparables: 5, windowHours: 72 },
   ipRetentionDays: 30,
+  /** şirket kapatıldıktan sonra yeniden kurma bekleme süresi (saat) */
+  refoundCooldownHours: 72,
   newAccountTradeDelaySeconds: 0,
 } as const;
 

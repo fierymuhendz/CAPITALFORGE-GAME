@@ -9,6 +9,7 @@ import { registerCompanyFoundRoutes } from "../company/routes";
 import * as economy from "./modules/a-economy";
 import * as trade from "./modules/b-trade";
 import * as admin from "./modules/c-admin";
+import { registerIdempotencyTasks } from "../security/idempotency";
 
 export function registerModules(app: FastifyInstance, deps: Deps): void {
   registerAuthRoutes(app, deps);
@@ -23,4 +24,5 @@ export function registerTasks(): void {
   economy.tasks();
   trade.tasks();
   admin.tasks();
+  registerIdempotencyTasks();
 }
