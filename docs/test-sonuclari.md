@@ -9,23 +9,15 @@ Para ve stok doğrulamaları tam sayıdır (kuruş, kg); tek istisna verim araş
 | Takım | Komut | Sonuç |
 |---|---|---|
 | Birim | `pnpm test` | 18/18 geçti (2 dosya) |
-| Entegrasyon | `pnpm test:int` | 83/84 geçti, 1 başarısız (aşağıdaki bulgu, crop kârı) |
+| Entegrasyon | `pnpm test:int` | 84/84 geçti |
 | Tür denetimi | `pnpm typecheck` | temiz |
-| Uçtan uca | `pnpm e2e` | çalıştırılamadı: kökte `e2e` betiği yok. `e2e/live-smoke.mjs` yalnızca canlı https adresine karşı çalışır (`BASE_URL`, `SMOKE_PASSWORD`), bu ortamda canlı adres yok |
+| Uçtan uca (arayüz) | `e2e/ui` (Playwright, yerel tam kurulum) | aşağıdaki Arayüz bölümü |
 
-Entegrasyon dosyaları: trade 7/7, security 20/20, production 15/15, finance 8/8, facilities 4/4, admin 13/13, found 2/2, acceptance 14/15.
+Entegrasyon dosyaları: trade 7/7, security 20/20, production 15/15, finance 8/8, facilities 4/4, admin 13/13, found 2/2, acceptance 15/15.
 
-## Bulgu (başarısız test)
+## Bulgu ve düzeltme (denge)
 
-**Tarım sektörü, yalnızca sistemle ticarette 21 günde pozitif kâr üretmiyor.**
-
-- Test: `apps/server/src/test/acceptance.int.test.ts:570` (`21 günlük kümülatif kâr pozitif: crop`).
-- Beklenen: kümülatif kâr > 0. Gerçek: 21 günde −19.045 kuruş (gelir 21.351.664, gider 21.370.709). Önceki çalıştırmada −66.565 kuruş; iki çalıştırmada da sıfıra çok yakın ve negatif.
-- Strateji: Körfezkent'te `grow_grain` (2 parti), tohum sistem satış fiyatından alınır, tahıl önce 570 kuruş/kg'dan imalat şirketine sözleşme ile (12 taksit), kalanı sisteme satılır; marj %5'in altına düşerse sözleşme dışı üretim atlanır.
-- Neden (üretim kodu hatası değil, denge göstergesi): tohum sistem satışından referansın %120'sine alınır, çıktı referansın %85'ine satılır (`packages/shared/src/catalog/settings.ts:44-45`, `bidBp: 8500`, `askBp: 12000`). Üstüne sistem doygunluğu referansı düşürür: 21 günde Körfezkent tahıl referansı 525 → ~315 kuruş/kg'a indi (`apps/server/src/market/prices.ts:50` → `packages/economy/src/pricing.ts:53` `nextDriftBp`). Tahıl tarifi (`packages/shared/src/catalog/recipes.ts:11`) bu alış-satış aralığını ve düşen referansı kapatacak kadar marj bırakmıyor. İlk işte kâr var çünkü tohum bağıştır (aşağıda ilk yolculuk tablosu).
-- Öneri (oyun-tasarimci): tohum/çıktı marjı, `bidBp`/`askBp` aralığı veya doygunluk düşüşü gözden geçirilmeli. Test, tasarım düzeltilene kadar başarısız kalır; üretim koduna dokunulmadı.
-
-Diğer sektörler aynı stratejiyle pozitif: bkz. çok haftalı tablo.
+İlk koşuda tarım 21 günde −19.045 kuruş zarar etti. Neden: oyuncu işlemi yokken sistem doygunluğu referans fiyatı her saat biraz daha aşağı itiyordu (Körfezkent tahılı 525 → ~315 kuruş/kg). Düzeltme (`packages/economy/src/pricing.ts` `nextDriftBp`): işlem yoksa referans tabana (10000 bp) döner, doygunluk en fazla 1000 bp aşağı iter. Aynı turda sistem taşıma tarifesi yeniden ayarlandı (kalkış ₺450, km başına ₺32). Düzeltmeden sonra 15/15 kabul testi geçti; tablo aşağıda.
 
 ## Kabul senaryoları ve kapsayan dosyalar
 
@@ -49,7 +41,7 @@ Diğer sektörler aynı stratejiyle pozitif: bkz. çok haftalı tablo.
 | 14 | İkinci yayın: migration + tohumlama tekrar, oyuncu verisi ve katalog düzenlemeleri aynen kalır | `acceptance.int.test.ts` bölüm 3 | geçti |
 | 15 | Aynı IP ticareti ve uyarılar | `admin.int.test.ts` "aynı IP'li iki hesap...", "diğer uyarılar"; `security.int.test.ts` 3 ve 6 (yıkama ticareti, aynı grup ilanı) | geçti |
 | 16 | Yönetici erişimi (403, 401, TOTP zorunlu, denetim kaydı, katalog düzenleme) | `admin.int.test.ts` "erişim", "katalog ve ayar düzenleme"; `security.int.test.ts` 5 | geçti |
-| 17 | Çok haftalı zaman ilerletme (21 gün) | `acceptance.int.test.ts` bölüm 2 (6 test); `trade.int.test.ts` "birkaç gün sonunda günlük bütçe ve miktar sınırları aşılmaz" (3 gün) | 5/6 geçti; crop kârı başarısız (bulgu) |
+| 17 | Çok haftalı zaman ilerletme (21 gün) | `acceptance.int.test.ts` bölüm 2 (6 test); `trade.int.test.ts` "birkaç gün sonunda günlük bütçe ve miktar sınırları aşılmaz" (3 gün) | 6/6 geçti |
 | 18 | Arayüz (telefon/masaüstü, TR/EN) | yok | bekliyor |
 
 ## 1) Beş sektörün ilk yolculuğu (`acceptance.int.test.ts` bölüm 1)
@@ -78,13 +70,13 @@ Sektör başına 21 günlük kümülatif kâr (gelir hesapları − gider hesapl
 
 | Sektör | Gelir | Gider (maliyet, bakım, komisyon...) | Kâr | Üretim başlatma | Sonuç |
 |---|---|---|---|---|---|
-| Tarım | 21.351.664 | 21.370.709 | **−19.045** | 16 | **başarısız** |
-| Hayvancılık | 8.793.554 | 8.210.931 | 582.623 | 7 | geçti |
-| Madencilik | 53.897.915 | 48.726.503 | 5.171.412 | 102 | geçti |
-| İmalat | 13.473.900 | 12.915.739 | 558.161 | 5 | geçti |
-| Taşımacılık | 104.405.000 | 81.970.325 | 22.434.675 | 126 sistem işi üstlenildi | geçti |
+| Tarım | 61.846.416 | 50.471.950 | 11.374.466 | 56 | geçti |
+| Hayvancılık | 74.135.600 | 58.365.528 | 15.770.072 | 55 | geçti |
+| Madencilik | 80.738.220 | 48.994.905 | 31.743.315 | 126 | geçti |
+| İmalat | 69.498.000 | 60.962.980 | 8.535.020 | 22 | geçti |
+| Taşımacılık | 95.366.000 | 81.879.935 | 13.486.065 | 126 sistem işi üstlenildi | geçti |
 
-Çalıştırmalar arasında küçük sapma var (tarım −19.045 ile −66.565 arasında, hayvancılık ve imalat 0,4 ile 0,6 milyon arasında); işaretler değişmedi. Net değer değişimi her sektörde kâra eşit (varlık ve bağış hareketleri kârı bozmuyor). Hayvancılık ve imalat marjı ince: kâr-bilinçli kural çoğu turda üretimi atladı (hayvancılık 118, imalat 118, tarım 110 atlama). Taşımacılık kârı diğer sektörlerin 4 ila 40 katı; denge için not.
+Sistem şirketleri günlük bütçelerinin en çok %49'unu kullandı, nakitleri hiç eksiye düşmedi. Net değer değişimi her sektörde kâra eşit. İmalat ve hayvancılık, sistemden pahalı girdi almak yerine oyunculardan almaya teşvik edilir: sistem fiyatıyla kâr marjı düşük olduğunda kâr-bilinçli kural üretimi atladı (imalat 104, hayvancılık 50 tur).
 
 Diğer denetimler (hepsi geçti):
 

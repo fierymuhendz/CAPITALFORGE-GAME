@@ -34,8 +34,8 @@ export const DEFAULT_SETTINGS = {
   },
   freight: {
     /** sistem taşımacısı ücret tarifesi: kalkış ücreti + km başına (kamyon dolusu) */
-    systemBaseFee: 40_000,
-    systemPerKm: 2800,
+    systemBaseFee: 45_000,
+    systemPerKm: 3200,
     systemPickupAfterMinutes: 120,
     driverHoursPerTrip: 1,
   },
