@@ -126,6 +126,8 @@ Oyuncular işleri kurup 60 saat boyunca hiç istek atmaz (`idempotency_keys` say
 
 ## Arayüz (telefon/masaüstü, TR/EN)
 
+**Yeniden koşu (düzeltmelerden sonra, taze veritabanı, telefon TR ve masaüstü EN, 7 akış):** 67 adım geçti, 2 adım başarısız oldu. İkisi de aynı nedendi: denetim kaydındaki yeni eylem kodları (`admin.claim`, `admin.totp_enable`, `admin.totp_verify`) çevrilmeden ham görünüyordu; TR/EN çevirileri eklendi. B1 (telefonda alt sayfa düğmeleri), B2 (arsa ayrıntısı görünürlüğü), B3 (nakliye yükü), B4 (araştırma kilidi) ve B5 (dar panel tabloları) düzeltildi; bu koşuda ilgili adımlar geçti.
+
 Ortam: web `http://localhost:3100` (üretim derlemesi, `/api` vekil), sunucu `:2600` (`ALLOW_TIME_TRAVEL=1`, `DISABLE_RATE_LIMIT=1`). Telefon: Playwright `iPhone 13` (390×664 görünür alan, `deviceScaleFactor` 1), masaüstü 1440×900. Dil: kayıt sayfasındaki TR/EN düğmesi ve hesap paneli. Her çalıştırma yeni hesaplar açar; hiçbir üretim kodu değiştirilmedi.
 
 Çalıştırma: `node e2e/ui/ui-e2e.mjs [phone-tr phone-en desktop-tr desktop-en] [--flows=1,2,...]` (yardımcılar `e2e/ui/lib.mjs`; ek denetimler `e2e/ui/wizard-visibility.mjs`, `e2e/ui/research-busy.mjs`). Ham sonuç `e2e/ui/out/*.json`, ekran görüntüleri `docs/screenshots/e2e-*.png`.
