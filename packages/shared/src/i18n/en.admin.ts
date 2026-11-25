@@ -78,6 +78,7 @@ export const enAdmin: Dict = {
     resetPassword: "Reset password",
     passwordReset: "Password reset; open sessions were ended.",
     connectionsNote: "Groups show accounts sharing a network connection. No IP address or hash is ever shown; every view is written to the audit log. Trading within a group is allowed; this is for review only.",
+    noConnectionAccess: "Connection groups are only for administrators with the connection-review permission; your account does not have it.",
     noGroups: "No connection groups",
     noGroupsText: "A group forms when several accounts connect from the same place.",
     interactions: "{n} interactions",

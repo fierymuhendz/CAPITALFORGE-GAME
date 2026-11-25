@@ -56,6 +56,12 @@ export const trGame: Dict = {
     cargo: "Yük",
     dissolve: "Şirket kapanışı",
   },
+  conflictReason: {
+    ACTIVE_CONTRACT: "Aktif sözleşmen var; önce tamamla veya iptal et.",
+    OPEN_FREIGHT_JOB: "Açık bir taşıma işin var; önce tamamlansın veya iptal et.",
+    VEHICLE_IN_TRANSIT: "Yolda bir aracın var; varmasını bekle.",
+    RESERVED_STOCK: "Rezerve stok var; açık ilan ve emirleri iptal et.",
+  },
   boot: {
     failedTitle: "Sunucuya ulaşılamadı",
     failedText: "Birkaç saniye sonra tekrar deneyin.",
@@ -713,6 +719,11 @@ export const trGame: Dict = {
     delivered: "Teslim edildi.",
     installment: "Taksit",
     newHint: "Teklifin herkese açık panoya düşer ya da doğrudan bir şirkete gider. Karşı taraf kabul edince koşullar sabitlenir.",
+    freightWho: {
+      title: "Navlun ve teslim",
+      seller: "Navlunu satıcı öder: satıcı malı teslim şehrine kendisi taşır; sevkiyat taksite bağlanır ve varınca teslim sayılır.",
+      buyer: "Navlunu alıcı öder: mal, satıcının teslim şehrindeki stoğundan elle teslim edilir (Teslim et düğmesi); sonraki taşımayı alıcı yapar.",
+    },
     myRole: "Ben",
     iSell: "Satıcıyım",
     iBuy: "Alıcıyım",

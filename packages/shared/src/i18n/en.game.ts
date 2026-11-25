@@ -56,6 +56,12 @@ export const enGame: Dict = {
     cargo: "Cargo",
     dissolve: "Company closure",
   },
+  conflictReason: {
+    ACTIVE_CONTRACT: "You have an active contract; finish or cancel it first.",
+    OPEN_FREIGHT_JOB: "You have an open freight job; let it finish or cancel it first.",
+    VEHICLE_IN_TRANSIT: "A vehicle is on the road; wait for it to arrive.",
+    RESERVED_STOCK: "Some stock is reserved; cancel your open listings and orders.",
+  },
   boot: {
     failedTitle: "Cannot reach the server",
     failedText: "Please try again in a few seconds.",
@@ -713,6 +719,11 @@ export const enGame: Dict = {
     delivered: "Delivered.",
     installment: "Installment",
     newHint: "Your offer goes to the public board or straight to one company. Terms freeze once the other side accepts.",
+    freightWho: {
+      title: "Freight and handover",
+      seller: "Seller pays freight: the seller ships the goods to the delivery city; the shipment is linked to the installment and counts as delivery on arrival.",
+      buyer: "Buyer pays freight: goods are handed over manually from the seller's stock in the delivery city (Deliver button); the buyer moves them onward.",
+    },
     myRole: "I am the",
     iSell: "Seller",
     iBuy: "Buyer",

@@ -38,5 +38,5 @@ Tek dosyalık düzeltmeleri ana oturum doğrudan yapar.
 
 - `main` dalına birleştirme **Deploy** iş akışını tetikler: imajlar GHCR'a, sunucuda yedek, migration, yeniden başlatma, sağlık kontrolü.
 - **Reset legacy game** tek seferliktir ve yalnızca elle, onay metniyle çalışır; hedefin bu projenin eski veritabanı olduğunu doğrulamadan hiçbir şey silmez. v2 verisine dokunmaz.
-- Yönetici erişimi: sunucuda `cat /opt/capitalforge/secrets/admin_setup_code` ile okunan tek seferlik kod, oyunda Hesap → Yönetici ol ekranına girilir, ardından 2FA zorunludur.
+- Yönetici erişimi: sunucuda `cat /opt/capitalforge/secrets/admin_setup_code` ile okunan tek seferlik kod, oyunda giriş yaptıktan sonra `/admin` adresindeki (veya Daha fazla → Hesap) "Yönetici kurulumu" kartına girilir, ardından 2FA zorunludur.
 - Ücretli yeni araç, hizmet veya sunucu yükseltmesi için önce proje sahibinin onayı alınır.

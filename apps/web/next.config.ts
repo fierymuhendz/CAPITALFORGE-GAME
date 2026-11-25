@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 const gameServerUrl = process.env.GAME_SERVER_HTTP_URL ?? "http://localhost:2567";
 
 const nextConfig: NextConfig = {
+  // Paralel geliştirme için ayrı çıktı klasörü (varsayılan .next)
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   output: "standalone",
   transpilePackages: ["@capitalforge/shared", "@capitalforge/economy"],
   async rewrites() {

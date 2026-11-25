@@ -78,6 +78,7 @@ export const trAdmin: Dict = {
     resetPassword: "Parolayı sıfırla",
     passwordReset: "Parola sıfırlandı, açık oturumlar kapatıldı.",
     connectionsNote: "Gruplar, aynı ağ bağlantısını paylaşan hesapları gösterir. IP adresi veya karması hiçbir yerde gösterilmez; her görüntüleme denetim kaydına yazılır. Gruplar arası ticaret serbesttir, burada yalnızca inceleme içindir.",
+    noConnectionAccess: "Bağlantı grupları yalnızca \"bağlantı inceleme\" yetkisi olan yöneticilere açıktır; hesabında bu yetki yok.",
     noGroups: "Bağlantı grubu yok",
     noGroupsText: "Aynı bağlantıdan birden fazla hesap girince grup oluşur.",
     interactions: "{n} etkileşim",
