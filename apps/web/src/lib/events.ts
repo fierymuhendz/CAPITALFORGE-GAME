@@ -32,8 +32,11 @@ export function emitInvalidate(topics: string[] | "*" = "*"): void { invalidator
 
 function wsUrl(): string {
   const base = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-  if (base) return `${base.replace(/\/$/, "")}/events`;
-  return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/events`;
+  const origin = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
+  if (!base) return `${origin}/ws/events`;
+  const b = base.replace(/\/$/, "");
+  // Göreli adres ("/ws") eski tarayıcılarda WebSocket'e verilemez; mutlak adrese çevrilir.
+  return b.startsWith("/") ? `${origin}${b}/events` : `${b}/events`;
 }
 
 function connect(): void {
