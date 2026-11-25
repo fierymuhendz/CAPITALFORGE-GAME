@@ -234,3 +234,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 
 a.brand { color: inherit; text-decoration: none; }
 @media (max-width: 980px) { .play-top .hide-sm { display: none; } .play-top { gap: var(--sp-2); } }
+
+/* Masaüstü yan panel dar: tablo hücreleri sıkışık, eylem düğmeleri kırpılmasın */
+.side .tbl th, .side .tbl td { padding: var(--sp-2); }
+.side .tbl td .btn { white-space: nowrap; }
+.side .tbl td:last-child { position: sticky; right: 0; background: var(--surface); }
+.admin .tbl-wrap, .side .tbl-wrap { max-width: 100%; }

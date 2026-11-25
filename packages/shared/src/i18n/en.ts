@@ -53,7 +53,7 @@ export const en: Dict = {
     FREIGHT_NOT_OPEN: "The freight job is no longer open.",
     LOAN_LIMIT: "Not enough credit limit.",
     LOAN_NOT_ACTIVE: "The loan is not active.",
-    RESEARCH_BUSY: "This research is already running.",
+    RESEARCH_BUSY: "Only one research project can run at a time. Start the next one when the current one finishes.",
     RESEARCH_MAXED: "Research is at its highest level.",
     TRADE_COOLDOWN: "New accounts must wait briefly before trading.",
     TIME_TRAVEL_DISABLED: "Time travel is only available in test environments.",

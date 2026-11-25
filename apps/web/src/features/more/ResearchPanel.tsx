@@ -20,7 +20,9 @@ export function ResearchPanel() {
       {(d) => (
         <div className="col">
           <p className="muted2 small">{t("research.intro")}</p>
+          {d.items.some((x) => x.inProgress) ? <div className="notice steel small">{t("errors.RESEARCH_BUSY")}</div> : null}
           {d.items.map((r) => {
+            const anyBusy = d.items.some((x) => x.inProgress);
             const def = cat.world.research.find((x) => x.id === r.researchId);
             const locked = (me?.company?.level ?? 1) < r.minCompanyLevel;
             const maxed = r.nextCost === null;
@@ -34,7 +36,7 @@ export function ResearchPanel() {
                     <KV k={t("research.cost")} v={i.money(r.nextCost!)} />
                     <KV k={t("facility.remaining")} v={t("common.minutes", { n: r.nextMinutes ?? 0 })} />
                     {locked ? <span className="small warn">⚠ {t("research.needLevel", { n: r.minCompanyLevel })}</span> : null}
-                    <Button variant="primary" loading={busy} disabled={locked} onClick={() => void run(() => api.post(`/research/${r.researchId}/start`), { ok: "research.started" })}>{t("research.start")}</Button>
+                    <Button variant="primary" loading={busy} disabled={locked || anyBusy} onClick={() => void run(() => api.post(`/research/${r.researchId}/start`), { ok: "research.started" })}>{t("research.start")}</Button>
                   </>
                 )}
               </div></Card>

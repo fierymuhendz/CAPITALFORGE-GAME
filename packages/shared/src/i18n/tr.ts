@@ -53,7 +53,7 @@ export const tr: Dict = {
     FREIGHT_NOT_OPEN: "Taşıma işi artık açık değil.",
     LOAN_LIMIT: "Kredi limitiniz yetersiz.",
     LOAN_NOT_ACTIVE: "Kredi aktif değil.",
-    RESEARCH_BUSY: "Bu araştırma zaten sürüyor.",
+    RESEARCH_BUSY: "Aynı anda tek araştırma yürütülebilir; süren araştırma bitince yenisini başlatın.",
     RESEARCH_MAXED: "Araştırma en yüksek seviyede.",
     TRADE_COOLDOWN: "Yeni hesaplar kısa bir süre ticaret yapamaz.",
     TIME_TRAVEL_DISABLED: "Zaman ilerletme yalnızca test ortamında.",

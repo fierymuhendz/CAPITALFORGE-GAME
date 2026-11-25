@@ -1,0 +1,19 @@
+/** Araştırma paneli: biri sürerken diğer "Başlat" düğmeleri açık mı? (ekran görüntüsü + API sonucu) */
+import { PROFILES, Monitor, T, WEB, chromium, foundViaApi, loginCtx, newPage, register, shot, sleep } from "./lib.mjs";
+const L = "en", t = (k) => T(L, k);
+const browser = await chromium.launch();
+const { api, username } = await register(L, "e2eres");
+await foundViaApi(api, { sector: "manufacturing", cityId: "yesilova" });
+const { ctx, page } = await newPage(browser, PROFILES.desktop, L, new Monitor("res"));
+await loginCtx(ctx, username);
+await page.goto(`${WEB}/play?tab=research`, { waitUntil: "networkidle" });
+const starts = page.getByRole("button", { name: t("research.start"), exact: true });
+await starts.first().click();
+await sleep(1200);
+const enabled = await starts.evaluateAll((els) => els.filter((e) => !e.disabled).length);
+await shot(page, "desktop-en-research-busy");
+await starts.first().click();
+await sleep(800);
+await shot(page, "desktop-en-research-busy-error");
+console.log("başka araştırma sürerken açık kalan Başlat düğmesi:", enabled);
+await browser.close();

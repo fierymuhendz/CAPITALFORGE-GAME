@@ -1,0 +1,191 @@
+[
+  {
+    "panel": "facilities",
+    "label": "Food plant Idle Kavsak · Level 1"
+  },
+  {
+    "panel": "facilities",
+    "label": "Buy another plot"
+  },
+  {
+    "panel": "inventory",
+    "label": "All",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "inventory",
+    "label": "Kavsak"
+  },
+  {
+    "panel": "market",
+    "label": "Overview",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "market",
+    "label": "Compare"
+  },
+  {
+    "panel": "market",
+    "label": "By city",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "market",
+    "label": "By product"
+  },
+  {
+    "panel": "market",
+    "label": "Korfezkent",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "market",
+    "label": "Yesilova"
+  },
+  {
+    "panel": "market",
+    "label": "Akyayla"
+  },
+  {
+    "panel": "market",
+    "label": "Demirdag"
+  },
+  {
+    "panel": "market",
+    "label": "Kavsak"
+  },
+  {
+    "panel": "contracts",
+    "label": "Board",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "contracts",
+    "label": "Mine"
+  },
+  {
+    "panel": "contracts",
+    "label": "New offer"
+  },
+  {
+    "panel": "contracts",
+    "label": "New offer"
+  },
+  {
+    "panel": "logistics",
+    "label": "Fleet",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "logistics",
+    "label": "Send goods"
+  },
+  {
+    "panel": "logistics",
+    "label": "Freight board"
+  },
+  {
+    "panel": "logistics",
+    "label": "Post a job"
+  },
+  {
+    "panel": "logistics",
+    "label": "Shipments"
+  },
+  {
+    "panel": "finance",
+    "label": "Overview",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "finance",
+    "label": "Sales"
+  },
+  {
+    "panel": "finance",
+    "label": "Ledger"
+  },
+  {
+    "panel": "finance",
+    "label": "Loans"
+  },
+  {
+    "panel": "research",
+    "label": "Start research"
+  },
+  {
+    "panel": "research",
+    "label": "Start research"
+  },
+  {
+    "panel": "research",
+    "label": "Start research"
+  },
+  {
+    "panel": "research",
+    "label": "Start research"
+  },
+  {
+    "panel": "research",
+    "label": "Start research"
+  },
+  {
+    "panel": "research",
+    "label": "Start research"
+  },
+  {
+    "panel": "notifications",
+    "label": "Mark all as read"
+  },
+  {
+    "panel": "notifications",
+    "label": "Open"
+  },
+  {
+    "panel": "notifications",
+    "label": "Open"
+  },
+  {
+    "panel": "notifications",
+    "label": "Open"
+  },
+  {
+    "panel": "notifications",
+    "label": "Open"
+  },
+  {
+    "panel": "account",
+    "label": "Türkçe"
+  },
+  {
+    "panel": "account",
+    "label": "English"
+  },
+  {
+    "panel": "account",
+    "label": "Dark",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "account",
+    "label": "Light"
+  },
+  {
+    "panel": "account",
+    "label": "Auto",
+    "note": "zaten seçili"
+  },
+  {
+    "panel": "account",
+    "label": "High"
+  },
+  {
+    "panel": "account",
+    "label": "Low"
+  },
+  {
+    "panel": "account",
+    "label": "Lite (2D)"
+  }
+]

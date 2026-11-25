@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FoundCompanyReq, SECTORS, SYSTEM_PROFILES, type OnboardingDto, type Sector } from "@capitalforge/shared";
 import { api } from "@/lib/api";
 import { useApp } from "@/lib/app";
@@ -31,6 +31,12 @@ export function FoundWizard() {
   const [sector, setSector] = useState<Sector | null>(null);
   const [starter, setStarter] = useState<"food_plant" | "steel_mill">("food_plant");
   const [plotId, setPlot] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const pickPlot = (id: string) => {
+    setPlot(id);
+    // seçilen arsanın fiyat, konum ve uzaklık kartını görünür alana getir
+    requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+  };
   const [view, setView] = useState<"map" | "list">("map");
 
   const nameCheck = FoundCompanyReq.shape.name.safeParse(cname);
@@ -129,11 +135,13 @@ export function FoundWizard() {
                   <span className="muted2 small">{t("found.cash")}: <b className="num">{money(d.startingCash)}</b></span>
                   <Seg label={t("found.view")} value={view} onChange={setView} items={[{ id: "map", label: t("found.viewMap") }, { id: "list", label: t("found.viewList") }]} />
                 </div>
-                {view === "map" ? <PlotGrid plots={d.plots} selected={plotId} onSelect={setPlot} /> : (
-                  <div className="cards">{d.plots.map((p) => <PlotCard key={p.id} p={p} sector={sector!} selected={plotId === p.id} onClick={() => setPlot(p.id)} />)}</div>
-                )}
-                {plot ? <PlotDetail p={plot} sector={sector!} /> : <Notice tone="steel">{t("found.pickPlot")}</Notice>}
                 {!d.plots.some((p) => p.eligible) ? <EmptyState title={t("found.noEligible")} text={t("found.noEligibleText")} action={<Button onClick={() => setStep("city")}>{t("found.changeCity")}</Button>} /> : null}
+                {view === "map" ? <PlotGrid plots={d.plots} selected={plotId} onSelect={pickPlot} /> : (
+                  <div className="cards">{d.plots.map((p) => <PlotCard key={p.id} p={p} sector={sector!} selected={plotId === p.id} onClick={() => pickPlot(p.id)} />)}</div>
+                )}
+                <div ref={detailRef} style={{ scrollMarginBottom: 96 }}>
+                  {plot ? <PlotDetail p={plot} sector={sector!} /> : <Notice tone="steel">{t("found.pickPlot")}</Notice>}
+                </div>
               </div>
             )}
           </Async>
@@ -189,12 +197,15 @@ function efficiency(p: Plot, sector: Sector, i: I18n): string {
 
 function PlotCard({ p, sector, selected, onClick }: { p: Plot; sector: Sector; selected: boolean; onClick: () => void }) {
   const i = useT();
+  const cat = useCat();
   return (
     <Card onClick={onClick} selected={selected} tight>
       <div className="col tight">
         <div className="row between"><b>{p.gx + 1}·{p.gz + 1}</b><span className="num">{i.money(p.price)}</span></div>
         <span className="small muted2">{p.sizeHa} ha · {efficiency(p, sector, i)}</span>
         <span className="small muted">{i.t("found.distCenter")}: {p.distanceToCenterKm} km</span>
+        {p.nearestSupply[0] ? <span className="small muted">{i.t("found.nearSupply")}: {cat.product(p.nearestSupply[0].productId)} · {cat.city(p.nearestSupply[0].cityId)} {p.nearestSupply[0].km} km</span> : null}
+        {p.nearestBuyers[0] ? <span className="small muted">{i.t("found.nearBuyers")}: {cat.product(p.nearestBuyers[0].productId)} · {cat.city(p.nearestBuyers[0].cityId)} {p.nearestBuyers[0].km} km</span> : null}
         {p.eligible ? <Badge tone="good">✓ {i.t("found.eligible")}</Badge> : <Badge tone="bad">✕ {p.reasons.map((r) => i.t(`found.reason.${r}`)).join(", ")}</Badge>}
       </div>
     </Card>

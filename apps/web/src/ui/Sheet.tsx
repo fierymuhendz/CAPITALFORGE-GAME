@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "./icons";
 
 interface Props {
@@ -24,8 +25,9 @@ export function Sheet({ open, onClose, title, closeLabel, children, footer, wide
     document.addEventListener("keydown", k);
     return () => { document.removeEventListener("keydown", k); (prev.current as HTMLElement | null)?.focus?.(); };
   }, [open, onClose]);
-  if (!open) return null;
-  return (
+  if (!open || typeof document === "undefined") return null;
+  // body'ye portal: panel kaplamasının yığın bağlamında kalıp alt gezinme çubuğunun altına düşmesin
+  return createPortal(
     <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} className={`sheet auto${wide ? " wide" : ""}`} style={{ outline: "none" }}>
         <div className="grabber" aria-hidden="true" />
@@ -36,6 +38,7 @@ export function Sheet({ open, onClose, title, closeLabel, children, footer, wide
         <div className="sheet-body">{children}</div>
         {footer ? <div className="sheet-head" style={{ borderTop: "1px solid var(--line)", borderBottom: 0 }}>{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

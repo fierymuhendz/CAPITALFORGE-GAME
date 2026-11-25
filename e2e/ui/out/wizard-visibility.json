@@ -1,0 +1,58 @@
+[
+  {
+    "cfg": "phone-tr",
+    "detailVisibleFraction": 0,
+    "detailRect": {
+      "top": 648,
+      "bottom": 983,
+      "vh": 664,
+      "visibleBeforeStickyBar": 0,
+      "height": 335
+    },
+    "listCardShowsResourceCustomerDistance": false,
+    "listCardText": "1·1 ₺28.500,00 11 ha · Verimlilik: 123,3% Şehir merkezine: 8 km ✕ seviye yetersiz",
+    "shot": "docs/screenshots/e2e-phone-tr-wizard-detail-after-select.png"
+  },
+  {
+    "cfg": "phone-en",
+    "detailVisibleFraction": 0,
+    "detailRect": {
+      "top": 627,
+      "bottom": 961,
+      "vh": 664,
+      "visibleBeforeStickyBar": 0,
+      "height": 335
+    },
+    "listCardShowsResourceCustomerDistance": false,
+    "listCardText": "1·1 ₺28,500.00 11 ha · Fertility: 123.3% To city center: 8 km ✕ level too low",
+    "shot": "docs/screenshots/e2e-phone-en-wizard-detail-after-select.png"
+  },
+  {
+    "cfg": "desktop-tr",
+    "detailVisibleFraction": 0.01,
+    "detailRect": {
+      "top": 829,
+      "bottom": 1107,
+      "vh": 900,
+      "visibleBeforeStickyBar": 3.40625,
+      "height": 278
+    },
+    "listCardShowsResourceCustomerDistance": false,
+    "listCardText": "1·1 ₺28.500,00 11 ha · Verimlilik: 123,3% Şehir merkezine: 8 km ✕ seviye yetersiz",
+    "shot": "docs/screenshots/e2e-desktop-tr-wizard-detail-after-select.png"
+  },
+  {
+    "cfg": "desktop-en",
+    "detailVisibleFraction": 0.01,
+    "detailRect": {
+      "top": 829,
+      "bottom": 1107,
+      "vh": 900,
+      "visibleBeforeStickyBar": 3.40625,
+      "height": 278
+    },
+    "listCardShowsResourceCustomerDistance": false,
+    "listCardText": "1·1 ₺28,500.00 11 ha · Fertility: 123.3% To city center: 8 km ✕ level too low",
+    "shot": "docs/screenshots/e2e-desktop-en-wizard-detail-after-select.png"
+  }
+]

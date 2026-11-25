@@ -129,8 +129,8 @@ function Board() {
             return (
               <Card key={j.id}><div className="col tight">
                 <div className="row between wrap"><b>{cat.city(j.originCityId)} → {cat.city(j.destCityId)} · {j.distanceKm} km</b><Badge tone={j.status === "open" ? "good" : undefined}>{t(`logistics.jobStatus.${j.status}`)}</Badge></div>
-                <span className="small muted2">{j.cargo.map((c) => `${cat.product(c.productId)} ★${c.quality} ${i.qty(c.qtyKg)}`).join(", ")}</span>
-                <span className="small muted">{j.shipperName} {j.isSystem ? <SystemBadge /> : null} → {j.consigneeName}</span>
+                <span className="small muted2">{j.cargo.length ? j.cargo.map((c) => `${cat.product(c.productId)} ★${c.quality} ${i.qty(c.qtyKg)}`).join(", ") : i.qty(j.totalKg)}</span>
+                <span className="small muted">{j.shipperName} {j.isSystem ? <SystemBadge /> : null}{j.consigneeName ? <> → {j.consigneeName}</> : null}</span>
                 <KV k={t("logistics.pay")} v={<b>{i.money(j.payAmount)}</b>} />
                 <KV k={t("logistics.deadline")} v={<Countdown until={j.deadlineAt} doneText={t("logistics.expired")} />} />
                 {j.estCostForMe && net !== null ? <>
