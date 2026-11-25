@@ -204,3 +204,97 @@ Ekran görüntüleri: `docs/screenshots/e2e-desktop-en-f2-market-flour.png`, `e2
 - Bölüm 2 yaklaşık 2 dakika, tüm `pnpm test:int` yaklaşık 4 dakika sürer.
 
 Tam ekran görüntüsü seti (192 adet) depoya alınmadı; depoda her akıştan temsilî görüntüler var (`docs/screenshots/e2e-*`).
+
+# v3 kabul testi sonuçları (sunucu düzeyi)
+
+Dosya: `apps/server/src/test/v3-acceptance.int.test.ts` (12 test). Gerçek PostgreSQL (`capitalforge_test_v3acc`), zaman `h.advance`, her senaryo sonunda `checkInvariants` boş. Para kuruş, kütle kg; tüm karşılaştırmalar tam sayı. Üretim koduna dokunulmadı.
+
+| Takım | Komut | Sonuç |
+|---|---|---|
+| Birim | `pnpm test` | 38/38 (4 dosya) |
+| Entegrasyon | `pnpm test:int` | 107/107 (11 dosya; v3-acceptance 12) |
+| Tür denetimi | `pnpm typecheck` | temiz |
+| Uçtan uca | `pnpm e2e` | kökte komut yok (`ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL`), koşulamadı |
+
+## Senaryo → sonuç
+
+| # | Senaryo | Sonuç |
+|---|---|---|
+| 1 | Yakın-pahalı ↔ uzak-ucuz sıralaması dört etkenle döner; iki anlaşma gerçekten alınır, taşınır, işlenir, satılır; stok, defter, SaleDto, outcomes mutabık | geçti |
+| 2 | Altı yol (tarım, hayvancılık, madencilik, imalat gıda, imalat çelik, taşımacılık): ilk iş → ilk gelir → yatırım; süre tavanı 60 dk | geçti (8 test) |
+| 3 | İki şirket arası 4 taksitli sözleşme: kabul öncesi compare, kendi aracı + sistem işi + oyuncu taşımacı, hepsi yerleşir | geçti |
+| 4 | Çevrimdışı 60 saat, 0 HTTP isteği; iş, sevkiyat, taksit tam bir kez | geçti |
+| 5 | ESKİ şema/katalogda kurulan dünya → migration + revizyon; şirket ve sözleşme aynen, yönetici düzenlemesi ezilmez | geçti |
+
+## 1) İki anlaşma (ürün: tahıl, teslim: Körfezkent, fiyat penceresi: uzak 300, yakın 358 kuruş/kg)
+
+Sıralama (teslim birim maliyeti = mal + navlun):
+
+| Durum | Yakın (Kavşak, 120 km, 358) | Uzak (Demirdağ, 250 km, 300) | Sıra |
+|---|---|---|---|
+| 4.000 kg | 1.432.000 + 434.099 = 1.866.099 (467/kg) | 1.200.000 + 806.986 = 2.006.986 (502/kg) | yakın > uzak |
+| 12.000 kg (tam kamyon) | 4.296.000 + 659.400 (413/kg) | 3.600.000 + 1.248.200 (405/kg) | uzak > yakın |
+| 13.000 kg (2 kamyon, SPLIT_LOADS) | 4.654.000 + 1.009.019 (436/kg) | 3.900.000 + 1.889.746 (446/kg) | yakın > uzak |
+| 12.000 kg, km ücreti ×4 (12.800) | 4.296.000 + 2.502.600 (567/kg) | 3.600.000 + 4.857.800 (705/kg) | yakın > uzak |
+| 12.000 kg, teslim Kavşak | navlun 0 (358/kg) | 3.600.000 + 813.000 (368/kg) | yakın > uzak |
+| 4.000 kg, 300'lük ilan 180 km'de (Yeşilova) | 467/kg | Yeşilova 454/kg; Demirdağ 502/kg | Yeşilova > yakın > uzak |
+
+Gerçek yürütme (A: yakın 4.000 kg, B: uzak 12.000 kg; her biri kendi miktarında kazanan teklif):
+
+| Kalem | A | B |
+|---|---|---|
+| Mal | 1.432.000 | 3.600.000 |
+| Navlun | 434.099 | 1.248.200 |
+| Girdi maliyeti (varışta depo maliyeti) | 1.866.099 | 4.848.200 |
+| Üretim işletme gideri (enerji+su+işçilik) | 321.000 | 963.000 |
+| Un çıktısı | 3.300 kg | 9.900 kg |
+| Un maliyeti (COGS) | 2.187.099 | 5.811.200 |
+| Gelir (1.200/kg alım emri) | 3.960.000 | 11.880.000 |
+| Satış komisyonu | 39.600 | 118.800 |
+| Gerçekleşen net kâr (SaleDto) | 1.733.301 | 5.950.000 |
+| Nakit değişimi (ek bakım yok) | +1.733.301 | +5.950.000 |
+
+Mutabakat: varış deposu maliyeti = mal + navlun (tam); üretim girdi çıkışı toplamı = bu tutar; un lotu maliyeti = iş maliyetleri toplamı = COGS; her defter işlemi toplamı 0; anlaşma işlemlerinin nakit toplamı = SaleDto net kâr; purchase outcome beklenen = gerçekleşen (goods, freight, cost); production beklenen maliyet = gerçekleşen. Üretim tahmin kârı en iyi alıcıya (1.395/kg) göre hesaplanır, satış 1.200'lük emre yapıldı: tahmin toplamı A 2.370.367, B 7.861.198; fark alıcı seçiminden gelir.
+
+## 2) Kazanç yolları (taze şirket; sayılar testten)
+
+| Yol | İlk iş | Net gelir | Seçenekler (bedel, geri dönüş) | Seçilen |
+|---|---|---|---|---|
+| Tarım | grow_grain 2.318 kg (grow_fodder 253.860 yerine tahmin 451.622) | 451.622 | araştırma agronomy 2.500.000/36 parti; kalite kontrol 5.000.000/64; tesis kalitesi 3.500.000/45; seviye 7.000.000 kapalı (LEVEL_TOO_LOW) | agronomy: 2.318 → 2.503 kg |
+| Hayvancılık | milk_cows 1.192 kg | 340.052 | herd_health 3.000.000/49; kalite 5.000.000/73; tesis kalitesi 4.000.000/58; seviye kapalı | herd_health: 1.192 → 1.287 |
+| Madencilik | mine_coal 3.622 kg (mine_iron: DEPOSIT_MISMATCH) | 568.517 | drilling 3.000.000/43; kalite 5.000.000/64; tesis kalitesi 4.000.000/51; seviye kapalı | drilling: 3.622 → 3.912 |
+| İmalat gıda | mill_flour 1.650 kg | 738.266 | lean_process 3.500.000/237; kalite kontrol 5.000.000/29; tesis kalitesi 5.000.000/29; seviye kapalı | kalite kontrol: kalite 2 → 3 |
+| İmalat çelik | smelt_steel 1.100 kg | 479.049 | lean_process 3.500.000/99; kalite kontrol 5.000.000/32; tesis kalitesi 5.000.000/32 | kalite kontrol: 2 → 3 |
+| Taşımacılık | Kavşak→Yeşilova 12 t, ücret 581.670, 20 dk | 314.854 (yakıt 225.000, sürücü 36.000, komisyon 5.816) | kamyonet 6.000.000/20 sefer; kamyon 18.000.000 kapalı (INSUFFICIENT_FUNDS); eco_driving 2.000.000/112; route_planning 2.500.000/133 | kamyonet: filo 1 → 2 |
+
+Geri dönüş birimi parti/sefer = bedel / parti başına tahmini ek net kâr (yukarı yuvarlı). Her yatırımda nakit düşüşü bedele tam eşit, etki sonradan teklifte ölçüldü.
+
+Süre tavanı (settings.pace.maxMinutes = 60): en uzun üretim 60 dk (13 iş), en uzun sevkiyat 43 dk, inşaat 60 dk (katalog 240), seviye yükseltme 60 dk (katalog 360), kalite iyileştirme 60 dk; araştırma nextMinutes ≤ 60; /world tarif, bina, araştırma süreleri ≤ 60.
+
+## 3) Sözleşme (Yeşilova → Körfezkent, 180 km, 4 × 3.000 kg × 600 kuruş/kg)
+
+Kabul öncesi compare (satıcı): taksit başı mal 1.800.000, navlun 572.904, net 1.227.096 (409/kg); toplam net 4.908.384; teminat 720.000, emanet 7.200.000, kaçan taksit cezası 180.000; bugün spot 298/kg (302 fiyat, 12.000 kg, net 3.587.760). Alıcı tarafında spotNow = en ucuz ilan + navlun (mal + navlun) doğrulandı.
+
+Teslimler: 1 kendi kamyonet, 2 sistem taşımacısı işi, 3 oyuncu taşımacı işi, 4 sistem işi; hepsi vadeden önce (30/105/45/105 dk). Hepsi `fulfilled`, her taksit için tam 1 `installment_settle`, emanetler 0, sözleşme `completed`.
+
+| | Beklenen (kabulde) | Gerçekleşen |
+|---|---|---|
+| Gelir | 7.200.000 | 7.200.000 |
+| Navlun | 2.291.616 | 1.976.962 (kendi araç 258.250; diğer üç 572.904) |
+| Maliyet | 1.800.000 | 1.800.000 |
+| Kâr | 3.108.384 | 3.423.038 |
+
+Alıcı: mal 7.200.000, stok 12.000 kg maliyet 7.200.000.
+
+## 4) Çevrimdışı (60 saat, HTTP isteği 0, idempotency anahtarı değişimi 0)
+
+4 üretim (tekrar modu) = 4 `production_settle`, çıktı 6.600 kg = un stoku, wip 0, XP +40; araştırma lean_process seviye 1 (1 işlem); kendi sevkiyatı 1.000 kg; alım+teslim 6.000 kg maliyet 2.591.112 (navlun 791.112); sözleşme 3 teslim + 1 kaçan (ceza 22.500), 4 `installment_settle`; teslim olan 17 sevkiyatın varış işlemi ≤ 1 (iş bağlıysa tam 1); eşzamanlı 3 ek tur sayıları değiştirmez; bildirimler: 4 `production_done`, 4 `installment_closed`.
+
+## 5) Canlı güncelleme
+
+Eski durum: fiyatlar iron_ore 180, coal 220, flour 1050, packaged_milk 1400; maxBatches [2,3,4]; revizyon işareti silindi; `0003` geri alındı (3 tahmin kaydı gitti). Yönetici API ile flour 1111, coal 250, mill_flour 77 dk, komisyon 150 bp; steel_mill satırı DB'de yönetici benzetimi (yönetici API'si yok). Yeniden başlatma (`keepDb`): 38 tablonun satır sayısı ve içerik özeti birebir aynı, nakit (X 17.954.000; S 16.380.000), stok, tesis, çalışan iş (2 parti, 3.300 kg), oturum çerezi aynı. Revizyon: iron_ore 260, packaged_milk 1550, field/barn/mine/food_plant maxBatches [1,2,3]; atlanan (edited): flour, coal, steel_mill. İkinci yayın ve iki ek migration: değişiklik yok. Sonrasında çalışan iş tek settle, sözleşme 3/3 `fulfilled`, araştırma seviye 1; eski iş 2 parti biter, yeni 2 parti iş BATCHES_EXCEED_CAPACITY.
+
+## Notlar
+
+- Başka bir koşu aynı `capitalforge_test` şemasını sildiği için çakışma oldu (500 / "cf.companies yok"); testler izole `capitalforge_test_v3acc` ile koşuldu.
+- İlk koşudaki `perKg −490 ≠ −489` ve `−87.500` nakit farkı gerçek hata değil, test hatasıydı: compare `floorDiv` kullanır (negatifte aşağı), bakım/iade nakdi test ölçümüne karışmıştı. İzole koşuda iki doğrulama da doğru değerle geçiyor.

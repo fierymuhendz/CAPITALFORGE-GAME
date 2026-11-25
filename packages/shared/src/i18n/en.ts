@@ -1,10 +1,12 @@
 import type { Dict } from "./index";
 import { enGame } from "./en.game";
 import { enAdmin } from "./en.admin";
+import { enCity } from "./en.city";
 
 export const en: Dict = {
   ...enGame,
   ...enAdmin,
+  ...enCity,
   errors: {
     BAD_REQUEST: "Invalid request.",
     UNAUTHENTICATED: "Please sign in.",
@@ -50,6 +52,7 @@ export const en: Dict = {
     CONTRACT_NOT_ACTIVE: "The contract is not active.",
     INSTALLMENT_NOT_OPEN: "The delivery window for this installment is not open.",
     NOT_PARTY: "You are not a party to this contract.",
+    TOO_MANY_LOADS: "A delivered purchase can be at most 10 truckloads; reduce the quantity.",
     FREIGHT_NOT_OPEN: "The freight job is no longer open.",
     LOAN_LIMIT: "Not enough credit limit.",
     LOAN_NOT_ACTIVE: "The loan is not active.",

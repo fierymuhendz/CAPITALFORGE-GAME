@@ -7,6 +7,7 @@ import {
 } from "@capitalforge/shared";
 import type { z } from "zod";
 import type { Catalog } from "../catalog/catalog";
+import { paceTrip } from "../catalog/pace";
 import type { DbOrTx, Tx } from "../db/client";
 import { facilities, shipmentCargo, shipments, vehicles } from "../db/schema";
 import { fail } from "../errors";
@@ -135,12 +136,12 @@ export async function freightQuote(
     own: models.map((md) => {
       const loads = Math.max(1, Math.ceil(q.kg / md.capacityKg));
       const t = estimateOwnTrip(km, { capacityKg: md.capacityKg, speedKmh: md.speedKmh, fuelPerKm: BigInt(md.fuelPerKm) }, BigInt(catalog.city(q.originCityId).wage), {
-        speedBonusBp: bonus.speedBp, fuelSavingBp: bonus.fuelBp, loadingHours: s.driverHoursPerTrip,
+        speedBonusBp: bonus.speedBp, fuelSavingBp: bonus.fuelBp, loadingHours: s.driverHoursPerTrip, handlingMinutes: s.handlingMinutes ?? 0,
       });
       const veh = mine.find((x) => x.modelId === md.id);
       return {
-        modelId: md.id, capacityKg: md.capacityKg, loadsNeeded: loads, minutes: t.minutes, fuel: m(t.fuel * BigInt(loads)), driver: m(t.driver * BigInt(loads)),
-        total: m(t.total * BigInt(loads)), arrivesAt: new Date(now.getTime() + t.minutes * 60_000).toISOString(), vehicleId: veh && q.kg <= md.capacityKg ? veh.id : null,
+        modelId: md.id, capacityKg: md.capacityKg, loadsNeeded: loads, minutes: paceTrip(catalog, t.minutes), fuel: m(t.fuel * BigInt(loads)), driver: m(t.driver * BigInt(loads)),
+        total: m(t.total * BigInt(loads)), arrivesAt: new Date(now.getTime() + paceTrip(catalog, t.minutes) * 60_000).toISOString(), vehicleId: veh && q.kg <= md.capacityKg ? veh.id : null,
       };
     }),
   };

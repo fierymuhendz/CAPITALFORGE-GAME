@@ -5,7 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { applyBp, qualityAdjusted } from "@capitalforge/economy";
+import { applyBp, systemBidForQuality } from "@capitalforge/economy";
 import {
   QUALITY_PRICE_BP, type BuyFromListingReq, type BuyOrderReq, type CancelReq, type ListingDto, type ListingReq, type SellToOrderReq,
 } from "@capitalforge/shared";
@@ -16,6 +16,7 @@ import { marketOrders, sales, trades } from "../db/schema";
 import { fail } from "../errors";
 import type { UnitOfWork } from "../events/bus";
 import { addStock, lockHolding, releaseStock, removeStock, reserveStock, type HoldingKey } from "../inventory/holdings";
+import { writeOutcome } from "../finance/outcomes";
 import { co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
@@ -30,9 +31,8 @@ const MAX_OPEN_ORDERS = 100;
 /** Emrin bu kalitedeki fiyatı: sistem alım emri kalite 2 tabanıdır, kaliteye göre çarpılır */
 export function effectivePrice(o: OrderRow, quality: number, bidCap: bigint | null = null): bigint {
   if (!(o.isSystem && o.side === "buy")) return o.pricePerKg;
-  // risksiz arbitraj yok: üst sınır kalite çarpanından SONRA uygulanır
-  const v = qualityAdjusted(o.pricePerKg, quality, QUALITY_PRICE_BP);
-  return bidCap !== null && v > bidCap ? bidCap : v;
+  // cap kalite 2 tabanına uygulanır, sonra kalite çarpanı (kalite primi silinmez)
+  return systemBidForQuality(o.pricePerKg, quality, bidCap, QUALITY_PRICE_BP);
 }
 
 export function orderDto(o: OrderRow, name: string, myCompanyId: string | null): ListingDto {
@@ -224,11 +224,18 @@ export async function sellToOrder(
   if (unit < BigInt(req.expectedPricePerKg)) fail("PRICE_CHANGED", { pricePerKg: unit.toString() });
   if (req.qtyKg > o.remainingKg) fail("INSUFFICIENT_STOCK", { availableKg: o.remainingKg, requiredKg: req.qtyKg });
   const names = await companyBriefs(tx, [o.companyId]);
-  return settleSpot(tx, uow, {
+  const res = await settleSpot(tx, uow, {
     order: o, qtyKg: req.qtyKg, quality: req.quality, unitPrice: unit,
     buyerId: o.companyId, buyerIsSystem: names.get(o.companyId)?.isSystem ?? o.isSystem, sellerId: seller.id, sellerIsSystem: seller.isSystem,
     fromReserved: false, buyerFunding: o.isSystem ? "cash" : "escrow", now, marketFeeBp: catalog.settings.marketFeeBp,
   });
+  if (!seller.isSystem) {
+    await writeOutcome(tx, {
+      companyId: seller.id, kind: "sale", refType: "trade", refId: res.tradeId, productId: o.productId, cityId: o.cityId,
+      expected: { qtyKg: req.qtyKg, revenue: res.gross, fees: res.fee, freight: 0n, cost: res.cogs, profit: res.gross - res.fee - res.cogs, minutes: 0, at: now }, at: now,
+    });
+  }
+  return res;
 }
 
 /** Açık emri kapatır (iptal): ilanda rezerv serbest, alım emrinde emanet iade. Çağıran satırı kilitlemiştir. */

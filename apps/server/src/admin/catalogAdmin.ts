@@ -78,7 +78,7 @@ const RANGES: Record<string, [number, number]> = {
   "contracts.minPenaltyBp": [0, 10_000], "contracts.maxPenaltyBp": [0, 10_000], "contracts.defaultGraceHours": [0, 168],
   "contracts.lateFeeBp": [0, 5000], "contracts.windowHoursBeforeDue": [1, 168],
   "freight.systemBaseFee": [0, 100_000_000], "freight.systemPerKm": [0, 10_000_000], "freight.systemPickupAfterMinutes": [0, 10_080],
-  "freight.driverHoursPerTrip": [0, 24],
+  "freight.driverHoursPerTrip": [0, 24], "pace.maxMinutes": [0, 10_080], "freight.handlingMinutes": [0, 1440],
   "system.bidBp": [1000, 10_000], "system.askBp": [10_000, 30_000], "system.shareDampBp": [0, 10_000],
   "system.unsoldListingHours": [1, 168], "system.unfilledOrderHours": [1, 168], "system.reputationPremiumBp": [0, 2000],
   "anomaly.thresholdBp": [100, 100_000], "anomaly.minComparables": [1, 100], "anomaly.windowHours": [1, 720],

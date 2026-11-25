@@ -83,5 +83,8 @@
   --r-pill: 999px;
   --tap: 44px;
   --tabbar-h: 64px;
+  --header-h: 52px;
+  --side-std: clamp(400px, 32vw, 560px);
+  --side-data: clamp(560px, 56vw, 1200px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }

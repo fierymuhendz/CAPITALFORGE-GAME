@@ -7,59 +7,63 @@ import { useApp } from "@/lib/app";
 import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { Badge, Button, Card, Countdown, EmptyState, KV, Notice, SkeletonList, TimeProgress } from "@/ui";
+import { ActionBar, Badge, Button, Card, Countdown, EmptyState, KV, Notice, SkeletonList, TimeProgress } from "@/ui";
 import { FacilityDetail } from "../facilities/FacilityDetail";
 import { usePlay } from "./context";
 
-export function SelectionPanel({ onClose, hideTitle }: { onClose: () => void; hideTitle?: boolean }) {
+export function SelectionPanel({ onClose }: { onClose: () => void }) {
   const { selection, map, company, open } = usePlay();
-  const { t } = useT();
+  const i = useT();
+  const { t } = i;
   const cat = useCat();
   if (!selection) return null;
-  const back = <Button variant="ghost" size="sm" onClick={onClose}>← {t("common.back")}</Button>;
   if (selection.type === "plot") {
     const p = map.data?.plots.find((x) => x.id === selection.plotId);
-    return <div className="col">{hideTitle ? null : back}{p ? <PlotInfo plot={p} onDone={onClose} /> : <SkeletonList n={2} />}</div>;
+    return <div className="col">{p ? <PlotInfo plot={p} onDone={onClose} /> : <SkeletonList n={2} />}</div>;
   }
   if (selection.type === "facility") {
     const f = company.data?.facilities.find((x) => x.id === selection.facilityId);
     const p = map.data?.plots.find((x) => x.id === selection.plotId);
-    if (f) return <div className="col">{hideTitle ? null : back}<FacilityDetail f={f} /></div>;
+    if (f) return <div className="col"><FacilityDetail f={f} /></div>;
     if (p?.building) {
       return (
-        <div className="col">{hideTitle ? null : back}
+        <div className="col">
           <h3>{cat.building(p.building.type)}</h3>
           <KV k={t("play.owner")} v={p.owner ? <>{p.owner.companyName} {p.owner.isSystem ? <Badge tone="system">{t("common.system")}</Badge> : null}</> : "—"} />
           <KV k={t("common.level")} v={p.building.level} />
           <KV k={t("common.status")} v={t(`facility.status.${p.building.status}`)} />
           {p.building.activeUntil ? <KV k={t("facility.remaining")} v={<Countdown until={p.building.activeUntil} />} /> : null}
-          <Notice tone="steel">{t("play.notYours")}</Notice>
+          
         </div>
       );
     }
-    return <div className="col">{back}<SkeletonList n={2} /></div>;
+    return <div className="col"><SkeletonList n={2} /></div>;
   }
   if (selection.type === "vehicle") {
     const v = map.data?.vehicles.find((x) => x.id === selection.vehicleId);
-    if (!v) return <div className="col">{back}<EmptyState title={t("play.gone")} /></div>;
+    if (!v) return <div className="col"><EmptyState title={t("play.gone")} action={<Button onClick={onClose}>{t("common.back")}</Button>} /></div>;
     const sh = v.shipment;
     return (
-      <div className="col">{hideTitle ? null : back}
-        <h3>{cat.vehicle(v.modelId)}</h3>
-        <KV k={t("play.owner")} v={v.ownerName} />
+      <div className="col">
+        <div className="col tight"><h3>{cat.vehicle(v.modelId)}</h3><span className="muted small nm" title={v.ownerName}>{v.isMine ? t("play.mine") : v.ownerName}</span></div>
         {sh ? (
           <>
-            <KV k={t("logistics.route")} v={`${cat.city(sh.originCityId)} → ${cat.city(sh.destCityId)}`} />
-            <KV k={t("logistics.eta")} v={<Countdown until={sh.arrivesAt} doneText={t("logistics.arrived")} />} />
-            <TimeProgress from={sh.departedAt} to={sh.arrivesAt} steel />
-            <KV k={t("logistics.cargo")} v={sh.cargo ? sh.cargo.map((c) => `${cat.product(c.productId)} ${t("common.quality")}${c.quality}${c.qtyKg} kg`).join(", ") : `${sh.totalKg} kg`} />
+            <div className="card flat col tight">
+              <div className="row between"><b className="nm" style={{ fontSize: "var(--fs-lg)" }}>{cat.city(sh.originCityId)} → {cat.city(sh.destCityId)}</b><Badge tone="forge">{t("logistics.inTransit")}</Badge></div>
+              <TimeProgress from={sh.departedAt} to={sh.arrivesAt} steel />
+              <div className="row between"><span className="muted small">{t("logistics.eta")}</span><b className="num"><Countdown until={sh.arrivesAt} doneText={t("logistics.arrived")} /></b></div>
+            </div>
+            <h4>{t("logistics.cargo")}</h4>
+            {sh.cargo?.length ? (
+              <div className="col tight">{sh.cargo.map((c, n) => <div key={n} className="row between"><span><b>{cat.product(c.productId)}</b> <span className="muted small">{t("common.quality")} {c.quality}</span></span><b className="num">{i.qty(c.qtyKg)}</b></div>)}</div>
+            ) : sh.totalKg > 0 ? <div className="row between"><span className="muted small">{t("play.totalLoad")}</span><b className="num">{i.qty(sh.totalKg)}</b></div> : <span className="muted small">{t("logistics.emptyLoad")}</span>}
           </>
         ) : <KV k={t("logistics.location")} v={cat.city(v.cityId)} />}
-        {v.isMine ? <Button onClick={() => open("logistics")}>{t("play.openLogistics")}</Button> : null}
+        {v.isMine ? <Button variant="primary" onClick={() => open("logistics")}>{t("play.openLogistics")}</Button> : null}
       </div>
     );
   }
-  return <div className="col">{back}<h3>{cat.city(selection.cityId)}</h3></div>;
+  return <div className="col"><h3>{cat.city(selection.cityId)}</h3></div>;
 }
 
 function PlotInfo({ plot, onDone }: { plot: PlotDto; onDone: () => void }) {
@@ -82,7 +86,7 @@ function PlotInfo({ plot, onDone }: { plot: PlotDto; onDone: () => void }) {
     </>
   );
   if (plot.owner) {
-    return <div className="col">{title}<KV k={t("play.owner")} v={plot.owner.companyName} />{facts}<Notice tone="steel">{t("play.plotTaken")}</Notice></div>;
+    return <div className="col">{title}<KV k={t("play.owner")} v={plot.owner.companyName} />{facts}</div>;
   }
   if (!c) return null;
   const steelHere = (inv.data ?? []).filter((h) => h.productId === "steel" && h.cityId === plot.cityId).reduce((a, h) => a + h.availableKg, 0);
@@ -117,9 +121,9 @@ function PlotInfo({ plot, onDone }: { plot: PlotDto; onDone: () => void }) {
           </Card>
         ))}
       </div>
-      <div className="sticky-cta">
+      <ActionBar>
         <Button variant="primary" size="lg" loading={busy} disabled={!sel} onClick={() => void run(() => api.post(`/plots/${plot.id}/buy`, { buildingType: sel!.b.id }), { ok: "play.bought" }).then((r) => { if (r) onDone(); })}>{t("play.buy")}</Button>
-      </div>
+      </ActionBar>
     </div>
   );
 }

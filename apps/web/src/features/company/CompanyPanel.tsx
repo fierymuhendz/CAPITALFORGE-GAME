@@ -1,7 +1,7 @@
 "use client";
 import { useCat } from "@/lib/catalog";
 import { useT } from "@/lib/i18n";
-import { Async, Badge, Button, Card, KV, ProgressBar, Stat, Trend } from "@/ui";
+import { Async, Badge, Button, Card, Disclosure, KV, ProgressBar, Stat, Trend } from "@/ui";
 import { usePlay, type PanelId } from "../play/context";
 
 const STEP_TARGET: Record<string, PanelId> = {
@@ -30,14 +30,14 @@ export function CompanyPanel() {
         return (
           <div className="col">
             <Card><div className="col">
-              <div className="row between wrap"><h3>{d.name}</h3><Badge tone="forge">{t("common.level")} {d.level}</Badge></div>
+              <div className="row between"><h3 className="nm" title={d.name}>{d.name}</h3><Badge tone="forge">{t("common.level")} {d.level}</Badge></div>
               <span className="muted small">{t(`sector.${d.sector}`)} · {cat.city(d.homeCityId)}</span>
               <div className="col tight">
                 <div className="row between small"><span>{t("company.xp")}</span><span className="num">{d.nextLevelXp ? `${i.num(d.xp)} / ${i.num(d.nextLevelXp)}` : t("company.maxLevel")}</span></div>
                 <ProgressBar value={lvlPct} label={t("company.xp")} />
               </div>
               <div className="grid2">
-                <Stat label={t("finance.cash")} value={i.money(d.cash)} />
+                <Stat label={t("finance.cash")} value={<span style={{ whiteSpace: "nowrap" }}>{i.money(d.cash)}</span>} />
                 <Stat label={t("company.reputation")} value={i.pct(d.reputationBp)} sub={total ? t("company.onTime", { a: d.stats.onTimeDeliveries, b: total }) : t("company.noDeliveries")} />
                 <Stat label={t("company.revenue7d")} value={i.money(d.stats.revenue7d)} />
                 <Stat label={t("company.profit7d")} value={<Trend value={d.stats.profit7d} text={i.signed(d.stats.profit7d)} />} />
@@ -45,7 +45,7 @@ export function CompanyPanel() {
               {d.arrears !== "0" ? <div className="notice bad" role="alert">⚠ {t("finance.arrears")}: <b>{i.money(d.arrears)}</b> <Button size="sm" onClick={() => open("finance")}>{t("finance.payArrears")}</Button></div> : null}
             </div></Card>
 
-            <h3 style={{ fontSize: "var(--fs-md)" }}>{t("company.nextSteps")}</h3>
+            <h4>{t("company.nextSteps")}</h4>
             {d.nextSteps.length ? d.nextSteps.map((s) => {
               const target = STEP_TARGET[s.key] ?? "company";
               const key = `nextSteps.${s.key}`;
@@ -58,10 +58,10 @@ export function CompanyPanel() {
               );
             }) : <p className="muted small">{t("company.allDone")}</p>}
 
-            <h3 style={{ fontSize: "var(--fs-md)" }}>{t("panels.facilities")} ({d.facilities.length})</h3>
-            <div className="col tight">{d.facilities.map((f) => <KV key={f.id} k={`${cat.building(f.type)} · ${cat.city(f.cityId)}`} v={t(`facility.status.${f.status}`)} />)}</div>
-            <h3 style={{ fontSize: "var(--fs-md)" }}>{t("logistics.fleet")} ({d.vehicles.length})</h3>
-            <div className="col tight">{d.vehicles.map((v) => <KV key={v.id} k={cat.vehicle(v.modelId)} v={v.status === "in_transit" ? `→ ${cat.city(v.destCityId)}` : cat.city(v.cityId)} />)}</div>
+            <Disclosure summary={`${t("panels.facilities")} (${d.facilities.length}) · ${t("logistics.fleet")} (${d.vehicles.length})`}>
+              {d.facilities.map((f) => <KV key={f.id} k={<span className="nm">{cat.building(f.type)} · {cat.city(f.cityId)}</span>} v={t(`facility.status.${f.status}`)} />)}
+              {d.vehicles.map((v) => <KV key={v.id} k={cat.vehicle(v.modelId)} v={v.status === "in_transit" ? `→ ${cat.city(v.destCityId)}` : cat.city(v.cityId)} />)}
+            </Disclosure>
           </div>
         );
       }}

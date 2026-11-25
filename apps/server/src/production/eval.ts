@@ -3,8 +3,9 @@
  * Formüller packages/economy (planProduction). Bu dosya yalnızca veriyi toplar ve engelleri sıralar.
  */
 import { and, eq, sql } from "drizzle-orm";
-import { planProduction, type ProductionPlan } from "@capitalforge/economy";
+import { planProduction, requiredInputs, type ProductionPlan } from "@capitalforge/economy";
 import type { Catalog } from "../catalog/catalog";
+import { paceDuration } from "../catalog/pace";
 import type { DbOrTx, Tx } from "../db/client";
 import { facilities, plots, productionJobs, research } from "../db/schema";
 import { lockAccounts } from "../finance/locks";
@@ -85,18 +86,23 @@ export async function evaluateProduction(
 
   // Girdi lotları
   const inputs: InputEval[] = [];
+  const savingBp = Math.min(3000, ld.inputSavingBp ?? 0);
+  const needs = new Map(requiredInputs(recipe, batches, savingBp).map((r) => [r.productId, r.kg]));
   for (const inp of recipe.inputs) {
-    const need = inp.kg * batches;
+    const need = needs.get(inp.productId) ?? inp.kg * batches;
     const sel = await selectLots(db, companyId, facility.cityId, inp.productId, need, lock);
     inputs.push({ ...sel, productId: inp.productId, requiredKg: need });
     if (sel.missingKg > 0) blockers.push({ code: "INSUFFICIENT_STOCK", productId: inp.productId, missingKg: sel.missingKg });
   }
-  const plan = planProduction(recipe, {
+  const plan0 = planProduction(recipe, {
     batches, plotYieldBp, cityYieldBp, researchYieldBp, researchEfficiencyBp,
-    facilityQualityLevel: facility.qualityLevel, researchQualityLevels, laborAvailabilityBp: city.labor.availability,
+    facilityQualityLevel: facility.qualityLevel + (ld.qualityBonus ?? 0), researchQualityLevels,
+    levelYieldBp: ld.yieldBp ?? 0, levelEfficiencyBp: ld.efficiencyBp ?? 0, levelInputSavingBp: savingBp, laborAvailabilityBp: city.labor.availability,
     inputLots: inputs.flatMap((i) => i.lots.map((l) => ({ productId: i.productId, kg: l.kg, quality: l.quality }))),
     prices: { energyPerKwh: BigInt(city.energyPrice), waterPerM3: BigInt(city.waterPrice), wagePerHour: BigInt(city.wage) },
   });
+  // tempo kuralı: süre tavanı (settings.pace); çalışan işler kayıtlı endsAt ile biter
+  const plan = { ...plan0, minutes: paceDuration(catalog, plan0.minutes) };
   const inputsCost = inputs.reduce((a, i) => a + i.estCost, 0n);
   const operatingCost = plan.energyCost + plan.waterCost + plan.laborCost;
 

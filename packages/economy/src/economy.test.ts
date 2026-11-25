@@ -64,7 +64,7 @@ describe("üretim", () => {
     const r = RECIPES.find((x) => x.id === "grow_fodder")!;
     const p = planProduction(r, ctx);
     expect(p.outputKg).toBe(2400);
-    expect(p.minutes).toBe(60);
+    expect(p.minutes).toBe(r.minutes);
     expect(p.energyCost).toBe(40n * 400n);
     expect(p.laborCost).toBe(6n * 15000n);
   });

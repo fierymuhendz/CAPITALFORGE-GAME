@@ -1,13 +1,13 @@
 "use client";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import type { ContractDetailDto, ContractDto, InstallmentDto } from "@capitalforge/shared";
+import type { ContractCompareDto, ContractDetailDto, ContractDto, InstallmentDto } from "@capitalforge/shared";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/action";
 import { useCat } from "@/lib/catalog";
 import { useData, useList } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { Async, Badge, Button, Card, Countdown, EmptyState, KV, Notice, QtyInput, SelectField, Sheet, SkeletonList, SystemBadge, Tabs } from "@/ui";
+import { Async, Badge, Button, Card, Countdown, Disclosure, EmptyState, KV, Notice, QtyInput, SelectField, Sheet, SkeletonList, SystemBadge, Tabs } from "@/ui";
 import { NewOffer } from "./NewOffer";
 
 export function ContractsPanel() {
@@ -55,69 +55,97 @@ function List({ scope, onOpen, goNew }: { scope: "board" | "mine"; onOpen: (id: 
 
 function Detail({ id, onClose }: { id: string | null; onClose: () => void }) {
   const { t } = useT();
+  const cat = useCat();
   const res = useData<ContractDetailDto>(id ? `/contracts/${id}` : null, undefined, ["contracts", "shipments"]);
+  const d = res.data;
   return (
-    <Sheet open={!!id} onClose={onClose} closeLabel={t("common.close")} wide title={t("contracts.detail")}>
-      {id ? <Async res={res} skeleton={<SkeletonList n={3} />}>{(d) => <DetailBody d={d} onClose={onClose} />}</Async> : null}
+    <Sheet open={!!id} onClose={onClose} closeLabel={t("common.close")} wide title={d ? `${cat.product(d.contract.productId)} ★${d.contract.minQuality}+` : t("contracts.detail")}
+      footer={d ? <Actions c={d.contract} onClose={onClose} /> : undefined}>
+      {id ? <Async res={res} skeleton={<SkeletonList n={3} />}>{(x) => <DetailBody d={x} />}</Async> : null}
     </Sheet>
   );
 }
 
-function pctBp(i: ReturnType<typeof useT>, bp: number) { return i.pct(bp); }
+function roleOf(c: ContractDto): "seller" | "buyer" | null {
+  return c.myRole ?? (c.status === "proposed" ? (c.sellerCompanyId ? "buyer" : "seller") : null);
+}
 
-function DetailBody({ d, onClose }: { d: ContractDetailDto; onClose: () => void }) {
+function Actions({ c, onClose }: { c: ContractDto; onClose: () => void }) {
+  const { t } = useT();
+  const { run, busy } = useAction();
+  const act = (path: string, ok: string) => void run(() => api.post(`/contracts/${c.id}/${path}`), { ok }).then((r) => { if (r) onClose(); });
+  const proposedByMe = c.myRole === (c.sellerCompanyId === c.proposerCompanyId ? "seller" : "buyer");
+  if (c.status === "proposed" && !proposedByMe) return <><Button variant="primary" loading={busy} onClick={() => act("accept", "contracts.accepted")}>{t("contracts.accept")}</Button>{!c.isPublic ? <Button loading={busy} onClick={() => act("decline", "contracts.declined")}>{t("contracts.decline")}</Button> : null}</>;
+  if (c.status === "proposed") return <Button loading={busy} onClick={() => act("withdraw", "contracts.withdrawn")}>{t("contracts.withdraw")}</Button>;
+  if (c.status === "active" && c.myRole) return <Button variant="danger" loading={busy} onClick={() => { if (window.confirm(t("contracts.cancelConfirm"))) act("cancel", "contracts.cancelled"); }}>{t("contracts.cancel")}</Button>;
+  return <Button onClick={onClose}>{t("common.close")}</Button>;
+}
+
+function CompareCard({ c, role }: { c: ContractDto; role: "seller" | "buyer" }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
-  const { run, busy } = useAction();
+  const res = useData<ContractCompareDto>(`/contracts/${c.id}/compare`, undefined, ["contracts", "market", "inventory"]);
+  const k = res.data;
+  if (!k) return res.error ? null : <SkeletonList n={1} h={96} />;
+  const sold = k.myRole === "seller";
+  return (
+    <Card flat><div className="col tight">
+      <h4>{t("contracts.compare.title")}</h4>
+      <div className="two">
+        <div className="col tight"><span className="muted xs">{t("contracts.compare.contract")}</span><b className="num">{i.money(k.total.net)}</b><span className="muted xs num">{i.price(k.perInstallment.perKg)}</span></div>
+        <div className="col tight"><span className="muted xs">{sold ? t("contracts.compare.spot") : t("contracts.compare.spotBuy")}</span>{k.spotNow ? <><b className="num">{i.money(k.spotNow.net)}</b><span className="muted xs num">{i.price(k.spotNow.perKg)} · {cat.city(k.spotNow.cityId)}</span></> : <span className="muted small">{t(sold ? "contracts.compare.noSpot" : "contracts.compare.noSeller")}</span>}</div>
+      </div>
+      <span className="muted xs">{t("contracts.compare.netNote", { q: i.qty(k.total.qtyKg) })}</span>
+      <KV k={t("contracts.compare.goodsFreight")} v={`${i.money(k.total.goods)} − ${i.money(k.total.freight)} − ${i.money(k.total.fees)}`} />
+      <KV k={role === "seller" ? t("contracts.sellerDeposit") : t("contracts.buyerEscrow")} v={i.money(role === "seller" ? k.commitment.sellerDeposit : k.commitment.buyerEscrow)} />
+      <KV k={t("contracts.compare.penalty")} v={<span className="warn">{i.money(k.commitment.penaltyPerMissed)}</span>} />
+      <KV k={t("contracts.compare.schedule")} v={t("contracts.compare.scheduleV", { n: k.schedule.installments, h: k.schedule.intervalHours })} />
+      <KV k={t("contracts.compare.window")} v={`${i.date(k.schedule.firstDueAt)} → ${i.date(k.schedule.lastDueAt)}`} />
+      {sold ? <KV k={t("contracts.compare.stock")} v={<span className={k.myStockKg < k.total.qtyKg ? "warn" : "good"}>{i.qty(k.myStockKg)}</span>} /> : null}
+      {k.avgCostPerKg ? <KV k={t("contracts.compare.myCost")} v={i.price(k.avgCostPerKg)} /> : null}
+    </div></Card>
+  );
+}
+
+function DetailBody({ d }: { d: ContractDetailDto }) {
+  const i = useT();
+  const { t } = i;
+  const cat = useCat();
   const c = d.contract;
-  const act = (path: string, ok: string, close = true) => void run(() => api.post(`/contracts/${c.id}/${path}`), { ok }).then((r) => { if (r && close) onClose(); });
-  const iWouldBe: "seller" | "buyer" | null = c.myRole ?? (c.status === "proposed" ? (c.sellerCompanyId ? "buyer" : "seller") : null);
-  const proposedByMe = c.myRole === (c.sellerCompanyId === c.proposerCompanyId ? "seller" : "buyer");
+  const iWouldBe = roleOf(c);
   const payerIsMe = iWouldBe === c.freightPayer;
+  const proposedByMe = c.myRole === (c.sellerCompanyId === c.proposerCompanyId ? "seller" : "buyer");
   return (
     <div className="col">
-      <div className="row between wrap"><h3>{cat.product(c.productId)} ★{c.minQuality}+</h3><Badge tone={statusTone(c.status)}>{t(`contracts.status.${c.status}`)}</Badge></div>
-
+      <div className="row between wrap"><Badge tone={statusTone(c.status)}>{t(`contracts.status.${c.status}`)}</Badge>{c.status === "proposed" ? <span className="muted small">{t("contracts.expires")}: <Countdown until={c.expiresAt} doneText={t("logistics.expired")} /></span> : null}</div>
       <Card flat><div className="col tight">
-        <h4>{t("contracts.terms")}</h4>
-        <KV k={t("contracts.seller")} v={<>{c.sellerName ?? t("contracts.openSlot")} {c.sellerReputationBp !== null ? <span className="muted xs">({t("company.reputation")} {i.pct(c.sellerReputationBp)})</span> : null}</>} />
-        <KV k={t("contracts.buyer")} v={<>{c.buyerName ?? t("contracts.openSlot")} {c.buyerReputationBp !== null ? <span className="muted xs">({t("company.reputation")} {i.pct(c.buyerReputationBp)})</span> : null}</>} />
-        <KV k={t("inventory.product")} v={cat.product(c.productId)} />
-        <KV k={t("market.minQuality")} v={`★${c.minQuality}`} />
-        <KV k={t("contracts.qtyPer")} v={i.qty(c.qtyPerInstallmentKg)} />
-        <KV k={t("contracts.installments")} v={c.installments} />
+        <KV k={t("contracts.seller")} v={<span className="nm" style={{ textAlign: "right" }}>{c.sellerName ?? t("contracts.openSlot")}</span>} />
+        <KV k={t("contracts.buyer")} v={<span className="nm" style={{ textAlign: "right" }}>{c.buyerName ?? t("contracts.openSlot")}</span>} />
         <KV k={t("market.price")} v={<b>{i.price(c.pricePerKg)}</b>} />
+        <KV k={t("contracts.qtyPer")} v={`${i.qty(c.qtyPerInstallmentKg)} × ${c.installments}`} />
         <KV k={t("contracts.total")} v={<b>{i.money(c.totalValue)}</b>} />
         <KV k={t("contracts.deliveryCity")} v={cat.city(c.deliveryCityId)} />
-        <KV k={t("contracts.freightPayer")} v={<>{t(`contracts.role.${c.freightPayer}`)}{iWouldBe ? <b className={payerIsMe ? "warn" : "good"}> ({payerIsMe ? t("contracts.you") : t("contracts.other")})</b> : null}</>} />
-        <KV k={t("contracts.freightWho.title")} v={t(`contracts.freightWho.${c.freightPayer}`)} />
-        <KV k={t("contracts.firstDue")} v={i.date(c.firstDueAt)} />
-        <KV k={t("contracts.interval")} v={t("contracts.everyHours", { n: c.intervalHours })} />
+        <KV k={t("contracts.firstDue")} v={`${i.date(c.firstDueAt)} · ${t("contracts.every", { n: c.intervalHours })}`} />
+        <KV k={t("contracts.freightPayer")} v={<span>{t(`contracts.role.${c.freightPayer}`)}{iWouldBe ? <b className={payerIsMe ? "warn" : "good"}> ({payerIsMe ? t("contracts.you") : t("contracts.other")})</b> : null}</span>} />
+      </div></Card>
+      {c.status === "proposed" && iWouldBe && !proposedByMe ? <CompareCard c={c} role={iWouldBe} /> : null}
+      <Disclosure summary={t("contracts.moreTerms")}>
+        {c.sellerReputationBp !== null ? <KV k={`${t("contracts.seller")} · ${t("company.reputation")}`} v={i.pct(c.sellerReputationBp)} /> : null}
+        {c.buyerReputationBp !== null ? <KV k={`${t("contracts.buyer")} · ${t("company.reputation")}`} v={i.pct(c.buyerReputationBp)} /> : null}
         <KV k={t("contracts.grace")} v={t("contracts.everyHours", { n: c.graceHours })} />
-        <KV k={t("contracts.missingPenalty")} v={`${pctBp(i, c.penaltyBp)} — ${t("contracts.missingPenaltyHint")}`} />
-        <KV k={t("contracts.latePenalty")} v={`${pctBp(i, c.lateFeeBp)} — ${t("contracts.latePenaltyHint")}`} />
-        <KV k={t("contracts.cancelTerms")} v={t("contracts.cancelHint")} />
+        <KV k={t("contracts.missingPenalty")} v={i.pct(c.penaltyBp)} />
+        <KV k={t("contracts.latePenalty")} v={i.pct(c.lateFeeBp)} />
         <KV k={t("contracts.buyerEscrow")} v={i.money(c.buyerEscrow)} />
         <KV k={t("contracts.sellerDeposit")} v={i.money(c.sellerDeposit)} />
+        <KV k={t("contracts.cancelTerms")} v={t("contracts.cancelHint")} />
+        <KV k={t("contracts.freightWho.title")} v={t(`contracts.freightWho.${c.freightPayer}`)} />
         {c.note ? <KV k={t("contracts.note")} v={c.note} /> : null}
-        {c.status === "proposed" ? <KV k={t("contracts.expires")} v={<Countdown until={c.expiresAt} doneText={t("logistics.expired")} />} /> : null}
-      </div></Card>
-
-      {c.status === "proposed" && iWouldBe ? (
-        <Notice tone="warn"><span>{iWouldBe === "buyer" ? t("contracts.acceptBuyer", { amount: i.money(c.buyerEscrow) }) : t("contracts.acceptSeller", { amount: i.money(c.sellerDeposit) })}</span></Notice>
-      ) : null}
-      <div className="row wrap">
-        {c.status === "proposed" && !proposedByMe ? <Button variant="primary" loading={busy} onClick={() => act("accept", "contracts.accepted")}>{t("contracts.accept")}</Button> : null}
-        {c.status === "proposed" && !proposedByMe && !c.isPublic ? <Button loading={busy} onClick={() => act("decline", "contracts.declined")}>{t("contracts.decline")}</Button> : null}
-        {c.status === "proposed" && proposedByMe ? <Button loading={busy} onClick={() => act("withdraw", "contracts.withdrawn")}>{t("contracts.withdraw")}</Button> : null}
-        {c.status === "active" && c.myRole ? <Button variant="danger" loading={busy} onClick={() => { if (window.confirm(t("contracts.cancelConfirm"))) act("cancel", "contracts.cancelled"); }}>{t("contracts.cancel")}</Button> : null}
-      </div>
+      </Disclosure>
 
       {c.status !== "proposed" ? (
         <>
-          <Card flat><div className="col tight">
-            <h4>{t("contracts.whoOwes")}</h4>
+          <Disclosure summary={t("contracts.whoOwes")}>
             <p className="small">{c.sellerName}: {t("contracts.owesKg", { q: i.qty(d.balances.seller.owedKg) })} · {t("contracts.deliveredKg", { q: i.qty(d.balances.seller.delivered) })}</p>
             <KV k={t("contracts.sellerReceived")} v={i.money(d.balances.seller.received)} />
             <KV k={t("contracts.depositHeld")} v={i.money(d.balances.seller.depositHeld)} />
@@ -128,7 +156,7 @@ function DetailBody({ d, onClose }: { d: ContractDetailDto; onClose: () => void 
             <KV k={t("contracts.buyerReceived")} v={i.qty(d.balances.buyer.received)} />
             <KV k={t("contracts.refunds")} v={i.money(d.balances.buyer.refunds)} />
             <KV k={t("contracts.penaltiesReceived")} v={i.money(d.balances.buyer.penaltiesReceived)} />
-          </div></Card>
+          </Disclosure>
           <h4>{t("contracts.schedule")}</h4>
           {d.schedule.map((s) => <InstallmentCard key={s.id} s={s} c={c} />)}
         </>
@@ -161,12 +189,11 @@ function InstallmentCard({ s, c }: { s: InstallmentDto; c: ContractDto }) {
       {c.myRole === "seller" && (s.status === "open" || s.status === "partial") ? (
         <>
           <Button size="sm" variant="primary" onClick={() => setOpen(true)}>{t("contracts.deliver")}</Button>
-          <Sheet open={open} onClose={() => setOpen(false)} closeLabel={t("common.close")} title={`${t("contracts.deliver")} #${s.seq}`}>
+          <Sheet open={open} onClose={() => setOpen(false)} closeLabel={t("common.close")} title={`${t("contracts.deliver")} #${s.seq}`}
+            footer={<Button variant="primary" loading={busy} disabled={!qty} onClick={() => void run(() => api.post(`/contracts/installments/${s.id}/deliver`, { qtyKg: qty, quality: Number(q) }), { ok: "contracts.delivered" }).then((r) => { if (r) setOpen(false); })}>{t("contracts.deliver")}</Button>}>
             <div className="col">
-              <Notice tone="steel">{t("contracts.deliverHint")}</Notice>
               <QtyInput label={t("market.qty")} value={qty} onChange={setQty} max={s.outstandingKg} />
               <SelectField label={t("common.quality")} value={q} onChange={setQ} options={[1, 2, 3, 4, 5].filter((n) => n >= c.minQuality).map((n) => ({ id: String(n), label: `★${n}` }))} />
-              <Button variant="primary" loading={busy} disabled={!qty} onClick={() => void run(() => api.post(`/contracts/installments/${s.id}/deliver`, { qtyKg: qty, quality: Number(q) }), { ok: "contracts.delivered" }).then((r) => { if (r) setOpen(false); })}>{t("contracts.deliver")}</Button>
             </div>
           </Sheet>
         </>

@@ -145,7 +145,10 @@ describe("krediler", () => {
     const fin = await f.p.ok("GET", "/finance");
     const expected = loanInstallment(3_000_000n, 3, 0, 3_000_000n, 40);
     const fee = (expected.total * BigInt(h.deps.catalog.settings.loan.lateFeeBp)) / 10000n;
-    expect(BigInt(fin.balances.arrears)).toBe(expected.total + fee);
+    // pencere gün sınırını geçerse günlük bakım da nakitsizken arrears'a yazılır (saat dilimine bağlı)
+    const upkeep = await balance(h, f.companyId, "exp_upkeep");
+    const owed = expected.total + fee + upkeep;
+    expect(BigInt(fin.balances.arrears)).toBe(owed);
     expect(BigInt(fin.balances.exp_penalties)).toBe(fee);
     expect(fin.loans[0].paidInstallments).toBe(1);
     expect(fin.loans[0].outstanding).toBe((3_000_000n - expected.principalPart).toString());
@@ -162,12 +165,12 @@ describe("krediler", () => {
     const paid = await withTx(h.deps, (tx, uow) => settleArrears(tx, uow, f.companyId, h.deps.clock.now()));
     expect(paid).toBe(100_000n);
     expect(await balance(h, f.companyId, "cash")).toBe(0n);
-    expect(await balance(h, f.companyId, "arrears")).toBe(-(expected.total + fee - 100_000n));
+    expect(await balance(h, f.companyId, "arrears")).toBe(-(owed - 100_000n));
     // kalan: elle ödeme yetersiz nakitle reddedilir, sonra tamamı kapanır
     expect((await f.p.post("/finance/arrears/pay", { idempotencyKey: h.key() })).body.error.code).toBe("INSUFFICIENT_FUNDS");
     await grantCash(h, f.companyId, 20_000_000n);
     const r = await f.p.ok("POST", "/finance/arrears/pay", { idempotencyKey: h.key() });
-    expect(r.paid).toBe((expected.total + fee - 100_000n).toString());
+    expect(r.paid).toBe((owed - 100_000n).toString());
     expect(await balance(h, f.companyId, "arrears")).toBe(0n);
     const ok = await f.p.post("/production/start", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1, repeat: false, idempotencyKey: h.key() });
     expect(ok.status).toBe(200);

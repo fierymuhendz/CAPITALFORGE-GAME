@@ -7,3 +7,4 @@ export * from "./market";
 export * from "./contracts";
 export * from "./logistics";
 export * from "./admin";
+export * from "./outcomes";

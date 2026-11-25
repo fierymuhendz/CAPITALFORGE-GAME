@@ -22,6 +22,15 @@ const P: Record<string, ReactElement> = {
   back: <path d="M15 5l-7 7 7 7" />,
   shield: <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" />,
   sun: <path d="M12 16a4 4 0 100-8 4 4 0 000 8zM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5" />,
+  expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+  shrink: <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
+  bolt: <path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z" />,
+  clock: <path d="M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2" />,
+  split: <path d="M12 4v6M12 10l-6 6v4M12 10l6 6v4" />,
+  alert: <path d="M12 4l9 16H3L12 4zM12 10v4M12 17h.01" />,
+  star: <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3z" />,
+  ship: <path d="M3 17l9 4 9-4M5 17V9l7-3 7 3v8M12 6v15" />,
+  coins: <path d="M12 7c4.4 0 8-1.1 8-2.5S16.4 2 12 2 4 3.1 4 4.5S7.6 7 12 7zM4 4.5v5C4 10.9 7.6 12 12 12s8-1.1 8-2.5v-5M4 9.5v5C4 15.9 7.6 17 12 17s8-1.1 8-2.5v-5M4 14.5v5C4 20.9 7.6 22 12 22s8-1.1 8-2.5v-5" />,
   moon: <path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z" />,
 };
 

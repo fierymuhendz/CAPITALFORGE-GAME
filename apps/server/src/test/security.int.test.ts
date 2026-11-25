@@ -356,7 +356,7 @@ describe("6) navlun ilanı ücreti", () => {
     const shipper = await h.player(); const shipperId = await found(h, shipper, "livestock", "akyayla");
     const carrier = await h.player(); const carrierId = await found(h, carrier, "freight", "akyayla");
     await grantStock(h, shipperId, "akyayla", "fodder", 3, 100, 10n);
-    const q = await shipper.ok("GET", "/freight/quote?originCityId=akyayla&destCityId=kavsak&kg=100");
+    const q = await shipper.ok("GET", "/freight/quote?originCityId=akyayla&destCityId=kavsak&kg=50");
     const cap = BigInt(q.systemQuote) * 3n;
     const job = (pay: bigint) => withKey(h, {
       originCityId: "akyayla", destCityId: "kavsak", cargo: [{ productId: "fodder", quality: 3, qtyKg: 50 }], payAmount: Number(pay), deadlineHours: 24, allowSystemCarrier: false,
@@ -547,10 +547,11 @@ describe("9a) küçük düzeltmeler", () => {
     expect(kept[0]!.n).toBe(1);
   });
 
-  it("sistem alış üst sınırı kalite çarpanından sonra uygulanır", () => {
+  it("sistem alış üst sınırı kalite 2 tabanına uygulanır, sonra kalite çarpanı gelir", () => {
     const o = { isSystem: true, side: "buy", pricePerKg: 1000n } as unknown as OrderRow;
     expect(effectivePrice(o, 5, null)).toBeGreaterThan(1000n);
-    expect(effectivePrice(o, 5, 1000n)).toBe(1000n);
+    expect(effectivePrice(o, 5, 1000n)).toBe(1250n);
+    expect(effectivePrice(o, 5, 800n)).toBe(1000n);
     expect(effectivePrice(o, 2, 1000n)).toBe(1000n);
     expect(effectivePrice({ ...o, isSystem: false } as OrderRow, 5, 1n)).toBe(1000n);
   });

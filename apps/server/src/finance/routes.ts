@@ -7,6 +7,7 @@ import { route } from "../http/route";
 import { m } from "../lib/serialize";
 import { payArrearsManually } from "./arrears";
 import { repayLoan, takeLoan } from "./loans";
+import { outcomesFor } from "./outcomes";
 import { financeDto, ledgerLines, saleTrace, salesList } from "./report";
 
 const isUuid = (v: string) => uuid.safeParse(v).success;
@@ -19,6 +20,10 @@ export function registerFinanceRoutes(app: FastifyInstance, deps: Deps): void {
   route(app, deps, {
     method: "GET", url: "/finance/ledger", auth: "company", body: BeforeQuery,
     handler: async ({ company, body }) => ledgerLines(deps.db, company!.id, body.before ? new Date(body.before) : undefined),
+  });
+  route(app, deps, {
+    method: "GET", url: "/finance/outcomes", auth: "company", body: BeforeQuery,
+    handler: async ({ company, body }) => outcomesFor(deps.db, company!.id, body.before ? new Date(body.before) : undefined),
   });
   route(app, deps, {
     method: "GET", url: "/finance/sales", auth: "company", body: BeforeQuery,

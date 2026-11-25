@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, gt, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
-  applyBp, qualityAdjusted, reputationBp, systemAsk, systemBid, systemCarrierQuote, systemShareFactorBp,
+  applyBp, reputationBp, systemAsk, systemBid, systemBidForQuality, systemCarrierQuote, systemCarrierQuoteWithDeadline, systemContractPrice, systemFreightJobSpec, systemShareFactorBp,
 } from "@capitalforge/economy";
 import { QUALITY_PRICE_BP, SYSTEM_CARRIER, SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, SYSTEM_PROFILES, roadDistanceKm, type SystemProfile } from "@capitalforge/shared";
 import type { Tx } from "../db/client";
@@ -21,6 +21,7 @@ import { acceptFreightJob, createFreightJob } from "../logistics/jobs";
 import { startShipment } from "../logistics/shipping";
 import { dayKey, dayStart, HOUR, linkMovements, MIN } from "../market/common";
 import { closeOrder, settleSpot } from "../market/spot";
+import { pickupMinutes } from "../catalog/pace";
 import { bidCapFromRefs, loadRefs } from "./pricing";
 import { dailyOf, spentToday } from "./daily";
 
@@ -166,8 +167,7 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
       const d = await dailyOf(tx, comp.id, p, now);
       const bid = systemBid(refOf(p), sys.bidBp, d.boughtKg, B, bidCapFromRefs(refs, sys.askBp));
       const bidCap = bidCapFromRefs(refs, sys.askBp);
-      let maxUnit = qualityAdjusted(bid, 5, QUALITY_PRICE_BP);
-      if (bidCap !== null && maxUnit > bidCap) maxUnit = bidCap;
+      const maxUnit = systemBidForQuality(bid, 5, bidCap, QUALITY_PRICE_BP);
       const share = weightSum > 0n ? (BigInt(prof.dailyBudget) * BigInt(B) * refOf(p)) / weightSum : 0n;
       const budget = applyBp(share, factor);
       const budgetLeft = budget > d.spent ? budget - d.spent : 0n;
@@ -214,8 +214,7 @@ async function adoptOrphans(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
           const d = await dailyOf(tx, comp.id, o.productId, now);
           const factor = systemShareFactorBp(await playerShareBp(tx, o.productId, o.cityId, B, now), sys.shareDampBp);
           const bidCap = bidCapFromRefs(refs, sys.askBp);
-          let unitBid = qualityAdjusted(systemBid(ref, sys.bidBp, d.boughtKg, B, bidCap), o.quality, QUALITY_PRICE_BP);
-          if (bidCap !== null && unitBid > bidCap) unitBid = bidCap;
+          const unitBid = systemBidForQuality(systemBid(ref, sys.bidBp, d.boughtKg, B, bidCap), o.quality, bidCap, QUALITY_PRICE_BP);
           if (o.pricePerKg > unitBid) continue;
           const spent = await spentToday(tx, comp.id, now);
           const budgetLeft = BigInt(prof.dailyBudget) - spent;
@@ -302,7 +301,7 @@ async function freightCycle(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
 
   // Sistem taşıma işleri (şehir başına günlük sayı, gün içine yayılır)
   const hoursToday = (now.getTime() - dayStart(now).getTime()) / HOUR;
-  const allowed = Math.min(SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, 1 + Math.floor(hoursToday / 6));
+  const allowed = Math.min(SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, 1 + Math.floor((hoursToday * SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY) / 24));
   for (const c of cities) {
     const shipper = sysCos.get(`wholesale_${c}`);
     const prof = SYSTEM_PROFILES.find((p) => p.companyKey === `wholesale_${c}`);
@@ -315,21 +314,21 @@ async function freightCycle(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
       if (k >= allowed || (open[0]?.n ?? 0) >= SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY) return 0;
       const sells = Object.keys(prof.sells).sort();
       const productId = sells[k % sells.length]!;
-      const others = cities.filter((x) => x !== c);
-      const dest = others[(k + Math.floor(now.getTime() / 86_400_000)) % others.length]!;
-      const kg = 4000;
+      const spec = systemFreightJobSpec(c, k, Math.floor(now.getTime() / 86_400_000), cities);
+      const dest = spec.destCityId;
+      const kg = spec.kg;
       const km = roadDistanceKm(c, dest);
-      const pay = systemCarrierQuote(km, kg, cat.settings.freight.systemBaseFee, cat.settings.freight.systemPerKm, truck.capacityKg);
+      const pay = systemCarrierQuoteWithDeadline(km, kg, cat.settings.freight.systemBaseFee, cat.settings.freight.systemPerKm, spec.deadlineHours, truck.capacityKg);
       const refs = await loadRefs(tx, productId);
       await topUp(tx, shipper.id, pay + BigInt(prof.dailyBudget), now);
       if ((await balanceOf(tx, co(shipper.id, "cash"))) < pay) return 0;
       await produceStock(tx, shipper.id, c, productId, 2, kg, refs.get(c) ?? BigInt(cat.product(productId).basePricePerKg), now);
       await createFreightJob(tx, uow, cat, shipper, {
-        originCityId: c, destCityId: dest, cargo: [{ productId, quality: 2, qtyKg: kg }], payAmount: Number(pay), deadlineHours: 24, allowSystemCarrier: false,
+        originCityId: c, destCityId: dest, cargo: [{ productId, quality: 2, qtyKg: kg }], payAmount: Number(pay), deadlineHours: spec.deadlineHours, allowSystemCarrier: false,
         idempotencyKey: `sysjob${randomUUID().replaceAll("-", "")}`,
       }, now, { isSystem: true });
       return 1;
-    });
+    }).catch((e: unknown) => { if (e instanceof AppError) return 0; throw e; });
     if (created) { uow.flush(deps.events); n++; }
   }
 
@@ -337,7 +336,7 @@ async function freightCycle(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
   const open = await deps.db
     .select()
     .from(freightJobs)
-    .where(and(eq(freightJobs.status, "open"), eq(freightJobs.isSystem, false), eq(freightJobs.allowSystemCarrier, true), lte(freightJobs.createdAt, new Date(now.getTime() - cat.settings.freight.systemPickupAfterMinutes * MIN))))
+    .where(and(eq(freightJobs.status, "open"), eq(freightJobs.isSystem, false), eq(freightJobs.allowSystemCarrier, true), lte(freightJobs.createdAt, new Date(now.getTime() - pickupMinutes(cat) * MIN))))
     .limit(30);
   for (const j of open) {
     const quote = systemCarrierQuote(j.distanceKm, j.totalKg, cat.settings.freight.systemBaseFee, cat.settings.freight.systemPerKm, truck.capacityKg);
@@ -376,7 +375,7 @@ async function freightCycle(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
     await topUp(tx, carrier.id, 5_000_000n, now);
     await startShipment(tx, uow, cat, { vehicle: v, carrierId: carrier.id, destCityId: empty, cargo: [], purpose: "reposition", freightJobId: null, now });
     return true;
-  });
+  }).catch((e: unknown) => { if (e instanceof AppError) return false; throw e; });
   if (moved) { uow.flush(deps.events); n++; }
   return n;
 }
@@ -408,8 +407,12 @@ async function recurringContracts(deps: Deps, now: Date, sysCos: Map<string, Com
         const refs = await loadRefs(tx, h.productId);
         const ref = refs.get(h.cityId) ?? BigInt(cat.product(h.productId).basePricePerKg);
         const cap = bidCapFromRefs(refs, sys.askBp);
-        let price = applyBp(systemBid(ref, sys.bidBp, 0, B, cap), 10000 + sys.reputationPremiumBp);
-        if (cap !== null && price > cap) price = cap;
+        const asks = [...refs.values()].map((r) => systemAsk(r, sys.askBp, 0, 1));
+        const minAsk = asks.length ? asks.reduce((a, b) => (b < a ? b : a)) : null;
+        const yday = await dailyOf(tx, comp.id, h.productId, new Date(now.getTime() - 24 * HOUR));
+        const dToday = await dailyOf(tx, comp.id, h.productId, now);
+        const saturationBp = Math.min(10000, Math.floor((10000 * Math.max(dToday.boughtKg, yday.boughtKg)) / B));
+        const price = systemContractPrice(systemBid(ref, sys.bidBp, 0, B, cap), minAsk, reputationBp(pl.onTimeDeliveries, pl.lateOrMissed), saturationBp);
         const value = price * BigInt(qty) * 3n;
         if (value > BigInt(prof.dailyBudget) / 2n) continue;
         // Açık sistem sözleşmesi toplamı: 2 × günlük bütçe × oyuncu payı çarpanı (günlük bütçeyi sözleşmeyle aşma yok)
@@ -417,7 +420,7 @@ async function recurringContracts(deps: Deps, now: Date, sysCos: Map<string, Com
         const limit = applyBp(BigInt(prof.dailyBudget) * 2n, factor);
         if ((await openSystemContractValue(tx, comp.id)) + value > limit) continue;
         await topUp(tx, comp.id, value, now);
-        const exp = new Date(now.getTime() + 24 * HOUR);
+        const exp = new Date(now.getTime() + 6 * HOUR); // kısa geçerlilik: fiyat kabulde yeniden sınırlanır
         await tx.insert(contracts).values({
           status: "proposed", isSystem: true, proposerCompanyId: comp.id, proposerRole: "buyer", counterpartyCompanyId: pl.id, sellerCompanyId: pl.id, buyerCompanyId: comp.id,
           productId: h.productId, minQuality: 2, qtyPerInstallmentKg: qty, pricePerKg: price, deliveryCityId: h.cityId, freightPayer: "seller", installments: 3,

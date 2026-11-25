@@ -10,7 +10,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { PlotDto, VehicleMapDto, WorldDto, WorldMapDto } from "@capitalforge/shared";
+import { translate, type PlotDto, type VehicleMapDto, type WorldDto, type WorldMapDto } from "@capitalforge/shared";
 import type { CitySelection } from "./types";
 import { PAL } from "./palette";
 import { PartBuilder } from "./geo";
@@ -41,6 +41,8 @@ const TILE_Y = 0.08;
 const CONTENT_Y = TILE_Y + 0.06;
 const PAD_H = 0.08;
 const MAX_SMOKE = 480;
+/** araç ölçeği: ülke görünümünde silüet okunsun */
+const VEH_SCALE = 1.7;
 
 interface Spin { mesh: Object3D; kind: "wheel" | "fan" }
 interface PlotNode {
@@ -59,6 +61,15 @@ interface PlotNode {
   z: number;
 }
 interface VehNode { group: Group; hit: Mesh; dto: VehicleMapDto; key: string; len: number }
+interface Chip { el: HTMLButtonElement; plotId: string; facilityId: string; x: number; y: number; z: number; until: number; status: string; last: string }
+const CHIP_CSS = "position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;min-height:30px;min-width:30px;justify-content:center;padding:2px 8px;border-radius:15px;font:700 12px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;will-change:transform;visibility:hidden;touch-action:manipulation;border:2px solid;";
+const CHIP_STYLE: Record<string, { bg: string; fg: string; bd: string; icon: string }> = {
+  working: { bg: "rgba(16,48,31,.92)", fg: "#b9f6ca", bd: "#4ade80", icon: "\u25B6" },
+  idle: { bg: "rgba(255,106,26,.95)", fg: "#1a0f08", bd: "#ffd2b0", icon: "II" },
+  stalled: { bg: "rgba(255,212,0,.96)", fg: "#1a1400", bd: "#7a5f00", icon: "!" },
+  constructing: { bg: "rgba(58,46,16,.92)", fg: "#f5d98a", bd: "#d8a93a", icon: "#" },
+  upgrading: { bg: "rgba(16,36,58,.92)", fg: "#bfdcff", bd: "#60a5fa", icon: "^" },
+};
 
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
@@ -90,6 +101,9 @@ export class SceneEngine {
   private readonly selRing: Mesh;
   private readonly padHits: Mesh[] = [];
   private readonly labels = new Map<string, HTMLButtonElement>();
+  private readonly chips = new Map<string, Chip>();
+  private styleEl: HTMLStyleElement | null = null;
+  private readonly vMarkGeo: BufferGeometry;
   private readonly nodes = new Map<string, PlotNode>();
   private readonly vehicles = new Map<string, VehNode>();
   private readonly plotInfo = new Map<string, { x: number; z: number; cityId: string; facilityId: string | null; hasBuilding: boolean }>();
@@ -182,6 +196,9 @@ export class SceneEngine {
     this.fanGeo = this.track(new PartBuilder().box(2, 0.03, 0.28, 0, 0, 0, PAL.steel).box(0.28, 0.03, 2, 0, 0, 0, PAL.steel).cyl(0.18, 0.18, 0.08, 0, -0.02, 0, PAL.dark, 6).build());
     this.tractorGeo = this.track(new PartBuilder().box(0.12, 0.08, 0.2, 0, 0.04, 0, "#d9892b").box(0.1, 0.07, 0.08, 0, 0.12, -0.04, "#9fd0ff").box(0.14, 0.05, 0.08, 0, 0.0, 0.1, PAL.dark).build());
 
+    this.vMarkGeo = this.track(new PartBuilder()
+      .box(0.03, 0.55, 0.03, 0, 0, 0.0, PAL.steel).box(0.2, 0.12, 0.02, 0.1, 0.42, 0, PAL.forge)
+      .box(1.0, 0.012, 0.012, 0, 0, 0, PAL.forge).build());
     this.setupLights();
     this.scene.background = new Color(PAL.bg);
     this.buildStatic();
@@ -404,6 +421,10 @@ export class SceneEngine {
   }
 
   private buildLabels(): void {
+    const st = document.createElement("style");
+    st.textContent = "@keyframes cf3d-chip{0%,100%{transform-origin:center;opacity:1}50%{opacity:.55}}@media (prefers-reduced-motion:reduce){[data-facility-id]{animation:none!important}}";
+    this.o.labelLayer.appendChild(st);
+    this.styleEl = st;
     for (const c of this.o.world.cities) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -424,6 +445,8 @@ export class SceneEngine {
 
   setLocale(locale: "tr" | "en"): void {
     this.o.locale = locale;
+    for (const c of this.chips.values()) c.status = "";
+    if (this.map) this.syncChips(this.map);
     for (const c of this.o.world.cities) {
       const b = this.labels.get(c.id);
       if (b) b.textContent = c.name[locale];
@@ -463,7 +486,7 @@ export class SceneEngine {
       this.plotInfo.set(p.id, { x, z, cityId: p.cityId, facilityId: p.building?.id ?? null, hasBuilding: !!p.building });
       const mine = !!myCompanyId && p.owner?.companyId === myCompanyId;
       const locked = !p.owner && myLevel !== undefined && p.minLevel > myLevel;
-      const sig = [p.owner?.companyId ?? "-", p.owner?.isSystem ? 1 : 0, p.building?.id ?? "-", p.building?.type ?? "", p.building?.level ?? 0, p.building?.status ?? "", mine ? 1 : 0, locked ? 1 : 0, p.minLevel].join("|");
+      const sig = [p.owner?.companyId ?? "-", p.owner?.isSystem ? 1 : 0, p.building?.id ?? "-", p.building?.type ?? "", p.building?.level ?? 0, p.building?.status ?? "", mine ? 1 : 0, locked ? 1 : 0, p.minLevel, p.building?.outputProductId ?? "", p.deposit?.kind ?? ""].join("|");
       const idx = ci * 16 + p.gz * 4 + p.gx;
       this.tileIds[idx] = p.id;
       this.tiles.setColorAt(idx, this.tileColorFor(p, mine, locked));
@@ -474,13 +497,14 @@ export class SceneEngine {
     }
     for (const [id, n] of this.nodes) if (!seen.has(id)) { this.contentRoot.remove(n.group); this.nodes.delete(id); this.decorDirty = true; }
     if (this.decorDirty) this.rebuildDecor();
+    this.syncChips(map);
     if (this.tiles.instanceColor) this.tiles.instanceColor.needsUpdate = true;
     this.syncVehicles(map.vehicles);
   }
 
   private tileColorFor(p: PlotDto, mine: boolean, locked: boolean): Color {
     let c: string = PAL.tile;
-    if (mine) c = "#3d4650";
+    if (mine) c = "#6a4e38";
     else if (p.owner?.isSystem) c = PAL.tileSystem;
     else if (p.owner) c = PAL.tileOther;
     else if (locked || p.minLevel >= 3) c = PAL.tileLockedHigh;
@@ -497,8 +521,11 @@ export class SceneEngine {
     };
     const b = p.building;
     if (b) {
-      const crop = b.outputProductId === "grain" ? PAL.grain : b.outputProductId === "fodder" ? PAL.fodder : hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder;
-      const def = this.def(b.type, b.level, b.type === "field" ? crop : "-");
+      const outCol = b.outputProductId ? this.productColor.get(b.outputProductId) : undefined;
+      let accent = "-";
+      if (b.type === "field") accent = outCol ?? (hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder);
+      else if (b.type === "mine") accent = outCol ?? (p.deposit?.kind === "coal" ? PAL.oreCoal : PAL.oreIron);
+      const def = this.def(b.type, b.level, accent);
       node.height = def.height;
       const m = new Mesh(def.geometry, this.matVC);
       m.castShadow = this.high;
@@ -545,7 +572,7 @@ export class SceneEngine {
       }
     } else if (!p.owner) {
       const col = locked ? "#c0392b" : p.minLevel >= 3 ? "#e0b84f" : p.minLevel === 2 ? "#3a7bd5" : "#3fa34d";
-      deco(this.geo(`sign:${col}`, () => buildSign(col)));
+      deco(this.geo(`sign:${col}`, () => buildSign(col)), 0, 0, 0, 1, 1, 1);
     }
     if (mine) {
       deco(this.geo("frame-mine", () => buildFrame(0.58, 0.05, PAL.forge)), 0, 0.005, 0);
@@ -593,6 +620,47 @@ export class SceneEngine {
     return g;
   }
 
+  /** Benim binalarım için sahne içi durum işareti (çalışıyor / boşta / durdu / inşaat); dokununca bina seçilir. */
+  private syncChips(map: WorldMapDto): void {
+    const seen = new Set<string>();
+    const myId = this.myCompanyId;
+    for (const p of map.plots) {
+      const b = p.building;
+      const info = this.plotInfo.get(p.id);
+      if (!b || !info || !myId || p.owner?.companyId !== myId) continue;
+      seen.add(b.id);
+      let chip = this.chips.get(b.id);
+      if (!chip) {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.dataset.facilityId = b.id;
+        el.style.cssText = CHIP_CSS;
+        const fid = b.id, pid = p.id;
+        el.addEventListener("click", (e) => { e.stopPropagation(); this.o.cb.onSelect({ type: "facility", facilityId: fid, plotId: pid }); });
+        this.o.labelLayer.appendChild(el);
+        chip = { el, plotId: p.id, facilityId: b.id, x: 0, y: 0, z: 0, until: 0, status: "", last: "\u0000" };
+        this.chips.set(b.id, chip);
+      }
+      const node = this.nodes.get(p.id);
+      chip.plotId = p.id;
+      chip.x = info.x; chip.z = info.z;
+      chip.y = CONTENT_Y + (node?.height ?? 0.5) + (b.status === "stalled" ? 0.95 : 0.4);
+      chip.until = b.activeUntil ? Date.parse(b.activeUntil) : 0;
+      if (chip.status !== b.status) {
+        chip.status = b.status;
+        const st = CHIP_STYLE[b.status] ?? CHIP_STYLE.idle as (typeof CHIP_STYLE)[string];
+        chip.el.style.background = st.bg; chip.el.style.color = st.fg; chip.el.style.borderColor = st.bd;
+        chip.el.dataset.status = b.status;
+        const tname = this.o.world.buildingTypes.find((t) => t.id === b.type)?.name[this.o.locale] ?? b.type;
+        const sname = translate(this.o.locale, `city3d.status.${b.status}`);
+        chip.el.setAttribute("aria-label", translate(this.o.locale, "city3d.chipLabel", { type: tname, status: sname }));
+        chip.el.style.animation = b.status === "idle" || b.status === "stalled" ? "cf3d-chip 1.2s ease-in-out infinite" : "none";
+        chip.last = "\u0000";
+      }
+    }
+    for (const [id, c] of this.chips) if (!seen.has(id)) { c.el.remove(); this.chips.delete(id); }
+  }
+
   private syncVehicles(list: VehicleMapDto[]): void {
     this.parkIdx = parkIndexes(list);
     const seen = new Set<string>();
@@ -613,11 +681,29 @@ export class SceneEngine {
       hit.position.y = 0.2;
       hit.userData.sel = { type: "vehicle", vehicleId: v.id } satisfies CitySelection;
       const grp = new Group();
+      grp.scale.setScalar(VEH_SCALE);
       grp.add(body, hit);
+      if (mine) {
+        const mark = new Mesh(this.vMarkGeo, this.matVC);
+        mark.position.set(0, 0.0, 0);
+        mark.scale.set(len * 0.5, 1, 1);
+        mark.rotation.y = Math.PI / 2;
+        grp.add(mark, this.ownDisc(len));
+      }
       this.vehicleRoot.add(grp);
       this.vehicles.set(v.id, { group: grp, hit, dto: v, key, len });
     }
     for (const [id, n] of this.vehicles) if (!seen.has(id)) { this.vehicleRoot.remove(n.group); this.vehicles.delete(id); }
+  }
+
+  private discMat: MeshBasicMaterial | null = null;
+  private ownDisc(len: number): Mesh {
+    if (!this.discMat) this.discMat = this.track(new MeshBasicMaterial({ color: PAL.forge, transparent: true, opacity: 0.55, depthWrite: false }));
+    const g = this.geo(`vdisc:${len}`, () => { const r = new RingGeometry(len * 0.5 + 0.06, len * 0.5 + 0.17, 20); r.rotateX(-Math.PI / 2); return r; });
+    const m = new Mesh(g, this.discMat);
+    m.position.y = 0.01;
+    m.scale.set(0.5, 1, 1);
+    return m;
   }
 
   private hitMatCache: MeshBasicMaterial | null = null;
@@ -637,7 +723,15 @@ export class SceneEngine {
     if (cur.lengthSq() > 1e-6) dir.copy(cur).normalize();
     let target: Vector3, dist: number;
     const c = cityId ? this.centers.get(cityId) : undefined;
-    if (c) { target = new Vector3(c.x, 0, c.z + 0.6); dist = this.fit(PAD_HALF * 2 + 2, PAD_HALF * 2 + 3); }
+    if (c) {
+      target = new Vector3(c.x, 0, c.z + 0.6); dist = this.fit(PAD_HALF * 2 + 2, PAD_HALF * 2 + 3);
+      const own = this.ownBox(cityId as string);
+      if (own) {
+        const w = Math.max(9, own.maxX - own.minX + 4), d = Math.max(8, own.maxZ - own.minZ + 4);
+        target = new Vector3((own.minX + own.maxX) / 2, 0, (own.minZ + own.maxZ) / 2 + 0.3);
+        dist = Math.min(dist, this.fit(w, d));
+      }
+    }
     else { target = this.overview.target.clone(); dist = this.overview.dist; }
     const p1 = target.clone().add(dir.multiplyScalar(dist));
     if (immediate) {
@@ -645,6 +739,27 @@ export class SceneEngine {
       return;
     }
     this.tween = { t0: performance.now(), dur: 900, p0: this.camera.position.clone(), p1, q0: this.controls.target.clone(), q1: target };
+  }
+
+  /** Benim bina ve araçlarımın bu şehirdeki sınır kutusu (yoksa null) */
+  private ownBox(cityId: string): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, n = 0;
+    const add = (x: number, z: number): void => { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); n++; };
+    const myId = this.myCompanyId;
+    if (!myId || !this.map) return null;
+    for (const p of this.map.plots) {
+      if (p.cityId !== cityId || p.owner?.companyId !== myId) continue;
+      const i = this.plotInfo.get(p.id);
+      if (i) add(i.x, i.z);
+    }
+    if (n === 0) {
+      for (const v of this.map.vehicles) {
+        if (v.cityId !== cityId || !(v.isMine || v.ownerCompanyId === myId) || v.status === "in_transit") continue;
+        const c = this.centers.get(cityId);
+        if (c) add(c.x, c.z);
+      }
+    }
+    return n > 0 ? { minX, maxX, minZ, maxZ } : null;
   }
 
   /* ---------------------------------------------------------------- etkileşim */
@@ -663,13 +778,13 @@ export class SceneEngine {
       this.down = null;
       if (e.type === "pointercancel" || d.multi) return;
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8 || performance.now() - d.t > 600) return;
-      this.pick(e.clientX, e.clientY);
+      this.pick(e.clientX, e.clientY, e.pointerType === "touch");
     };
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
   }
 
-  private pick(cx: number, cy: number): void {
+  private pick(cx: number, cy: number, touch = false): void {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new Vector2(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
@@ -693,6 +808,27 @@ export class SceneEngine {
         const s = h.object.userData.sel as CitySelection | undefined;
         if (s) { chosen = s; break; }
       }
+    }
+    // dokunmatik: parmak payı. Ray bir şeyi ıskalarsa veya yalnızca arsayı bulursa en yakın araç/bina (<=34 px) seçilir.
+    if (touch && (!chosen || chosen.type === "plot" || chosen.type === "city")) {
+      let best: CitySelection | null = null, bd = 34;
+      const q = this.tmpV;
+      for (const v of this.vehicles.values()) {
+        if (!v.group.visible) continue;
+        q.set(v.group.position.x, 0.2, v.group.position.z).project(this.camera);
+        const d = Math.hypot((q.x * 0.5 + 0.5) * rect.width + rect.left - cx, (-q.y * 0.5 + 0.5) * rect.height + rect.top - cy);
+        if (q.z < 1 && d < bd) { bd = d; best = v.group.children[1]?.userData.sel as CitySelection; }
+      }
+      if (!best || chosen?.type === "plot") {
+        for (const [pid, n] of this.nodes) {
+          const fid = this.plotInfo.get(pid)?.facilityId;
+          if (!fid || !n.buildingMesh) continue;
+          q.set(n.x, CONTENT_Y + n.height * 0.5, n.z).project(this.camera);
+          const d = Math.hypot((q.x * 0.5 + 0.5) * rect.width + rect.left - cx, (-q.y * 0.5 + 0.5) * rect.height + rect.top - cy);
+          if (q.z < 1 && d < bd) { bd = d; best = { type: "facility", facilityId: fid, plotId: pid }; }
+        }
+      }
+      if (best) chosen = best;
     }
     this.o.cb.onSelect(chosen);
   }
@@ -813,7 +949,7 @@ export class SceneEngine {
       if (!v || !v.group.visible) return;
       this.selRing.visible = true;
       this.selRing.position.set(v.group.position.x, 0.07, v.group.position.z);
-      const r = (v.len * 0.55 + 0.25) * k;
+      const r = (v.len * 0.55 + 0.25) * k * VEH_SCALE * 0.8;
       this.selRing.scale.set(r * 1.4, 1, r * 1.4);
     } else {
       const c = this.centers.get(s.cityId);
@@ -825,7 +961,30 @@ export class SceneEngine {
     }
   }
 
+  private updateChips(): void {
+    const v = this.tmpV;
+    const now = Date.now() + this.serverOffsetMs;
+    for (const c of this.chips.values()) {
+      v.set(c.x, c.y, c.z).project(this.camera);
+      const vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
+      if (!vis) { c.el.style.visibility = "hidden"; continue; }
+      c.el.style.visibility = "visible";
+      const x = Math.round((v.x * 0.5 + 0.5) * this.w), y = Math.round((-v.y * 0.5 + 0.5) * this.h);
+      c.el.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-100%)`;
+      const st = CHIP_STYLE[c.status] ?? CHIP_STYLE.idle as (typeof CHIP_STYLE)[string];
+      let txt = st.icon;
+      if (c.status === "idle" || c.status === "stalled") txt += ` ${translate(this.o.locale, `city3d.chip.${c.status}`)}`;
+      if (c.until > 0 && (c.status === "working" || c.status === "constructing" || c.status === "upgrading")) {
+        const sec = Math.max(0, Math.round((c.until - now) / 1000));
+        const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), r = sec % 60;
+        txt += ` ${h > 0 ? `${h}:${String(m).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`}`;
+      }
+      if (txt !== c.last) { c.last = txt; c.el.textContent = txt; }
+    }
+  }
+
   private updateLabels(): void {
+    this.updateChips();
     const v = this.tmpV;
     for (const c of this.o.world.cities) {
       const btn = this.labels.get(c.id);
@@ -856,6 +1015,9 @@ export class SceneEngine {
     const el = this.renderer.domElement;
     el.removeEventListener("webglcontextlost", this.onCtxLost);
     this.controls.dispose();
+    for (const c of this.chips.values()) c.el.remove();
+    this.chips.clear();
+    this.styleEl?.remove();
     for (const btn of this.labels.values()) btn.remove();
     this.labels.clear();
     this.scene.traverse((o) => {

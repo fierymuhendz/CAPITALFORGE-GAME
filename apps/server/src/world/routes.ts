@@ -12,6 +12,7 @@ import { route } from "../http/route";
 import type { Catalog } from "../catalog/catalog";
 import { starterBuildingFor, starterInputsKey } from "../company/found";
 import { m } from "../lib/serialize";
+import { paceDuration, paceMax, paceTravelScaleBp } from "../catalog/pace";
 
 export function worldDto(cat: Catalog, now: Date): WorldDto {
   const s = cat.settings;
@@ -25,17 +26,18 @@ export function worldDto(cat: Catalog, now: Date): WorldDto {
     roads: ROAD_LIST.map(([a, b, km]) => ({ a, b, km })),
     products: [...cat.products.values()].map((p) => ({ id: p.id, name: p.name, category: p.category, color: p.color, basePricePerKg: m(p.basePricePerKg) })),
     buildingTypes: [...cat.buildingTypes.values()].map((b) => ({
-      id: b.id, sector: b.sector, name: b.name, buildCost: m(b.buildCost), buildSteelKg: b.buildSteelKg, buildMinutes: b.buildMinutes,
-      levels: b.levels.map((l) => ({ ...l, upkeepPerDay: m(l.upkeepPerDay), upgradeCost: m(l.upgradeCost) })),
+      id: b.id, sector: b.sector, name: b.name, buildCost: m(b.buildCost), buildSteelKg: b.buildSteelKg, buildMinutes: paceDuration(cat, b.buildMinutes),
+      levels: b.levels.map((l) => ({ ...l, upgradeMinutes: paceDuration(cat, l.upgradeMinutes), upkeepPerDay: m(l.upkeepPerDay), upgradeCost: m(l.upgradeCost) })),
       qualityUpgradeCosts: b.qualityUpgradeCosts.map(m), vehicleSlots: b.vehicleSlots, requiresDeposit: b.requiresDeposit,
     })),
-    recipes: [...cat.recipes.values()].map((r) => ({ ...r })),
-    research: [...cat.research.values()].map((r) => ({ id: r.id, name: r.name, description: r.description, maxLevel: r.maxLevel, baseCost: m(r.baseCost), baseMinutes: r.baseMinutes, effect: r.effect })),
+    recipes: [...cat.recipes.values()].map((r) => ({ ...r, minutes: paceDuration(cat, r.minutes) })),
+    research: [...cat.research.values()].map((r) => ({ id: r.id, name: r.name, description: r.description, maxLevel: r.maxLevel, baseCost: m(r.baseCost), baseMinutes: paceDuration(cat, r.baseMinutes), effect: r.effect })),
     vehicleModels: [...cat.vehicleModels.values()].map((v) => ({ ...v, fuelPerKm: m(v.fuelPerKm), price: m(v.price), upkeepPerDay: m(v.upkeepPerDay) })),
     levelXp: [...s.levelXp],
     marketFeeBp: s.marketFeeBp,
     qualityPriceBp: [...QUALITY_PRICE_BP],
     freight: { systemBaseFee: m(s.freight.systemBaseFee), systemPerKm: m(s.freight.systemPerKm), driverHoursPerTrip: s.freight.driverHoursPerTrip },
+    pace: { maxMinutes: paceMax(cat), travelScaleBp: paceTravelScaleBp(cat) },
     startingCash: m(s.startingCash),
   };
 }
@@ -198,11 +200,12 @@ async function onboarding(deps: Deps, cityId: string, sector: z.infer<typeof sec
   if (recipe && sector !== "freight") {
     const plotYield = sector === "crop" ? firstEligible?.fertilityBp ?? 10000 : sector === "livestock" ? firstEligible?.pastureBp ?? 10000 : sector === "mining" ? firstEligible?.deposit?.richnessBp ?? 10000 : 10000;
     const cityYield = sector === "crop" || sector === "livestock" ? 10000 : city.sectorYieldBp[sector] ?? 10000;
-    const plan = planProduction(recipe, {
+    const plan0 = planProduction(recipe, {
       batches: 1, plotYieldBp: plotYield, cityYieldBp: cityYield, researchYieldBp: 0, researchEfficiencyBp: 0,
       facilityQualityLevel: 1, researchQualityLevels: 0, laborAvailabilityBp: city.labor.availability, inputLots: [],
       prices: { energyPerKwh: BigInt(city.energyPrice), waterPerM3: BigInt(city.waterPrice), wagePerHour: BigInt(city.wage) },
     });
+    const plan = { ...plan0, minutes: paceDuration(cat, plan0.minutes) };
     const inputCost = plan.inputs.reduce((a, i) => a + ref(i.productId, cityId) * BigInt(i.kg), 0n);
     const cost = inputCost + plan.energyCost + plan.waterCost + plan.laborCost;
     const buyer = nearestBuyers.find((b) => b.productId === recipe.output.productId);

@@ -8,7 +8,7 @@ import { serverNow } from "@/lib/clock";
 import { useList } from "@/lib/data";
 import { isoToLocalInput, localInputToIso } from "@/lib/numbers";
 import { useT } from "@/lib/i18n";
-import { Button, Field, IntInput, Notice, PriceInput, QtyInput, SelectField, Seg, TextField } from "@/ui";
+import { ActionBar, Button, Field, IntInput, Notice, PriceInput, QtyInput, SelectField, Seg, TextField } from "@/ui";
 
 export function NewOffer({ onDone }: { onDone: () => void }) {
   const i = useT();
@@ -42,7 +42,6 @@ export function NewOffer({ onDone }: { onDone: () => void }) {
   const ok = parsed.success && (!direct || !!cp);
   return (
     <form className="col" onSubmit={(e) => { e.preventDefault(); if (!ok) return; void run(() => api.post("/contracts", body), { ok: "contracts.created" }).then((r) => { if (r) onDone(); }); }}>
-      <p className="muted2 small">{t("contracts.newHint")}</p>
       <Field label={t("contracts.myRole")}>{() => <Seg label={t("contracts.myRole")} value={role} onChange={setRole} items={[{ id: "seller", label: t("contracts.iSell") }, { id: "buyer", label: t("contracts.iBuy") }]} />}</Field>
       <Field label={t("contracts.audience")}>{() => <Seg label={t("contracts.audience")} value={direct ? "direct" : "board"} onChange={(v) => { setDirect(v === "direct"); setCp(null); }} items={[{ id: "board", label: t("contracts.toBoard") }, { id: "direct", label: t("contracts.toCompany") }]} />}</Field>
       {direct ? (
@@ -65,8 +64,9 @@ export function NewOffer({ onDone }: { onDone: () => void }) {
       <IntInput label={t("contracts.missingPenalty")} value={penalty} onChange={setPenalty} min={0} max={50} suffix="%" hint={t("contracts.missingPenaltyHint")} />
       <IntInput label={t("contracts.expiresIn")} value={expires} onChange={setExpires} min={1} max={168} suffix={t("common.hourShort")} />
       <TextField label={t("contracts.note")} value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
+      {qty && price ? <div className="notice steel small col tight"><b>{t("contracts.summary")}</b><span>{t("contracts.summaryLine", { q: i.qty(qty), n, p: i.price(price), h: every, city: cat.city(city) })}</span><span>{t("contracts.freightWho." + payer)}</span><span>{t("contracts.summaryPenalty", { pct: penalty })}</span></div> : null}
       {!parsed.success && qty && price ? <Notice tone="warn">{t("contracts.checkForm")}</Notice> : null}
-      <div className="sticky-cta"><Button type="submit" variant="primary" size="lg" loading={busy} disabled={!ok}>{t("contracts.create")}</Button></div>
+      <ActionBar><Button type="submit" variant="primary" loading={busy} disabled={!ok}>{t("contracts.create")}</Button></ActionBar>
     </form>
   );
 }

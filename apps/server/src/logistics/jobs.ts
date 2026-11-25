@@ -1,16 +1,18 @@
 /** Taşıma işi panosu: açma (emanet + yük rezervi), kabul, iptal, süre dolumu, DTO. */
 import { randomUUID } from "node:crypto";
 import { and, eq, lte, or } from "drizzle-orm";
-import { estimateOwnTrip, systemCarrierQuote } from "@capitalforge/economy";
+import { applyBp, estimateOwnTrip, systemCarrierQuote } from "@capitalforge/economy";
 import { roadDistanceKm, type AcceptFreightReq, type CancelReq, type FreightJobDto, type FreightJobReq } from "@capitalforge/shared";
 import type { z } from "zod";
 import type { Catalog } from "../catalog/catalog";
+import { paceTrip } from "../catalog/pace";
 import type { DbOrTx, Tx } from "../db/client";
 import { freightJobs, vehicles } from "../db/schema";
 import type { Deps } from "../deps";
 import { fail } from "../errors";
 import { UnitOfWork } from "../events/bus";
 import { releaseStock, removeStock, reserveStock } from "../inventory/holdings";
+import { writeOutcome } from "../finance/outcomes";
 import { co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
@@ -87,9 +89,23 @@ export async function acceptFreightJob(
     );
     cargo.push({ ownerCompanyId: job.shipperCompanyId, consigneeCompanyId: job.consigneeCompanyId, productId: l.productId, quality: l.quality, qtyKg: l.qtyKg, costBasis: cost, installmentId: job.installmentId });
   }
-  const { shipment } = await startShipment(tx, uow, catalog, {
+  const { shipment, tripTotal } = await startShipment(tx, uow, catalog, {
     vehicle: v, carrierId: carrier.id, destCityId: job.destCityId, cargo, purpose: "freight_job", freightJobId: job.id, jobPay: job.payAmount, now,
   });
+  if (!carrier.isSystem) {
+    // tahmin ↔ gerçekleşen: taşıyıcının beklenen geliri (ücret), komisyonu, yakıt + sürücü maliyeti ve süresi
+    const fee = applyBp(job.payAmount, catalog.settings.marketFeeBp);
+    const products = [...new Set(mergeLines(job.cargo).map((l) => l.productId))];
+    await writeOutcome(tx, {
+      companyId: carrier.id, kind: "freight_job", refType: "freight_job", refId: job.id, productId: products.length === 1 ? products[0]! : null,
+      cityId: job.originCityId, destCityId: job.destCityId,
+      expected: {
+        qtyKg: job.totalKg, revenue: job.payAmount, fees: fee, cost: tripTotal, profit: job.payAmount - fee - tripTotal,
+        minutes: Math.round((shipment.arrivesAt.getTime() - now.getTime()) / 60_000), at: shipment.arrivesAt,
+      },
+      at: now,
+    });
+  }
   const [row] = await tx
     .update(freightJobs)
     .set({ status: "in_transit", carrierCompanyId: carrier.id, shipmentId: shipment.id, acceptedAt: now })
@@ -147,6 +163,27 @@ export async function jobDtos(db: DbOrTx, catalog: Catalog, rows: JobRow[], me: 
   const names = await companyBriefs(db, ids);
   const myVehicles = me ? await db.select().from(vehicles).where(and(eq(vehicles.companyId, me.id), eq(vehicles.status, "idle"))) : [];
   const bonus = me ? await researchBonuses(db, catalog, me.id) : { speedBp: 0, fuelBp: 0 };
+  const loadingHours = catalog.settings.freight.driverHoursPerTrip;
+  const handlingMinutes = catalog.settings.freight.handlingMinutes ?? 0;
+  /** boş araçlarımdan en yüksek saat başı net veren: boş gidiş (konumdan kalkış şehrine) + yükleme + iş yolu */
+  const bestForMe = (j: JobRow): { vehicleId: string; minutes: number; netPerHour: bigint } | null => {
+    let best: { vehicleId: string; minutes: number; netPerHour: bigint } | null = null;
+    for (const v of myVehicles) {
+      if (!v.cityId) continue;
+      const md = catalog.vehicleModel(v.modelId);
+      if (md.capacityKg < j.totalKg) continue;
+      const veh = { capacityKg: md.capacityKg, speedKmh: md.speedKmh, fuelPerKm: BigInt(md.fuelPerKm) };
+      const repoKm = roadDistanceKm(v.cityId, j.originCityId);
+      const repo = estimateOwnTrip(repoKm, veh, BigInt(catalog.city(v.cityId).wage), { speedBonusBp: bonus.speedBp, fuelSavingBp: bonus.fuelBp, loadingHours: 0 });
+      const trip = estimateOwnTrip(j.distanceKm, veh, BigInt(catalog.city(j.originCityId).wage), { speedBonusBp: bonus.speedBp, fuelSavingBp: bonus.fuelBp, loadingHours, handlingMinutes });
+      // araç boş gidiş + yükleme/boşaltma + iş yolu boyunca bağlı (yükleme/boşaltma = handlingMinutes, trip.minutes içinde)
+      const minutes = paceTrip(catalog, repo.minutes + trip.minutes);
+      if (minutes <= 0) continue;
+      const netPerHour = ((j.payAmount - repo.total - trip.total) * 60n) / BigInt(minutes);
+      if (!best || netPerHour > best.netPerHour || (netPerHour === best.netPerHour && minutes < best.minutes)) best = { vehicleId: v.id, minutes, netPerHour };
+    }
+    return best;
+  };
   return rows.map((j) => {
     const mine = me && j.shipperCompanyId === me.id ? "shipper" : me && j.carrierCompanyId === me.id ? "carrier" : null;
     const party = !!me && (j.shipperCompanyId === me.id || j.consigneeCompanyId === me.id || j.carrierCompanyId === me.id);
@@ -165,13 +202,17 @@ export async function jobDtos(db: DbOrTx, catalog: Catalog, rows: JobRow[], me: 
         est = m(best);
       }
     }
+    const mine2 = me && j.status === "open" && j.shipperCompanyId !== me.id ? bestForMe(j) : null;
     return {
-      id: j.id, status: j.status, isSystem: j.isSystem, shipperCompanyId: j.shipperCompanyId, shipperName: names.get(j.shipperCompanyId)?.name ?? "?",
+      id: j.id, status: j.status, isSystem: j.isSystem,
+      // açık oyuncu ilanında ilan sahibi taraf olmayanlara görünmez (sistem işleri adıyla kalır)
+      shipperCompanyId: party || j.isSystem ? j.shipperCompanyId : "", shipperName: party || j.isSystem ? names.get(j.shipperCompanyId)?.name ?? "?" : "",
       consigneeName: party ? names.get(j.consigneeCompanyId)?.name ?? "?" : "", originCityId: j.originCityId, destCityId: j.destCityId, distanceKm: j.distanceKm,
       // yük içeriği yalnızca taraflara açık; panoda yalnızca toplam kg görünür
       cargo: party ? j.cargo : [], totalKg: j.totalKg, payAmount: m(j.payAmount), deadlineAt: j.deadlineAt.toISOString(), createdAt: j.createdAt.toISOString(),
       carrierCompanyId: j.carrierCompanyId, carrierName: j.carrierCompanyId ? names.get(j.carrierCompanyId)?.name ?? null : null, shipmentId: party ? j.shipmentId : null,
       installmentId: party ? j.installmentId : null, allowSystemCarrier: j.allowSystemCarrier, mine, estCostForMe: est,
+      estMinutesForMe: mine2?.minutes ?? null, netPerHourForMe: mine2 ? m(mine2.netPerHour) : null, bestVehicleIdForMe: mine2?.vehicleId ?? null,
     };
   });
 }

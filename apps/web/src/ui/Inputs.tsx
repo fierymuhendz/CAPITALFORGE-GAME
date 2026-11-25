@@ -109,3 +109,14 @@ export function IntInput({ label, value, onChange, min, max, hint, suffix }: { l
     </Field>
   );
 }
+
+/** Küçük artır/azalt kontrolü (partiler gibi az sayıda seçenek). */
+export function Stepper({ label, value, onChange, min, max }: { label: string; value: number; onChange: (n: number) => void; min: number; max: number }) {
+  return (
+    <div className="row" role="group" aria-label={label}>
+      <button type="button" className="btn icon" aria-label={`${label} −`} disabled={value <= min} onClick={() => onChange(Math.max(min, value - 1))}>−</button>
+      <b className="num" style={{ minWidth: 28, textAlign: "center" }} aria-live="polite">{value}</b>
+      <button type="button" className="btn icon" aria-label={`${label} +`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + 1))}>+</button>
+    </div>
+  );
+}

@@ -27,6 +27,10 @@ import { balanceOf, co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
 import { afterCashIn, companyBriefs, HOUR, linkMovements, lockCompanyRow, type CompanyRow } from "../market/common";
+import { writeOutcome } from "../finance/outcomes";
+import { systemContractCap } from "../system/pricing";
+import { topUp } from "../system/system";
+import { contractExpected } from "./compare";
 
 export type ContractRow = typeof contracts.$inferSelect;
 export type InstRow = typeof contractInstallments.$inferSelect;
@@ -116,10 +120,17 @@ export async function acceptContract(tx: Tx, uow: UnitOfWork, catalog: Catalog, 
   const sellerId = c.proposerRole === "seller" ? c.proposerCompanyId : company.id;
   const buyerId = c.proposerRole === "buyer" ? c.proposerCompanyId : company.id;
   const window = catalog.settings.contracts.windowHoursBeforeDue;
-  const price = c.pricePerKg;
+  // Sistem alıcısı teklifi: fiyat kabul anındaki güncel %95 sınırına indirilir (spot düşünce eski fiyat risksiz kâr olmasın)
+  let price = c.pricePerKg;
+  if (c.isSystem && c.proposerRole === "buyer") {
+    const cap = await systemContractCap(tx, catalog, c.productId);
+    if (cap !== null && price > cap) price = cap < 1n ? 1n : cap;
+  }
+  c.pricePerKg = price;
   const esc = contractEscrows({ qtyPerInstallmentKg: c.qtyPerInstallmentKg, pricePerKg: price, installments: c.installments, penaltyBp: c.penaltyBp, lateFeeBp: c.lateFeeBp });
   // Emanet + teminat: tek işlem; hesaplar post() içinde sıralı kilitlenir
   // Teklif sahibinin eksik tutarı kabul edene sızmaz: yetersizlik teklif sahibindeyse teklif "açık değil" gibi görünür
+  if (c.isSystem) await topUp(tx, c.proposerCompanyId, esc.buyerEscrow, now);
   try {
     await post(tx, {
       kind: "contract_accept", idempotencyKey: `contract-accept:${c.id}`, refType: "contract", refId: c.id, at: now, memo: "Sözleşme emaneti ve teminatı",
@@ -159,12 +170,20 @@ export async function acceptContract(tx: Tx, uow: UnitOfWork, catalog: Catalog, 
   };
   const [row] = await tx
     .update(contracts)
-    .set({ status: "active", sellerCompanyId: sellerId, buyerCompanyId: buyerId, terms, buyerEscrow: esc.buyerEscrow, sellerDeposit: esc.sellerDeposit, acceptedAt: now })
+    .set({ status: "active", pricePerKg: price, sellerCompanyId: sellerId, buyerCompanyId: buyerId, terms, buyerEscrow: esc.buyerEscrow, sellerDeposit: esc.sellerDeposit, acceptedAt: now })
     .where(eq(contracts.id, c.id))
     .returning();
   const names = await companyBriefs(tx, [c.proposerCompanyId]);
   if (!names.get(c.proposerCompanyId)?.isSystem) {
     await notify(tx, uow, c.proposerCompanyId, "contract_accepted", { contractId: c.id, productId: c.productId, by: company.name }, now, `/play?tab=contracts&id=${c.id}`);
+  }
+  // tahmin ↔ gerçekleşen: iki tarafa beklenen rakamlar (sistem şirketleri hariç)
+  for (const pid of [c.proposerCompanyId, company.id]) {
+    if (pid === company.id ? company.isSystem : names.get(pid)?.isSystem) continue;
+    await writeOutcome(tx, {
+      companyId: pid, kind: "contract", refType: "contract", refId: c.id, productId: c.productId, destCityId: c.deliveryCityId,
+      expected: await contractExpected(tx, catalog, row!, pid, now), at: now,
+    });
   }
   uow.invalidate(sellerId, "contracts", "finance", "company");
   uow.invalidate(buyerId, "contracts", "finance", "company");

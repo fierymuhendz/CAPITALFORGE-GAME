@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
-import type { FinanceDto, LedgerLineDto, LoanDto, SaleDto, SaleTraceDto } from "@capitalforge/shared";
+import type { FinanceDto, LedgerLineDto, LoanDto, OutcomeDto, OutcomeFiguresDto, SaleDto, SaleTraceDto } from "@capitalforge/shared";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/action";
 import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { Async, Badge, Button, Card, Countdown, EmptyState, KV, MoneyInput, Notice, SelectField, Sheet, SkeletonList, Stat, Table, Tabs, Trend, type Col } from "@/ui";
+import { Async, Badge, Button, Card, Countdown, Disclosure, EmptyState, KV, MoneyInput, Notice, SelectField, Sheet, SkeletonList, Stat, Table, Tabs, Trend, type Col } from "@/ui";
 import { usePlay } from "../play/context";
 
 export function FinancePanel() {
@@ -14,8 +14,8 @@ export function FinancePanel() {
   const [tab, setTab] = useState("overview");
   return (
     <div className="col">
-      <Tabs label={t("panels.finance")} value={tab} onChange={setTab} items={[{ id: "overview", label: t("finance.overview") }, { id: "sales", label: t("finance.sales") }, { id: "ledger", label: t("finance.ledger") }, { id: "loans", label: t("finance.loans") }]} />
-      {tab === "overview" ? <Overview /> : tab === "sales" ? <Sales /> : tab === "ledger" ? <Ledger /> : <Loans />}
+      <Tabs label={t("panels.finance")} value={tab} onChange={setTab} items={[{ id: "overview", label: t("finance.overview") }, { id: "results", label: t("finance.results") }, { id: "sales", label: t("finance.sales") }, { id: "ledger", label: t("finance.ledger") }, { id: "loans", label: t("finance.loans") }]} />
+      {tab === "overview" ? <Overview /> : tab === "results" ? <Results goLedger={() => setTab("ledger")} /> : tab === "sales" ? <Sales /> : tab === "ledger" ? <Ledger /> : <Loans />}
     </div>
   );
 }
@@ -30,29 +30,78 @@ function Overview() {
     <Async res={res}>
       {(f) => (
         <div className="col">
-          <Card><div className="col">
-            <div className="row between"><h4>{t("finance.balances")}</h4><span className="muted small">{t("finance.netWorth")}: <b className="num">{i.money(f.netWorth)}</b></span></div>
-            {Object.entries(f.balances).map(([k, v]) => <KV key={k} k={i.has(`accounts.${k}`) ? t(`accounts.${k}`) : k} v={i.money(v)} />)}
-          </div></Card>
-          <Card><div className="col">
+          <div className="grid2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))" }}>
+            <Card tight><Stat label={t("finance.netWorth")} value={<span className="money-big">{i.money(f.netWorth)}</span>} /></Card>
+            <Card tight><Stat label={t("finance.cash")} value={<span className="money-big">{i.money(f.balances.cash ?? "0")}</span>} /></Card>
+          </div>
+          <Card><div className="col tight">
             <h4>{t("finance.pnl")} <span className="muted small">({t("finance.lastDays", { n: f.pnl.days })})</span></h4>
-            <p className="muted small">{t("finance.pnlNote")}</p>
             <KV k={t("finance.revenue")} v={i.money(f.pnl.revenue)} />
             <KV k={t("finance.cogs")} v={i.money(f.pnl.cogs)} />
             <KV k={t("finance.grossProfit")} v={<Trend value={f.pnl.grossProfit} text={i.signed(f.pnl.grossProfit)} />} />
-            {Object.entries(f.pnl.expenses).map(([k, v]) => <KV key={k} k={i.has(`accounts.${k}`) ? t(`accounts.${k}`) : k} v={i.money(v)} />)}
             <hr className="sep" />
             <KV k={<b>{t("finance.netProfit")}</b>} v={<b><Trend value={f.pnl.netProfit} text={i.signed(f.pnl.netProfit)} /></b>} />
           </div></Card>
-          <Card><div className="col">
-            <h4>{t("finance.cashflow")} <span className="muted small">({t("finance.lastDays", { n: f.cashflow.days })})</span></h4>
-            <p className="muted small">{t("finance.cashflowNote")}</p>
+          <Disclosure summary={t("finance.expenses")}>
+            {Object.entries(f.pnl.expenses).map(([k, v]) => <KV key={k} k={i.has(`accounts.${k}`) ? t(`accounts.${k}`) : k} v={i.money(v)} />)}
+          </Disclosure>
+          <Disclosure summary={t("finance.cashflow")}>
             <KV k={t("finance.operating")} v={<Trend value={f.cashflow.operating} text={i.signed(f.cashflow.operating)} />} />
             <KV k={t("finance.investing")} v={<Trend value={f.cashflow.investing} text={i.signed(f.cashflow.investing)} />} />
             <KV k={t("finance.financing")} v={<Trend value={f.cashflow.financing} text={i.signed(f.cashflow.financing)} />} />
-            <hr className="sep" />
             <KV k={<b>{t("finance.netCash")}</b>} v={<b><Trend value={f.cashflow.net} text={i.signed(f.cashflow.net)} /></b>} />
-          </div></Card>
+          </Disclosure>
+          <Disclosure summary={t("finance.balances")}>
+            {Object.entries(f.balances).map(([k, v]) => <KV key={k} k={i.has(`accounts.${k}`) ? t(`accounts.${k}`) : k} v={i.money(v)} />)}
+          </Disclosure>
+        </div>
+      )}
+    </Async>
+  );
+}
+
+function Results({ goLedger }: { goLedger: () => void }) {
+  const i = useT();
+  const { t } = i;
+  const cat = useCat();
+  const { open } = usePlay();
+  const res = useData<OutcomeDto[]>("/finance/outcomes", undefined, ["finance", "market", "contracts", "shipments"]);
+  const sales = useData<SaleDto[]>("/finance/sales", undefined, ["finance", "market", "contracts"]);
+  const [sel, setSel] = useState<SaleDto | null>(null);
+  const rows: Array<[string, keyof OutcomeFiguresDto]> = [["market.qty", "qtyKg"], ["finance.revenue", "revenue"], ["finance.goods", "goods"], ["finance.freightPaid", "freight"], ["finance.fees", "fees"], ["finance.cost", "cost"], ["finance.profit", "profit"], ["finance.time", "minutes"]];
+  const fmt = (k: keyof OutcomeFiguresDto, v: OutcomeFiguresDto[keyof OutcomeFiguresDto]) => {
+    if (v === null || v === undefined) return <span className="muted">—</span>;
+    if (k === "qtyKg") return <span className="num">{i.qty(v as number)}</span>;
+    if (k === "minutes") return <span className="num">{i.dur(v as number)}</span>;
+    if (k === "profit") return <Trend value={v as string} text={i.signed(v as string)} />;
+    return <span className="num">{i.money(v as string)}</span>;
+  };
+  return (
+    <Async res={res}>
+      {(list) => !list.length ? <EmptyState icon="chart" title={t("finance.noResults")} text={t("finance.noResultsText")} action={<Button variant="primary" onClick={() => open("market")}>{t("inventory.goMarket")}</Button>} /> : (
+        <div className="cards" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))" }}>
+          {list.map((o) => {
+            const shown = rows.filter(([, k]) => o.expected[k] !== null || o.actual?.[k] != null);
+            const sale = sales.data?.find((s) => o.saleIds.includes(s.id));
+            return (
+              <Card key={o.id} tight><div className="col tight">
+                <div className="row between"><b className="nm">{t(`finance.kind.${o.kind}`)}{o.productId ? ` · ${cat.product(o.productId)}` : ""}</b><Badge tone={o.status === "settled" ? "good" : o.status === "cancelled" ? "bad" : "warn"}>{t(`finance.outcome.${o.status}`)}</Badge></div>
+                <span className="muted xs">{o.recipeId ? cat.recipe(o.recipeId) : o.cityId ? `${cat.city(o.cityId)}${o.destCityId ? ` → ${cat.city(o.destCityId)}` : ""}` : ""} · {i.date(o.createdAt)}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr)", gap: "4px 8px", alignItems: "baseline" }} className="small">
+                  <span /><b className="xs muted" style={{ textAlign: "right" }}>{t("finance.expected")}</b><b className="xs muted" style={{ textAlign: "right" }}>{t("finance.actual")}</b>
+                  {shown.map(([lk, k]) => (
+                    <div key={k} style={{ display: "contents" }}>
+                      <span className="muted">{t(lk)}</span>
+                      <span style={{ textAlign: "right" }}>{fmt(k, o.expected[k])}</span>
+                      <span style={{ textAlign: "right" }}>{o.actual ? fmt(k, o.actual[k]) : <span className="muted">…</span>}</span>
+                    </div>
+                  ))}
+                </div>
+                {sale ? <Button size="sm" onClick={() => setSel(sale)}>{t("finance.trace")}</Button> : o.ledgerTransactionIds.length ? <Button size="sm" onClick={goLedger}>{t("finance.ledger")}</Button> : null}
+              </div></Card>
+            );
+          })}
+          <SaleSheet sale={sel} onClose={() => setSel(null)} />
         </div>
       )}
     </Async>
@@ -79,7 +128,7 @@ function Sales() {
   return (
     <Async res={res}>
       {(rows) => rows.length ? (
-        <div className="col"><p className="muted small">{t("finance.salesHint")}</p><Table cols={cols} rows={rows} rowKey={(s) => s.id} onRow={setSel} rowLabel={(s) => cat.product(s.productId)} /><SaleSheet sale={sel} onClose={() => setSel(null)} /></div>
+        <div className="col"><Table cols={cols} rows={rows} rowKey={(s) => s.id} onRow={setSel} rowLabel={(s) => cat.product(s.productId)} /><SaleSheet sale={sel} onClose={() => setSel(null)} /></div>
       ) : <EmptyState icon="chart" title={t("finance.noSales")} text={t("finance.noSalesText")} action={<Button variant="primary" onClick={() => open("market")}>{t("inventory.goMarket")}</Button>} />}
     </Async>
   );
@@ -140,7 +189,6 @@ function Ledger() {
         const last = all[all.length - 1]!;
         return (
           <div className="col">
-            <p className="muted small">{t("finance.ledgerHint")}</p>
             {all.map((l, n) => (
               <div key={`${l.transactionId}-${l.account}-${n}`} className="li">
                 <div className="grow col tight"><span className="small"><b>{i.kind(l.kind)}</b> · {i.has(`accounts.${l.account}`) ? t(`accounts.${l.account}`) : l.account}</span><span className="xs muted">{l.memo} · {i.date(l.at)}</span></div>

@@ -54,7 +54,7 @@ export interface WorldDto {
   products: Array<{ id: string; name: Localized; category: string; color: string; basePricePerKg: Money }>;
   buildingTypes: Array<{
     id: string; sector: Sector; name: Localized; buildCost: Money; buildSteelKg: number; buildMinutes: number;
-    levels: Array<{ level: number; lines: number; maxBatches: number; upkeepPerDay: Money; upgradeCost: Money; upgradeSteelKg: number; upgradeMinutes: number }>;
+    levels: Array<{ level: number; lines: number; maxBatches: number; upkeepPerDay: Money; upgradeCost: Money; upgradeSteelKg: number; upgradeMinutes: number; yieldBp?: number; efficiencyBp?: number; inputSavingBp?: number; qualityBonus?: number }>;
     qualityUpgradeCosts: Money[]; vehicleSlots?: number[]; requiresDeposit?: boolean;
   }>;
   recipes: Array<{
@@ -68,6 +68,8 @@ export interface WorldDto {
   marketFeeBp: number;
   qualityPriceBp: number[];
   freight: { systemBaseFee: Money; systemPerKm: Money; driverHoursPerTrip: number };
+  /** tempo kuralı: oyun süreleri en çok maxMinutes (0 = sınır yok); yol süreleri travelScaleBp/10000 ile sıkıştırılır. Bu yanıttaki dakikalar zaten tempolu. */
+  pace: { maxMinutes: number; travelScaleBp: number };
   startingCash: Money;
 }
 
@@ -173,6 +175,8 @@ export interface ProductionQuoteDto {
   bestBuyers: Array<{ cityId: string; companyName: string; isSystem: boolean; pricePerKg: Money; km: number }>;
   canStart: boolean;
   blockers: Array<{ code: string; productId?: string; missingKg?: number; missing?: Money }>;
+  /** en iyi alıcıya satılırsa (aynı şehirdeki en iyi teklif, kaliteye göre): gelir, komisyon, kâr tahmini */
+  estimate: null | { pricePerKg: Money; cityId: string; revenue: Money; fee: Money; profit: Money; profitPerHour: Money };
 }
 
 export interface VehicleDto {
@@ -285,6 +289,12 @@ export interface FreightJobDto {
   installmentId: string | null; allowSystemCarrier: boolean; mine: "shipper" | "carrier" | null;
   /** taşımacı için: yakıt + sürücü tahmini ve net */
   estCostForMe: Money | null;
+  /** taşımacı için: en uygun boş aracımla aracın bağlı kalacağı süre (boş gidiş + yükleme + yol), dk */
+  estMinutesForMe: number | null;
+  /** taşımacı için: (ücret − tahmini maliyet) / bağlı saat */
+  netPerHourForMe: Money | null;
+  /** hesap için kullanılan aracım; uygun araç yoksa null */
+  bestVehicleIdForMe: string | null;
 }
 
 export interface LoanDto {

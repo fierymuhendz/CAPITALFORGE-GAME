@@ -2,17 +2,19 @@
 import { and, eq, gt, ne } from "drizzle-orm";
 import type { z } from "zod";
 import { SYSTEM_PROFILES, roadDistanceKm, type ProductionQuoteDto, type ProductionQuoteReq } from "@capitalforge/shared";
-import { systemAsk, systemBid, systemBidCap, unitCostPerKg } from "@capitalforge/economy";
+import { applyBp, systemAsk, systemBid, systemBidCap, unitCostPerKg } from "@capitalforge/economy";
 import type { Catalog } from "../catalog/catalog";
-import type { Db } from "../db/client";
+import type { Db, DbOrTx } from "../db/client";
 import { companies, facilities, marketOrders, priceRefs } from "../db/schema";
 import { fail } from "../errors";
 import { m } from "../lib/serialize";
+import { effectivePrice } from "../market/spot";
+import { productBidCap } from "../system/pricing";
 import { evaluateProduction } from "./eval";
 
 type Buyer = ProductionQuoteDto["bestBuyers"][number];
 
-export async function bestBuyers(db: Db, catalog: Catalog, companyId: string, productId: string, quality: number, fromCityId: string): Promise<Buyer[]> {
+export async function bestBuyers(db: DbOrTx, catalog: Catalog, companyId: string, productId: string, quality: number, fromCityId: string): Promise<Buyer[]> {
   const out: Buyer[] = [];
   const orders = await db
     .select({ o: marketOrders, name: companies.name })
@@ -37,6 +39,39 @@ export async function bestBuyers(db: Db, catalog: Catalog, companyId: string, pr
   return out.slice(0, 5);
 }
 
+/**
+ * Çıktının en iyi alıcıya satılırsa tahmini: önce aynı şehirdeki en iyi alım emri (kaliteye göre fiyat, sellToOrder ile aynı formül),
+ * yoksa bestBuyers'ın ilki. Gelir = miktar × fiyat, komisyon piyasa komisyonu, kâr = gelir − komisyon − üretim maliyeti.
+ */
+export async function estimateSale(
+  db: DbOrTx, catalog: Catalog, companyId: string, cityId: string, productId: string, quality: number, qtyKg: number, cost: bigint, minutes: number,
+  buyers?: Buyer[],
+): Promise<ProductionQuoteDto["estimate"]> {
+  if (qtyKg < 1) return null;
+  const orders = await db
+    .select()
+    .from(marketOrders)
+    .where(and(eq(marketOrders.side, "buy"), eq(marketOrders.status, "open"), eq(marketOrders.productId, productId), eq(marketOrders.cityId, cityId), gt(marketOrders.remainingKg, 0), ne(marketOrders.companyId, companyId)));
+  let price: bigint | null = null;
+  let at = cityId;
+  const eligible = orders.filter((o) => o.quality <= quality);
+  if (eligible.length) {
+    const cap = eligible.some((o) => o.isSystem) ? await productBidCap(db, catalog, productId) : null;
+    for (const o of eligible) {
+      const p = effectivePrice(o, quality, o.isSystem ? cap : null);
+      if (price === null || p > price) price = p;
+    }
+  } else {
+    const b = (buyers ?? (await bestBuyers(db, catalog, companyId, productId, quality, cityId)))[0];
+    if (b) { price = BigInt(b.pricePerKg); at = b.cityId; }
+  }
+  if (price === null) return null;
+  const revenue = BigInt(qtyKg) * price;
+  const fee = applyBp(revenue, catalog.settings.marketFeeBp);
+  const profit = revenue - fee - cost;
+  return { pricePerKg: m(price), cityId: at, revenue: m(revenue), fee: m(fee), profit: m(profit), profitPerHour: m(minutes > 0 ? (profit * 60n) / BigInt(minutes) : 0n) };
+}
+
 export async function quote(db: Db, catalog: Catalog, companyId: string, req: z.infer<typeof ProductionQuoteReq>, now: Date): Promise<ProductionQuoteDto> {
   const facility = (await db.select().from(facilities).where(and(eq(facilities.id, req.facilityId), eq(facilities.companyId, companyId))).limit(1))[0];
   if (!facility || facility.state === "demolished") fail("NOT_FOUND");
@@ -54,6 +89,7 @@ export async function quote(db: Db, catalog: Catalog, companyId: string, req: z.
   });
   const total = inputsEst + ev.operatingCost;
   const { plan } = ev;
+  const buyers = await bestBuyers(db, catalog, companyId, ev.recipe.output.productId, plan.outputQuality, facility.cityId);
   return {
     recipeId: ev.recipe.id, batches: req.batches, minutes: plan.minutes, endsAt: new Date(now.getTime() + plan.minutes * 60_000).toISOString(),
     inputs,
@@ -61,8 +97,9 @@ export async function quote(db: Db, catalog: Catalog, companyId: string, req: z.
     energyKwh: plan.energyKwh, waterM3: plan.waterM3, laborHours: plan.laborHours,
     cost: { inputs: m(inputsEst), energy: m(plan.energyCost), water: m(plan.waterCost), labor: m(plan.laborCost), total: m(total) },
     unitCostPerKg: m(unitCostPerKg(total, plan.outputKg)),
-    bestBuyers: await bestBuyers(db, catalog, companyId, ev.recipe.output.productId, plan.outputQuality, facility.cityId),
+    bestBuyers: buyers,
     canStart: ev.blockers.length === 0,
     blockers: ev.blockers.map((b) => ({ code: b.code, productId: b.productId, missingKg: b.missingKg, missing: b.missing })),
+    estimate: await estimateSale(db, catalog, companyId, facility.cityId, ev.recipe.output.productId, plan.outputQuality, plan.outputKg, total, plan.minutes, buyers),
   };
 }
