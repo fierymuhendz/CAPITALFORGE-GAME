@@ -7,6 +7,7 @@ import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { FoundCompanyReq, Sector } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
+import { playtestMs } from "../catalog/pace";
 import type { Tx } from "../db/client";
 import { companies, facilities, plots, priceRefs, starterGrants, vehicles } from "../db/schema";
 import { ensureCompanyAccounts } from "../db/seed";
@@ -63,7 +64,7 @@ export async function foundCompany(
     .orderBy(desc(companies.dissolvedAt))
     .limit(1))[0]?.at;
   if (lastClosed) {
-    const until = new Date(lastClosed.getTime() + s.refoundCooldownHours * 3_600_000);
+    const until = new Date(lastClosed.getTime() + playtestMs(catalog, s.refoundCooldownHours * 3_600_000));
     if (now.getTime() < until.getTime()) fail("COMPANY_COOLDOWN", { until: until.toISOString() });
   }
   // Başlangıç bağışı hesap başına bir kez: bu hesabın herhangi bir şirketi bağış aldıysa tekrar verilmez

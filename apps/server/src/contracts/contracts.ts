@@ -3,6 +3,7 @@
  * Kilit sırası: sözleşme satırı → taksit satırı → stok satırları (sıralı) → defter.
  * Koşullar kabulde `terms` JSON'a dondurulur; taksitler terms + taksit satırlarıyla yerleşir.
  */
+import { playtestMs } from "../catalog/pace";
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
@@ -151,7 +152,8 @@ export async function acceptContract(tx: Tx, uow: UnitOfWork, catalog: Catalog, 
   const dues = installmentSchedule(c.firstDueAt.getTime(), c.intervalHours, c.installments);
   const perQty = BigInt(c.qtyPerInstallmentKg) * price;
   const schedule = dues.map((d, i) => ({
-    seq: i + 1, dueAt: new Date(d), windowOpensAt: new Date(d - window * HOUR), graceEndsAt: new Date(d + c.graceHours * HOUR), depositShare: esc.perInstallmentDeposit[i]!,
+    // oyun testi kipi: pencerenin açılmasını beklemek en çok tavan kadar sürer (vade ve ek süre değişmez)
+    seq: i + 1, dueAt: new Date(d), windowOpensAt: new Date(Math.min(d - window * HOUR, now.getTime() + playtestMs(catalog, Math.max(0, d - window * HOUR - now.getTime())))), graceEndsAt: new Date(d + c.graceHours * HOUR), depositShare: esc.perInstallmentDeposit[i]!,
   }));
   await tx.insert(contractInstallments).values(
     schedule.map((x) => ({

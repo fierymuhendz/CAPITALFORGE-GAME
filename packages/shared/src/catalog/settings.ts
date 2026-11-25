@@ -32,8 +32,12 @@ export const DEFAULT_SETTINGS = {
     lateFeeBp: 1000,
     windowHoursBeforeDue: 12,
   },
-  /** deneme dönemi tempo kuralı: oyun süreleri en çok bu kadar dk (0 = sınır yok); yol süreleri sıkıştırılır */
-  pace: { maxMinutes: 60 },
+  /**
+   * deneme dönemi tempo kuralı: oyun süreleri en çok `maxMinutes` dk (0 = sınır yok); yol süreleri sıkıştırılır.
+   * `playtestSeconds`: oyun testi kipi; her oyun beklemesi en çok bu kadar sn (min(özgün, tavan)). 0 = kapalı, normal tempo.
+   * Yeni anahtar: canlıda varsayılanla tamamlanır. Yönetici panelinde "Oyun testi kipi" anahtarı bunu 0/60 yapar.
+   */
+  pace: { maxMinutes: 60, playtestSeconds: 60 },
   freight: {
     /** sistem taşımacısı ücret tarifesi: kalkış ücreti + km başına (kamyon dolusu) */
     systemBaseFee: 45_000,

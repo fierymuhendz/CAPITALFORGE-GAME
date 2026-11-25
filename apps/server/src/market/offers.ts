@@ -8,13 +8,13 @@ import { applyBp, systemCarrierQuote, travelMinutes, wacRemovalCost } from "@cap
 import { roadDistanceKm, type OfferNote, type OfferRowDto, type OffersDto, type OffersQuery } from "@capitalforge/shared";
 import type { z } from "zod";
 import type { Catalog } from "../catalog/catalog";
-import { pickupMinutes, paceTrip } from "../catalog/pace";
+import { minutesToMs, pickupMinutes, paceTrip } from "../catalog/pace";
 import type { DbOrTx } from "../db/client";
 import { holdings, marketOrders } from "../db/schema";
 import { dailyOf, profileByKey } from "../system/daily";
 import { productBidCap } from "../system/pricing";
 import { m } from "../lib/serialize";
-import { companyBriefs, MIN } from "./common";
+import { companyBriefs } from "./common";
 import { effectivePrice } from "./spot";
 
 export interface FreightEstimate { freight: bigint; loads: number; km: number; etaMinutes: number; truckCapacityKg: number }
@@ -118,7 +118,7 @@ export async function offers(
         orderId: o.id, companyName: brief?.name ?? "?", isSystem: brief?.isSystem ?? o.isSystem, cityId: o.cityId, km: fr.km, quality: o.quality,
         availableKg: o.remainingKg, fillKg: fill, pricePerKg: m(o.pricePerKg), goods: m(goods), freight: m(fr.freight), loads: fr.loads,
         truckCapacityKg: fr.truckCapacityKg, fee: "0", total: m(total), perKg: m(ceilDiv(total, BigInt(fill))), profit: null,
-        etaMinutes: fr.etaMinutes, arrivesAt: new Date(now.getTime() + fr.etaMinutes * MIN).toISOString(), notes,
+        etaMinutes: fr.etaMinutes, arrivesAt: new Date(now.getTime() + minutesToMs(fr.etaMinutes)).toISOString(), notes,
       });
     }
     rows.sort((a, b) => cmpBig(BigInt(a.perKg), BigInt(b.perKg)) || a.etaMinutes - b.etaMinutes || a.orderId.localeCompare(b.orderId));
@@ -161,7 +161,7 @@ export async function offers(
       orderId: o.id, companyName: brief?.name ?? "?", isSystem: brief?.isSystem ?? o.isSystem, cityId: o.cityId, km: fr.km, quality,
       availableKg: o.remainingKg, fillKg: fill, pricePerKg: m(price), goods: m(goods), freight: m(fr.freight), loads: fr.loads,
       truckCapacityKg: fr.truckCapacityKg, fee: m(fee), total: m(total), perKg: m(floorDiv(total, BigInt(fill))),
-      profit: cogs === null ? null : m(total - cogs), etaMinutes: fr.etaMinutes, arrivesAt: new Date(now.getTime() + fr.etaMinutes * MIN).toISOString(), notes,
+      profit: cogs === null ? null : m(total - cogs), etaMinutes: fr.etaMinutes, arrivesAt: new Date(now.getTime() + minutesToMs(fr.etaMinutes)).toISOString(), notes,
     });
   }
   const noStock = (r: OfferRowDto) => (r.notes.includes("NO_STOCK") ? 1 : 0);

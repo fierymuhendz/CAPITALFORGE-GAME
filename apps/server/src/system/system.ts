@@ -19,9 +19,9 @@ import { balanceOf, co, post } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { acceptFreightJob, createFreightJob } from "../logistics/jobs";
 import { startShipment } from "../logistics/shipping";
-import { dayKey, dayStart, HOUR, linkMovements, MIN } from "../market/common";
+import { dayKey, dayStart, HOUR, linkMovements } from "../market/common";
 import { closeOrder, settleSpot } from "../market/spot";
-import { pickupMinutes } from "../catalog/pace";
+import { minutesToMs, pickupMinutes, playtestMs } from "../catalog/pace";
 import { bidCapFromRefs, loadRefs } from "./pricing";
 import { dailyOf, spentToday } from "./daily";
 
@@ -194,7 +194,7 @@ async function adoptOrphans(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
   const listings = await deps.db
     .select({ id: marketOrders.id })
     .from(marketOrders)
-    .where(and(eq(marketOrders.side, "sell"), eq(marketOrders.status, "open"), eq(marketOrders.isSystem, false), lte(marketOrders.createdAt, new Date(now.getTime() - sys.unsoldListingHours * HOUR)), isNull(marketOrders.firstFillAt)))
+    .where(and(eq(marketOrders.side, "sell"), eq(marketOrders.status, "open"), eq(marketOrders.isSystem, false), lte(marketOrders.createdAt, new Date(now.getTime() - playtestMs(cat, sys.unsoldListingHours * HOUR))), isNull(marketOrders.firstFillAt)))
     .limit(30);
   for (const l of listings) {
     const uow = new UnitOfWork();
@@ -235,7 +235,7 @@ async function adoptOrphans(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
   const orders = await deps.db
     .select({ id: marketOrders.id })
     .from(marketOrders)
-    .where(and(eq(marketOrders.side, "buy"), eq(marketOrders.status, "open"), eq(marketOrders.isSystem, false), lte(marketOrders.createdAt, new Date(now.getTime() - sys.unfilledOrderHours * HOUR)), isNull(marketOrders.firstFillAt)))
+    .where(and(eq(marketOrders.side, "buy"), eq(marketOrders.status, "open"), eq(marketOrders.isSystem, false), lte(marketOrders.createdAt, new Date(now.getTime() - playtestMs(cat, sys.unfilledOrderHours * HOUR))), isNull(marketOrders.firstFillAt)))
     .limit(30);
   for (const l of orders) {
     const uow = new UnitOfWork();
@@ -336,7 +336,7 @@ async function freightCycle(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
   const open = await deps.db
     .select()
     .from(freightJobs)
-    .where(and(eq(freightJobs.status, "open"), eq(freightJobs.isSystem, false), eq(freightJobs.allowSystemCarrier, true), lte(freightJobs.createdAt, new Date(now.getTime() - pickupMinutes(cat) * MIN))))
+    .where(and(eq(freightJobs.status, "open"), eq(freightJobs.isSystem, false), eq(freightJobs.allowSystemCarrier, true), lte(freightJobs.createdAt, new Date(now.getTime() - minutesToMs(pickupMinutes(cat))))))
     .limit(30);
   for (const j of open) {
     const quote = systemCarrierQuote(j.distanceKm, j.totalKg, cat.settings.freight.systemBaseFee, cat.settings.freight.systemPerKm, truck.capacityKg);

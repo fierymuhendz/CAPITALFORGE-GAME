@@ -92,8 +92,11 @@ export function useT(): I18n {
       time: (iso) => new Intl.DateTimeFormat(tag, { timeStyle: "medium" }).format(new Date(iso)),
       num: (n) => new Intl.NumberFormat(tag).format(n),
       dur: (min) => {
-        const m = Math.max(0, Math.round(min));
-        if (m === 0) return t("offers.now");
+        // oyun testi kipinde süreler kesirli dakika olabilir: 1 dk altı saniye olarak gösterilir
+        const sec = Math.max(0, Math.round(min * 60));
+        if (sec === 0) return t("offers.now");
+        if (sec < 60) return t("common.seconds", { n: sec });
+        const m = Math.round(sec / 60);
         if (m < 60) return t("common.minutes", { n: m });
         const h = Math.floor(m / 60), r = m % 60;
         return r ? `${h} ${t("common.hourShort")} ${t("common.minutes", { n: r })}` : `${h} ${t("common.hourShort")}`;

@@ -102,7 +102,7 @@ export function FacilityDetail({ f }: { f: FacilityDto }) {
                   return (
                     <button key={r.id} type="button" className="choice" aria-pressed={recipeId === r.id} onClick={() => setRecipeId(r.id)}>
                       <span className="t">{cat.recipe(r.id)}</span>
-                      <span className="s">→ {cat.product(r.output.productId)} · {t("common.minutes", { n: r.minutes })}</span>
+                      <span className="s">→ {cat.product(r.output.productId)} · {i.dur(r.minutes)}</span>
                       {locked ? <span className="s warn">⚠ {t("facility.needLevel", { n: r.minBuildingLevel })}</span>
                         : rq ? (rq.estimate ? <Trend value={rq.estimate.profit} text={`${t("facility.estProfit")} ${i.signed(rq.estimate.profit)}`} /> : <span className="s muted">{t("facility.noEstimate")}</span>)
                         : st ? <span className="s warn">⚠ {t("quote.cantStart")}</span> : <span className="s muted">…</span>}
@@ -125,7 +125,7 @@ export function FacilityDetail({ f }: { f: FacilityDto }) {
                   })}
                   {q.inputs.length ? <hr className="sep" /> : null}
                   <KV k={t("quote.output")} v={<b>{cat.product(q.output.productId)} {i.qty(q.output.qtyKg)} · ★{q.output.quality}</b>} />
-                  <KV k={t("quote.duration")} v={<span>{t("common.minutes", { n: q.minutes })}</span>} />
+                  <KV k={t("quote.duration")} v={<span>{i.dur(q.minutes)}</span>} />
                   <KV k={t("quote.total")} v={<b>{i.money(q.cost.total)}</b>} />
                   <KV k={t("facility.estProfit")} v={q.estimate ? <span className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap" }}><Trend value={q.estimate.profit} text={i.signed(q.estimate.profit)} /><span className="muted xs">({i.signed(q.estimate.profitPerHour)}/{t("common.hourShort")})</span></span> : <span className="muted">{t("quote.noBuyers")}</span>} />
                   {q.blockers.map((b, n) => <Notice key={n} tone="warn">⚠ {codeText(i, "quote.blocker", b.code)}{b.productId ? `: ${cat.product(b.productId)}` : ""}{b.missingKg ? ` (${i.qty(b.missingKg)})` : ""}{b.missing ? ` (${i.money(b.missing)})` : ""}</Notice>)}
@@ -164,7 +164,7 @@ export function FacilityDetail({ f }: { f: FacilityDto }) {
                 {(next.qualityBonus ?? 0) > (lvl.qualityBonus ?? 0) ? <Tag tone="good">{t("facility.fx.qualityBonus", { a: next.qualityBonus ?? 0 })}</Tag> : null}
                 <Tag>{t("facility.fx.upkeep", { a: i.money(next.upkeepPerDay, true) })}</Tag>
               </div>
-              <KV k={t("facility.cost")} v={`${i.money(lvl.upgradeCost)} + ${i.qty(lvl.upgradeSteelKg)} ${cat.product("steel")} · ${t("common.minutes", { n: lvl.upgradeMinutes })}`} />
+              <KV k={t("facility.cost")} v={`${i.money(lvl.upgradeCost)} + ${i.qty(lvl.upgradeSteelKg)} ${cat.product("steel")} · ${i.dur(lvl.upgradeMinutes)}`} />
               <Button disabled={!canUpgrade} loading={busy} onClick={() => void run(() => api.post(`/facilities/${f.id}/upgrade`), { ok: "facility.upgradeStarted" })}>{t("facility.upgrade")}</Button>
             </div>
           ) : null}

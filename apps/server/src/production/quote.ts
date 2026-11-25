@@ -1,4 +1,5 @@
 /** POST /production/quote: başlatmadan aynı hesabı yapar (kilitsiz), en iyi alıcıları ekler. */
+import { minutesToMs } from "../catalog/pace";
 import { and, eq, gt, ne } from "drizzle-orm";
 import type { z } from "zod";
 import { SYSTEM_PROFILES, roadDistanceKm, type ProductionQuoteDto, type ProductionQuoteReq } from "@capitalforge/shared";
@@ -69,7 +70,7 @@ export async function estimateSale(
   const revenue = BigInt(qtyKg) * price;
   const fee = applyBp(revenue, catalog.settings.marketFeeBp);
   const profit = revenue - fee - cost;
-  return { pricePerKg: m(price), cityId: at, revenue: m(revenue), fee: m(fee), profit: m(profit), profitPerHour: m(minutes > 0 ? (profit * 60n) / BigInt(minutes) : 0n) };
+  return { pricePerKg: m(price), cityId: at, revenue: m(revenue), fee: m(fee), profit: m(profit), profitPerHour: m(minutes > 0 ? (profit * 3600n) / BigInt(Math.max(1, Math.round(minutes * 60))) : 0n) };
 }
 
 export async function quote(db: Db, catalog: Catalog, companyId: string, req: z.infer<typeof ProductionQuoteReq>, now: Date): Promise<ProductionQuoteDto> {
@@ -91,7 +92,7 @@ export async function quote(db: Db, catalog: Catalog, companyId: string, req: z.
   const { plan } = ev;
   const buyers = await bestBuyers(db, catalog, companyId, ev.recipe.output.productId, plan.outputQuality, facility.cityId);
   return {
-    recipeId: ev.recipe.id, batches: req.batches, minutes: plan.minutes, endsAt: new Date(now.getTime() + plan.minutes * 60_000).toISOString(),
+    recipeId: ev.recipe.id, batches: req.batches, minutes: plan.minutes, endsAt: new Date(now.getTime() + minutesToMs(plan.minutes)).toISOString(),
     inputs,
     output: { productId: ev.recipe.output.productId, qtyKg: plan.outputKg, quality: plan.outputQuality },
     energyKwh: plan.energyKwh, waterM3: plan.waterM3, laborHours: plan.laborHours,

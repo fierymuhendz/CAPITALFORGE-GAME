@@ -115,7 +115,7 @@ function PlotInfo({ plot, onDone }: { plot: PlotDto; onDone: () => void }) {
           <Card key={b.id} tight onClick={() => setChoice(b.id)} selected={choice === b.id}>
             <div className="col tight">
               <div className="row between"><b>{i.name(b.name)}</b><span className="num small">{i.money(b.buildCost)}</span></div>
-              <span className="small muted2">{cat.product("steel")}: {i.qty(b.buildSteelKg)} · {t("common.minutes", { n: b.buildMinutes })}</span>
+              <span className="small muted2">{cat.product("steel")}: {i.qty(b.buildSteelKg)} · {i.dur(b.buildMinutes)}</span>
               {reasons.length ? <span className="small warn">⚠ {reasons.join(" · ")}</span> : <span className="small good">✓ {t("play.canBuild")}</span>}
             </div>
           </Card>

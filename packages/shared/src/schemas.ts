@@ -144,9 +144,21 @@ export const AdminTimeReq = z.object({ minutes: z.number().int().min(1).max(60 *
 export const AdminResetPasswordReq = z.object({ accountId: uuid, newPassword: passwordSchema, reasoning: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
 export const AdminConnectionsAccessReq = z.object({ enabled: z.boolean(), reason: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
 export const AdminAckReq = z.object({ idempotencyKey: idempotencyKey.optional() });
+/** Oyuncu yönetimi: hesabı askıya al / yeniden etkinleştir */
+export const AdminPlayerStatusReq = z.object({ suspended: z.boolean(), reason: z.string().trim().min(3).max(500), idempotencyKey });
+/** Oyuncu yönetimi: nakit ayarı (kuruş). add/deduct: tutar > 0; set: hedef bakiye ≥ 0. Her istek tek kez uygulanır (idempotencyKey zorunlu). */
+export const AdminBalanceReq = z
+  .object({
+    mode: z.enum(["add", "deduct", "set"]),
+    amount: z.number().int().min(0).max(MAX_MONEY),
+    reason: z.string().trim().min(3).max(500),
+    idempotencyKey,
+  })
+  .refine((b) => b.mode === "set" || b.amount > 0, { path: ["amount"] });
 /** GET sorguları (query string) */
 const likeText = z.string().trim().min(1).max(40);
 export const AdminSearchQuery = z.object({ q: likeText });
+export const AdminPlayersQuery = z.object({ q: z.string().trim().max(40).optional() });
 export const AdminOverviewQuery = z.object({ productId: id.optional(), cityId: id.optional(), byCity: z.enum(["0", "1"]).optional() });
 export const AdminProductQuery = z.object({ cityId: id.optional() });
 export const AdminAlertsQuery = z.object({
