@@ -497,7 +497,7 @@ export class SceneEngine {
     };
     const b = p.building;
     if (b) {
-      const crop = hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder;
+      const crop = b.outputProductId === "grain" ? PAL.grain : b.outputProductId === "fodder" ? PAL.fodder : hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder;
       const def = this.def(b.type, b.level, b.type === "field" ? crop : "-");
       node.height = def.height;
       const m = new Mesh(def.geometry, this.matVC);

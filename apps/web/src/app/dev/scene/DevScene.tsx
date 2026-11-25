@@ -46,7 +46,7 @@ function makeMap(): WorldMapDto {
         ? {
           id: `fac-${i}`, type, level: 1 + Math.floor(rnd() * rnd() * 3.2), qualityLevel: 1,
           status: STATUSES[Math.floor(rnd() * STATUSES.length)] as "working",
-          activeUntil: null, ownerCompanyId: companyId,
+          activeUntil: null, ownerCompanyId: companyId, outputProductId: type === "field" ? (rnd() < 0.5 ? "grain" : "fodder") : null,
         }
         : null,
     };

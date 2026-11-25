@@ -86,6 +86,8 @@ export interface FacilityMapDto {
   /** çalışan iş(ler)in bitiş zamanı */
   activeUntil: Iso | null;
   ownerCompanyId: string;
+  /** çalışan işin çıktı ürünü (görselde tarla rengi vb.), boşta null */
+  outputProductId: string | null;
 }
 
 /** GET /world/map: 3D şehir ve 2D harita için tek yük */

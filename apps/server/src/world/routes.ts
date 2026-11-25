@@ -59,15 +59,20 @@ export async function loadPlots(deps: Deps, cityId?: string): Promise<PlotDto[]>
   const fac = await deps.db.select().from(facilities).where(ne(facilities.state, "demolished"));
   const cos = await deps.db.select({ id: companies.id, name: companies.name, isSystem: companies.isSystem }).from(companies).where(isNull(companies.dissolvedAt));
   const running = await deps.db
-    .select({ facilityId: productionJobs.facilityId, endsAt: productionJobs.endsAt })
+    .select({ facilityId: productionJobs.facilityId, endsAt: productionJobs.endsAt, recipeId: productionJobs.recipeId })
     .from(productionJobs)
     .where(eq(productionJobs.status, "running"));
   const coMap = new Map(cos.map((c) => [c.id, c]));
   const facByPlot = new Map(fac.map((f) => [f.plotId, f]));
   const runByFac = new Map<string, Date>();
+  const productByFac = new Map<string, string>();
   for (const r of running) {
     const cur = runByFac.get(r.facilityId);
-    if (!cur || r.endsAt < cur) runByFac.set(r.facilityId, r.endsAt);
+    if (!cur || r.endsAt < cur) {
+      runByFac.set(r.facilityId, r.endsAt);
+      const recipe = deps.catalog.recipes.get(r.recipeId);
+      if (recipe) productByFac.set(r.facilityId, recipe.output.productId);
+    }
   }
   return ps.map((p) => {
     const f = facByPlot.get(p.id);
@@ -82,6 +87,7 @@ export async function loadPlots(deps: Deps, cityId?: string): Promise<PlotDto[]>
         id: f.id, type: f.type, level: f.level, qualityLevel: f.qualityLevel, status,
         activeUntil: (until ?? (status === "constructing" ? f.constructionEndsAt : status === "upgrading" ? f.upgradeEndsAt : null))?.toISOString() ?? null,
         ownerCompanyId: f.companyId,
+        outputProductId: productByFac.get(f.id) ?? null,
       };
     }
     const o = p.ownerCompanyId ? coMap.get(p.ownerCompanyId) ?? null : null;
