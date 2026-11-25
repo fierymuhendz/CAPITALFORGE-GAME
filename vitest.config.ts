@@ -20,8 +20,8 @@ export default defineConfig({
       {
         test: {
           name: "integration",
-          // Mevcut ticaret testleri taze oyuncularla çalışır; bekleme süresi testleri config'i kendisi açar.
-          env: { NEW_ACCOUNT_TRADE_DELAY_SECONDS: "0" },
+          // Her dosya kendi temiz şemasıyla başlar (test/harness.ts).
+          env: { DISABLE_RATE_LIMIT: "1", DATABASE_URL: process.env.TEST_DATABASE_URL ?? "postgres://capitalforge:capitalforge@localhost:5432/capitalforge_test" },
           include: ["packages/**/*.int.test.ts", "apps/server/**/*.int.test.ts"],
           exclude: ["**/node_modules/**"],
           fileParallelism: false,

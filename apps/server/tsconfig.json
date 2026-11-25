@@ -1,5 +1,4 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "experimentalDecorators": true, "useDefineForClassFields": false },
-  "include": ["src", "drizzle.config.ts"]
+  "include": ["src", "scripts", "drizzle.config.ts"]
 }

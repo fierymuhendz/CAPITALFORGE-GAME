@@ -1,51 +1,44 @@
-import Fastify from "fastify";
-import { Server } from "@colyseus/core";
-import { WebSocketTransport } from "@colyseus/ws-transport";
-import { ROOMS } from "@capitalforge/shared";
-import { config } from "./config";
+import pino from "pino";
+import { Redis } from "ioredis";
+import { loadConfig } from "./config";
 import { createDb } from "./db/client";
-import { registerRoutes } from "./http/routes";
-import { bridgeTicks, startTicker } from "./market/ticker";
-import { createRedis } from "./redis";
-import { logger, reportError } from "./observability/log";
-import { MarketRoom } from "./rooms/MarketRoom";
+import { Clock } from "./clock";
+import { Catalog } from "./catalog/catalog";
+import { EventBus } from "./events/bus";
+import type { Deps } from "./deps";
+import { buildApp } from "./http/app";
+import { registerTasks } from "./http/modules";
+import { startScheduler } from "./scheduler/scheduler";
+import { registerAdminSetupCode } from "./auth/routes";
+import { seedWorld } from "./db/seed";
 
-const db = createDb();
-const redis = createRedis();
+const config = loadConfig();
+const log = pino({ level: config.logLevel, redact: ["req.headers.cookie", "req.headers.authorization", "*.password", "*.setupCode"] });
+const { db, sql } = createDb(config.databaseUrl);
+const redis = new Redis(config.redisUrl, { lazyConnect: false, maxRetriesPerRequest: 2, enableOfflineQueue: true });
+redis.on("error", (err) => log.warn({ err: err.message }, "redis hatası"));
+const clock = new Clock(config.allowTimeTravel);
+const catalog = new Catalog();
+const deps: Deps = { db, redis, clock, catalog, events: new EventBus(), config, log };
 
-const app = Fastify({ loggerInstance: logger, trustProxy: config.trustProxy });
-registerRoutes(app, { db, redis });
+await seedWorld(db);
+await catalog.reload(db);
+await clock.load(db);
+await registerAdminSetupCode(deps);
+setInterval(() => void catalog.reload(db).catch((err) => log.warn({ err }, "katalog tazeleme hatası")), 60_000);
 
-await app.ready();
-MarketRoom.deps = { db, redis };
-const gameServer = new Server({ transport: new WebSocketTransport({ server: app.server }) });
-gameServer.define(ROOMS.market, MarketRoom);
+registerTasks();
+const app = await buildApp(deps);
+await app.listen({ port: config.port, host: "0.0.0.0" });
+const stop = config.schedulerEnabled ? startScheduler(deps) : () => {};
+log.info({ port: config.port, timeTravel: config.allowTimeTravel }, "Capital Forge sunucusu başladı");
 
-// Tick sonuçlarını Redis kanalından odalara aktar, sonra tek tick döngüsünü başlat.
-const stopBridge = await bridgeTicks(redis.duplicate());
-const stopTicker = startTicker(db, redis);
-
-await gameServer.listen(config.port);
-app.log.info(`Sunucu ${config.port} portunda hazır`);
-
-let shuttingDown = false;
-async function shutdown(code = 0): Promise<void> {
-  if (shuttingDown) return; // tek seferlik: sinyal/istisna yeniden girişine karşı
-  shuttingDown = true;
-  stopTicker();
-  await stopBridge().catch(() => undefined);
-  await gameServer.gracefullyShutdown(false).catch(() => undefined);
-  await app.close().catch(() => undefined);
+const shutdown = async () => {
+  stop();
+  await app.close().catch(() => {});
+  await sql.end({ timeout: 5 }).catch(() => {});
   redis.disconnect();
-  process.exit(code);
-}
-process.on("SIGINT", () => void shutdown());
+  process.exit(0);
+};
 process.on("SIGTERM", () => void shutdown());
-
-process.on("unhandledRejection", (reason) => reportError(reason, { what: "unhandledRejection" }));
-process.on("uncaughtException", (err) => {
-  logger.fatal({ err }, "uncaughtException");
-  // Süreç durumu belirsiz: temiz kapat ve çık (compose yeniden başlatır).
-  setTimeout(() => process.exit(1), 5000).unref();
-  void shutdown(1);
-});
+process.on("SIGINT", () => void shutdown());

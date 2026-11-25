@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@capitalforge/shared", "@capitalforge/economy"],
   async rewrites() {
-    // Sunucuda /api öneki yok: önek kırpılır.
+    // Yerel geliştirme: /api/* → oyun sunucusu (önek kırpılır). Üretimde Caddy bu yolu doğrudan sunucuya yollar.
     return [{ source: "/api/:path*", destination: `${gameServerUrl}/:path*` }];
   },
 };

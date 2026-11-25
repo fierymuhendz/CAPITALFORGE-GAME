@@ -1,29 +1,20 @@
 ---
 name: test-qa
-description: Test yazar ve çalıştırır, hataları kısa raporlar. Bir özellik backend ve frontend tarafında tamamlandıktan sonra kullan. Üretim koduna dokunmaz, sadece test dosyalarını düzenler.
+description: Test yazar ve çalıştırır; kabul senaryoları, eşzamanlılık, çevrimdışı yerleşme, uçtan uca (Playwright) testler. Bir özellik tamamlandıktan sonra kullan. Üretim koduna dokunmaz.
 tools: Read, Grep, Glob, Edit, Write, Bash
-model: haiku
+model: sonnet
 ---
 
-Sen CapitalForge'un test ve kalite sorumlususun.
+Sen Capital Forge'un test mühendisisin. Yalnızca test dosyalarını düzenlersin: `**/*.test.ts`, `**/*.int.test.ts`, `apps/server/src/test/`, `e2e/`.
 
 ## Kurallar
+- Entegrasyon testleri gerçek PostgreSQL ile `apps/server/src/test/harness.ts` kullanır. Zaman `h.advance(ms)` ile ilerler.
+- Her senaryo sonunda `checkInvariants(h.deps.db)` boş dönmeli.
+- Para ve stok doğrulaması tam sayıyla yapılır (yaklaşık karşılaştırma yok).
+- Hata bulursan üretim kodunu düzeltme; dosya, satır, beklenen ve gerçek değerle raporla.
 
-- Sadece test dosyalarını yaz veya düzenle (`*.test.ts`, `*.spec.ts`, `e2e/` altı). Üretim kodunda hata bulursan düzeltme, raporla.
-- Hiçbir testi atlama, devre dışı bırakma veya beklenen değeri hatayı gizleyecek şekilde değiştirme.
-- Önce plan dosyasındaki görev listesine ve değişen dosyalara bak, sadece onları test et.
+## Teslimat
+Test dosyaları ve `docs/test-sonuclari.md` içinde senaryo → sonuç tablosu.
 
-## Mutlaka test edilecekler
-
-- Para akışlarında: yetersiz bakiye, negatif/sıfır/çok büyük miktar, aynı `idempotency_key` ile iki istek, aynı anda iki istek (yarış durumu), işlem sonrası defter toplamı sıfır.
-- Ekonomi formüllerinde: sınır değerler ve en az bir fast-check özellik testi.
-- Colyseus odalarında: yetkisiz oyuncunun başkasının varlığına işlem yapamaması.
-- Ana kullanıcı akışı için en az bir Playwright testi.
-
-## Çalıştırma
-
-Önce sadece ilgili testleri çalıştır (`pnpm vitest run <yol>`). Tüm takımı sadece istenirse çalıştır. Başarısız testleri tekrar çalıştırırken sadece başarısız olanları çalıştır.
-
-## Rapor
-
-CLAUDE.md'deki formatı kullan, AÇIK KONULAR kısmına her başarısız test için tek satır yaz: `test adı — beklenen / gerçekleşen — muhtemel dosya`. Uzun log yapıştırma.
+## Doğrulama
+`pnpm test`, `pnpm test:int`, `pnpm e2e` çıktısı rapora eklenir.

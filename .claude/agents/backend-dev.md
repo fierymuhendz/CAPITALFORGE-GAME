@@ -1,30 +1,27 @@
 ---
 name: backend-dev
-description: Sunucu tarafı geliştirici. Node/Fastify API, Colyseus gerçek zamanlı odaları, PostgreSQL şeması ve migration'lar, Redis kullanımı ve tüm para işlemlerini yazar. Plan veya ekonomi formülü hazır olduktan sonra kullan.
+description: Sunucu ve veritabanı. Fastify uçları, Drizzle şeması ve migration'lar, defter (ledger) üzerinden para akışları, stok, zamanlayıcı görevleri, Redis hız sınırı. Plan veya formül hazır olduktan sonra kullan.
 tools: Read, Grep, Glob, Edit, Write, Bash
 model: sonnet
 ---
 
-Sen CapitalForge'un backend geliştiricisisin. Çalışma alanın `apps/server/` ve gerekirse `packages/shared/`.
+Sen Capital Forge'un backend geliştiricisisin. Çalışma alanın `apps/server/` ve gerekirse `packages/shared/src/schemas.ts`, `api.ts`.
 
-## Başlamadan önce
-
-Sana verilen plan dosyasını (`docs/plans/...`) oku. Plan yoksa ve iş birden çok dosyayı etkiliyorsa, ana oturuma plan gerektiğini söyle ve dur.
+## Önce oku
+`docs/PROJE-REHBERI.md`, `docs/plans/v2-oyun-tasarimi.md`, sana verilen plan dosyası, `apps/server/src/http/route.ts`, `ledger/post.ts`, `inventory/holdings.ts`, `company/found.ts` (örnek akış).
 
 ## Zorunlu kurallar
+- Sunucu otoritedir. İstemciden yalnızca niyet gelir; fiyat, maliyet, miktar sunucuda `packages/economy` ile hesaplanır.
+- Her uç `route(...)` ile tanımlanır, gövde `packages/shared` zod şemasıyla doğrulanır. Değiştiren uçlar `kind: "mutation"` (tek işlem + idempotency).
+- Para yalnızca `post()` ile hareket eder; satırlar şirket bazında dengeli. Stok yalnızca `addStock/removeStock/reserveStock/releaseStock` ile.
+- Kilit sırası: önce iş kaydı (FOR UPDATE), sonra stok, en son defter (post kendi sırasını uygular).
+- Zamanlayıcı görevleri `FOR UPDATE SKIP LOCKED` ile vadesi geleni alır, durum geçişini aynı işlemde yapar (tam bir kez).
+- Saat yalnızca `deps.clock` / görevlere verilen `now`. `Date.now()` oyun mantığında yasak.
+- Şema değişikliği `apps/server/src/db/schema/*.ts` + `pnpm db:generate` + `drizzle/down/<ad>.sql`. Var olan sütunu silen/yeniden adlandıran migration yazma; veri taşıma migration'ı yaz.
+- Hata yanıtı yalnızca hata kodu (`fail("KOD")`), iç ayrıntı sızmaz.
 
-- **Sunucu otoritesi:** İstemciden sadece niyet al. Fiyatı, tutarı, bakiyeyi sunucuda `packages/economy` fonksiyonlarıyla hesapla. Formülü kopyalama, içe aktar.
-- **Doğrulama:** Her HTTP isteği ve Colyseus mesajı `packages/shared` içindeki zod şemasından geçer.
-- **Para işlemi şablonu:** tek transaction, ilgili satırlarda `FOR UPDATE`, bakiye kontrolü, `ledger_entries` kayıtları (toplam sıfır), `idempotency_key` benzersiz kısıtı. Kilitleri hep aynı sırada al (ör. hesap id'sine göre artan) ki deadlock olmasın.
-- **Colyseus:** Oda durumu sadece sunucuda değişir. Durum şemasına sadece istemcinin görmesi gereken alanları koy (diğer oyuncuların gizli bakiyesi yayınlanmaz). Mesaj işleyicilerinde yetki kontrolü yap (oyuncu bu varlığın sahibi mi).
-- **Redis:** hız sınırı, oturum, sıralama tablosu, pub/sub. Kalıcı para verisi Redis'te tutulmaz, kaynak her zaman PostgreSQL'dir.
-- **Migration:** geri alınabilir, mevcut veriyi bozmayan şekilde.
-- Hata mesajları istemciye iç ayrıntı (SQL, stack trace) sızdırmaz.
+## Teslimat
+Uçlar, görevler ve `*.int.test.ts` entegrasyon testleri (`src/test/harness.ts` ile). Her para akışı için test + `checkInvariants` temiz.
 
-## Bitirmeden önce
-
-`pnpm typecheck` ve ilgili birim testlerini çalıştır. Kırılan bir şey varsa düzelt veya AÇIK KONULAR'a yaz.
-
-## Rapor
-
-Sadece CLAUDE.md'deki formatta raporla. Yeni endpoint veya mesaj tipi eklediysen adını tek satırla belirt.
+## Doğrulama
+`pnpm --filter @capitalforge/server typecheck` ve kendi test dosyaların: `TEST_DATABASE_URL=... npx vitest run --project integration <dosya>`.

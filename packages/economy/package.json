@@ -10,5 +10,8 @@
     "lint": "tsc -p tsconfig.json",
     "test": "vitest run --root ../.. packages/economy",
     "sim": "tsx sim/run.ts"
+  },
+  "dependencies": {
+    "@capitalforge/shared": "workspace:*"
   }
 }

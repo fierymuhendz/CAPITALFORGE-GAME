@@ -1,31 +1,41 @@
 /**
- * Migration çalıştırıcı (üretim ve CI). drizzle-kit migrate hata ayrıntısını yutuyor;
- * bu betik aynı drizzle.__drizzle_migrations tablosunu kullanır ve hatayı açıkça yazar.
- * Veritabanı henüz bağlantı kabul etmiyorsa birkaç kez yeniden dener.
+ * Migration çalıştırıcı (üretim, CI, test). Migration geçmişi cf_migrations şemasında tutulur;
+ * eski oyunun drizzle.__drizzle_migrations tablosuna dokunulmaz. Bağlantı yoksa yeniden dener.
+ * Migration sonrası katalog/arsa/sistem şirketi tohumlaması yapılır (yalnızca eksik satırlar).
  */
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { fileURLToPath } from "node:url";
+import * as schema from "./schema";
+import { seedWorld } from "./seed";
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error("DATABASE_URL tanımlı değil");
-  process.exit(1);
+export const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
+
+export async function runMigrations(url: string): Promise<void> {
+  const client = postgres(url, { max: 1, onnotice: () => {}, types: { bigint: postgres.BigInt } });
+  try {
+    await client`select 1`;
+    const db = drizzle(client, { schema });
+    await migrate(db, { migrationsFolder, migrationsSchema: "cf_migrations", migrationsTable: "migrations" });
+    await seedWorld(db);
+  } finally {
+    await client.end({ timeout: 2 }).catch(() => {});
+  }
 }
-const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 async function main(): Promise<void> {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.error("DATABASE_URL tanımlı değil");
+    process.exit(1);
+  }
   for (let attempt = 1; ; attempt++) {
-    const client = postgres(url!, { max: 1, onnotice: () => {} });
     try {
-      await client`select 1`;
-      await migrate(drizzle(client), { migrationsFolder });
-      console.log("Migration'lar uygulandı");
-      await client.end();
+      await runMigrations(url);
+      console.log("Migration'lar ve tohumlama tamam");
       return;
     } catch (err) {
-      await client.end({ timeout: 1 }).catch(() => {});
       const code = (err as { code?: string }).code;
       const connErr = code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "57P03" || code === "EAI_AGAIN";
       if (connErr && attempt < 10) {
@@ -39,4 +49,4 @@ async function main(): Promise<void> {
   }
 }
 
-await main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) await main();

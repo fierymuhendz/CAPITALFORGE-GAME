@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1795002876478,
-      "tag": "0000_deep_lake",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1795010795444,
-      "tag": "0001_fixed_living_mummy",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1795016161251,
-      "tag": "0002_sirket_ve_uretim",
+      "when": 1795597193333,
+      "tag": "0000_v2_dunya",
       "breakpoints": true
     }
   ]
