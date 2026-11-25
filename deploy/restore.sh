@@ -61,10 +61,10 @@ else
 fi
 
 # Doğrulama: tablolar var olmalı, defter toplamı 0 olmalı. Hata = başarısızlık.
-for t in players ledger_entries; do
+for t in cf.accounts cf.companies cf.ledger_entries; do
   n=$(psql -d "$TARGET" -Atc "SELECT count(*) FROM $t") || die "$t tablosu okunamadı (eksik tablo)"
   log "$t: $n satır"
 done
-sum=$(psql -d "$TARGET" -Atc "SELECT COALESCE(sum(amount), 0) FROM ledger_entries") || die "defter toplamı hesaplanamadı"
-[ "$sum" = "0" ] || die "defter değişmezi bozuk: ledger_entries toplamı $sum (0 olmalı)"
+sum=$(psql -d "$TARGET" -Atc "SELECT COALESCE(sum(amount), 0) FROM cf.ledger_entries") || die "defter toplamı hesaplanamadı"
+[ "$sum" = "0" ] || die "defter değişmezi bozuk: cf.ledger_entries toplamı $sum (0 olmalı)"
 log "TAMAM"

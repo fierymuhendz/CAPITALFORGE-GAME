@@ -14,8 +14,8 @@ export const RECIPES: RecipeDef[] = [
   },
   {
     id: "milk_cows", buildingType: "barn", name: { tr: "Süt sağımı", en: "Milk the herd" },
-    inputs: [{ productId: "fodder", kg: 1500 }], output: { productId: "raw_milk", kg: 1000 },
-    minutes: 60, laborHours: 8, energyKwh: 30, waterM3: 10, minBuildingLevel: 1,
+    inputs: [{ productId: "fodder", kg: 1200 }], output: { productId: "raw_milk", kg: 1000 },
+    minutes: 60, laborHours: 6, energyKwh: 30, waterM3: 10, minBuildingLevel: 1,
   },
   {
     id: "mine_iron", buildingType: "mine", name: { tr: "Demir cevheri çıkarma", en: "Mine iron ore" }, deposit: "iron",
@@ -45,6 +45,6 @@ export const RECIPES: RecipeDef[] = [
   {
     id: "smelt_steel", buildingType: "steel_mill", name: { tr: "Çelik dökümü", en: "Smelt steel" },
     inputs: [{ productId: "iron_ore", kg: 2000 }, { productId: "coal", kg: 1000 }], output: { productId: "steel", kg: 1000 },
-    minutes: 180, laborHours: 12, energyKwh: 400, waterM3: 20, minBuildingLevel: 1,
+    minutes: 180, laborHours: 10, energyKwh: 350, waterM3: 20, minBuildingLevel: 1,
   },
 ];
