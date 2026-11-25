@@ -11,3 +11,7 @@ coverage
 dump.rdb
 apps/web/.next-e2e/
 apps/web/.next-*/
+
+# yerel oyun testi çıktıları (hesap bilgisi içerir)
+e2e/ui/out/
+e2e/ui/.admin-state.json
