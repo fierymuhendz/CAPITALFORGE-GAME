@@ -301,6 +301,21 @@ export interface FinanceDto {
   netWorth: Money;
 }
 
+/** GET /companies/:id, /companies/search */
+export interface PublicCompanyDto {
+  id: string; name: string; sector: Sector; homeCityId: string; level: number; reputationBp: number;
+  onTimeDeliveries: number; lateOrMissed: number; isSystem: boolean; createdAt: Iso;
+}
+
+/** GET /finance/sales/:id: satış izi (yalnızca isteyen şirketin defter satırları gösterilir) */
+export interface SaleTraceDto {
+  sale: SaleDto;
+  contract: null | { id: string; status: string; pricePerKg: Money; deliveryCityId: string; installments: number };
+  installment: null | { id: string; seq: number; dueAt: Iso; status: string };
+  shipment: null | { id: string; originCityId: string; destCityId: string; departedAt: Iso; arrivesAt: Iso; deliveredAt: Iso | null; status: string };
+  transactions: Array<{ id: string; at: Iso; kind: string; memo: string; lines: Array<{ account: string; amount: Money }> }>;
+}
+
 export interface LedgerLineDto {
   transactionId: string; at: Iso; kind: string; memo: string; account: string; amount: Money;
   refType: string | null; refId: string | null;
@@ -351,7 +366,7 @@ export interface AdminConnectionGroupDto {
 
 export interface AdminReviewDto {
   group: AdminConnectionGroupDto;
-  trades: Array<{ at: Iso; kind: string; refId: string; from: string; to: string; productId: string | null; qtyKg: number | null; pricePerKg: Money | null; value: Money; anomaly: null | { refPricePerKg: Money; deviationBp: number; comparables: number; insufficientData: boolean } }>;
+  trades: Array<{ at: Iso; kind: string; refId: string; from: string; to: string; productId: string | null; qtyKg: number | null; pricePerKg: Money | null; value: Money; anomaly: null | { refPricePerKg: Money; deviationBp: number; comparables: number; insufficientData: boolean; flagged?: boolean } }>;
   totals: { valueTransferred: Money; byDirection: Array<{ from: string; to: string; value: Money }> };
 }
 
@@ -363,4 +378,44 @@ export interface AdminCaseDto {
 
 export interface AdminAuditDto {
   rows: Array<{ id: string; at: Iso; adminUsername: string; action: string; target: string; before: unknown; after: unknown; reasoning: string | null }>;
+}
+
+/** GET /admin/products/:productId */
+export interface AdminProductDetailDto {
+  productId: string; cityId: string | null;
+  metrics: AdminProductMetricsDto["rows"];
+  holders: Array<{ companyId: string; companyName: string; isSystem: boolean; cityId: string; quality: number; qtyKg: number; reservedKg: number; avgCostPerKg: Money }>;
+  recentTrades: Array<{ id: string; at: Iso; cityId: string; quality: number; qtyKg: number; pricePerKg: Money; buyerName: string; sellerName: string; buyerIsSystem: boolean; sellerIsSystem: boolean }>;
+}
+
+/** GET /admin/search */
+export interface AdminSearchDto {
+  accounts: Array<{ id: string; username: string; role: "player" | "admin"; frozen: boolean; createdAt: Iso; companyId: string | null; companyName: string | null }>;
+  companies: Array<{ id: string; name: string; sector: Sector; homeCityId: string; level: number; isSystem: boolean; dissolved: boolean; accountId: string | null; username: string | null }>;
+}
+
+/** GET /admin/companies/:id */
+export interface AdminCompanyDetailDto {
+  company: { id: string; name: string; sector: Sector; homeCityId: string; level: number; xp: number; isSystem: boolean; createdAt: Iso; dissolvedAt: Iso | null; onTimeDeliveries: number; lateOrMissed: number };
+  account: null | { id: string; username: string; role: "player" | "admin"; frozen: boolean };
+  balances: Record<string, Money>;
+  ledger: LedgerLineDto[];
+  sales: SaleDto[];
+  holdings: HoldingDto[];
+  facilities: Array<{ id: string; type: string; level: number; qualityLevel: number; state: string; cityId: string; stalledReason: unknown; runningJobs: number }>;
+  counts: { openListings: number; openOrders: number; activeContracts: number; openFreightJobs: number; vehicles: number };
+}
+
+/** GET /admin/catalog */
+export interface AdminCatalogDto {
+  recipes: Array<{ id: string; version: number; data: unknown; updatedAt: Iso }>;
+  products: Array<{ id: string; version: number; data: unknown; updatedAt: Iso }>;
+  settings: Record<string, { value: unknown; updatedAt: Iso | null }>;
+}
+
+/** PATCH /admin/catalog/*, /admin/settings */
+export interface AdminChangeResultDto {
+  id: string; version: number;
+  /** etkilenen kayıtlar: ör. bu tarifi kullanan çalışan iş sayısı */
+  affected: Record<string, number>;
 }

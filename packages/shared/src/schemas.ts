@@ -107,6 +107,10 @@ export const LoanReq = z.object({ amount: money, termDays: z.number().int().min(
 export const RepayReq = z.object({ amount: money, idempotencyKey });
 export const ResearchStartReq = z.object({ idempotencyKey });
 export const NotificationsReadReq = z.object({ ids: z.array(uuid).max(200).optional(), all: z.boolean().optional() });
+// Modül A: GET sorgu şemaları
+export const BeforeQuery = z.object({ before: z.iso.datetime().optional() });
+export const MovementsQuery = z.object({ productId: id.optional(), cityId: id.optional(), quality: z.coerce.number().int().min(1).max(5).optional() });
+export const CompanySearchQuery = z.object({ q: z.string().trim().min(1).max(40) });
 
 // Yönetici
 export const AdminCaseReq = z.object({
@@ -114,9 +118,10 @@ export const AdminCaseReq = z.object({
   subjectId: z.string().min(1).max(80),
   title: z.string().min(3).max(120),
   reasoning: z.string().min(3).max(2000),
+  idempotencyKey: idempotencyKey.optional(),
 });
-export const AdminNoteReq = z.object({ text: z.string().min(1).max(2000) });
-export const AdminCloseReq = z.object({ resolution: z.enum(["no_action", "warning", "enforced"]), reasoning: z.string().min(3).max(2000) });
+export const AdminNoteReq = z.object({ text: z.string().min(1).max(2000), idempotencyKey: idempotencyKey.optional() });
+export const AdminCloseReq = z.object({ resolution: z.enum(["no_action", "warning", "enforced"]), reasoning: z.string().min(3).max(2000), idempotencyKey: idempotencyKey.optional() });
 export const AdminEnforceReq = z.object({
   action: z.enum(["freeze_account", "unfreeze_account", "reverse_transaction", "cancel_listing", "cancel_contract"]),
   targetId: z.string().min(1).max(80),
@@ -131,11 +136,25 @@ export const AdminRecipePatchReq = z.object({
   outputKg: z.number().int().min(1).max(MAX_QTY_KG).optional(),
   inputs: z.array(z.object({ productId: id, kg: z.number().int().positive().max(MAX_QTY_KG) })).max(6).optional(),
   reasoning: z.string().min(3).max(500),
+  idempotencyKey: idempotencyKey.optional(),
 });
-export const AdminSettingReq = z.object({ key: z.string().min(1).max(80), value: z.unknown(), reasoning: z.string().min(3).max(500) });
-export const AdminProductPatchReq = z.object({ basePricePerKg: pricePerKg, reasoning: z.string().min(3).max(500) });
+export const AdminSettingReq = z.object({ key: z.string().min(1).max(80), value: z.unknown(), reasoning: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
+export const AdminProductPatchReq = z.object({ basePricePerKg: pricePerKg, reasoning: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
 export const AdminTimeReq = z.object({ minutes: z.number().int().min(1).max(60 * 24 * 30) });
-export const AdminResetPasswordReq = z.object({ accountId: uuid, newPassword: passwordSchema, reasoning: z.string().min(3).max(500) });
+export const AdminResetPasswordReq = z.object({ accountId: uuid, newPassword: passwordSchema, reasoning: z.string().min(3).max(500), idempotencyKey: idempotencyKey.optional() });
+export const AdminAckReq = z.object({ idempotencyKey: idempotencyKey.optional() });
+/** GET sorguları (query string) */
+const likeText = z.string().trim().min(1).max(40);
+export const AdminSearchQuery = z.object({ q: likeText });
+export const AdminOverviewQuery = z.object({ productId: id.optional(), cityId: id.optional(), byCity: z.enum(["0", "1"]).optional() });
+export const AdminProductQuery = z.object({ cityId: id.optional() });
+export const AdminAlertsQuery = z.object({
+  kind: z.enum(["price_anomaly", "shortage", "excess_inventory", "wealth_spike", "price_spike", "unfilled_freight", "stalled_production"]).optional(),
+  status: z.enum(["open", "acknowledged", "case_opened"]).optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+export const AdminCasesQuery = z.object({ status: z.enum(["open", "closed"]).optional() });
+export const AdminAuditQuery = z.object({ action: z.string().min(1).max(60).optional(), limit: z.coerce.number().int().min(1).max(500).optional() });
 
 export const ClientErrorReq = z.object({
   message: z.string().max(500),

@@ -1,6 +1,10 @@
 import type { Dict } from "./index";
+import { enGame } from "./en.game";
+import { enAdmin } from "./en.admin";
 
 export const en: Dict = {
+  ...enGame,
+  ...enAdmin,
   errors: {
     BAD_REQUEST: "Invalid request.",
     UNAUTHENTICATED: "Please sign in.",

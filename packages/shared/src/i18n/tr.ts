@@ -1,6 +1,10 @@
 import type { Dict } from "./index";
+import { trGame } from "./tr.game";
+import { trAdmin } from "./tr.admin";
 
 export const tr: Dict = {
+  ...trGame,
+  ...trAdmin,
   errors: {
     BAD_REQUEST: "Geçersiz istek.",
     UNAUTHENTICATED: "Lütfen giriş yapın.",

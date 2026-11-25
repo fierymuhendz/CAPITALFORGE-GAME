@@ -7,6 +7,7 @@
  * geçişi ve emanet/rezerv iadesi yapılır (ceza yok).
  */
 import { and, eq, isNull } from "drizzle-orm";
+import { closeOrder } from "../market/spot";
 import type { Tx } from "../db/client";
 import {
   accounts, companies, contractInstallments, contracts, holdings, inventoryMovements, ledgerAccounts, ledgerEntries,
@@ -14,7 +15,7 @@ import {
 } from "../db/schema";
 import { fail } from "../errors";
 import type { UnitOfWork } from "../events/bus";
-import { lockHolding, releaseStock } from "../inventory/holdings";
+import { lockHolding } from "../inventory/holdings";
 import { co, post, reverse } from "../ledger/post";
 import { notify } from "../lib/notify";
 import { m } from "../lib/serialize";
@@ -99,15 +100,7 @@ export async function cancelOrderAsAdmin(c: EnforceCtx, targetId: string): Promi
   const o = (await c.tx.select().from(marketOrders).where(eq(marketOrders.id, id)).for("update").limit(1))[0];
   if (!o) fail("NOT_FOUND");
   if (o.status !== "open") fail("ORDER_CLOSED");
-  if (o.side === "sell") {
-    if (o.remainingKg > 0) await releaseStock(c.tx, { companyId: o.companyId, cityId: o.cityId, productId: o.productId, quality: o.quality }, o.remainingKg);
-  } else if (o.escrowRemaining > 0n) {
-    await post(c.tx, {
-      kind: "admin_order_cancel", idempotencyKey: `admin-cancel-order:${id}`, refType: "market_order", refId: id, at: c.now, memo: "Yönetici emir iptali: emanet iadesi",
-      lines: [{ account: co(o.companyId, "cash"), amount: o.escrowRemaining }, { account: co(o.companyId, "escrow"), amount: -o.escrowRemaining }],
-    });
-  }
-  await c.tx.update(marketOrders).set({ status: "cancelled", escrowRemaining: 0n, closedAt: c.now }).where(eq(marketOrders.id, id));
+  await closeOrder(c.tx, c.uow, o, c.now);
   await notify(c.tx, c.uow, o.companyId, "admin_listing_cancelled", { productId: o.productId, cityId: o.cityId }, c.now);
   c.uow.invalidate(o.companyId, "market", "inventory", "finance");
   c.uow.world("market");
