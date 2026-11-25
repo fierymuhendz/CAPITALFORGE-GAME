@@ -1,12 +1,15 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { config } from "../config";
 import * as schema from "./schema";
 
-export function createDb() {
-  const sqlClient = postgres(config.databaseUrl(), { max: config.dbPoolSize });
-  return drizzle(sqlClient, { schema });
-}
-export type Db = ReturnType<typeof createDb>;
-/** Transaction bağlamı: db.transaction geri çağrısına verilen nesne. */
+export type Db = PostgresJsDatabase<typeof schema>;
+/** Transaction nesnesi; Db ile aynı sorgu arayüzü */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type DbOrTx = Db | Tx;
+
+export function createDb(url: string, max = Number(process.env.DB_POOL_SIZE ?? 10)): { db: Db; sql: postgres.Sql } {
+  const sql = postgres(url, { max, onnotice: () => {}, types: { bigint: postgres.BigInt } });
+  return { db: drizzle(sql, { schema }), sql };
+}
+
+export { schema };

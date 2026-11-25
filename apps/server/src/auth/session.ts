@@ -1,78 +1,76 @@
-import { createHash, randomBytes } from "node:crypto";
-import { config } from "../config";
-import type { Redis } from "../redis";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { and, eq, gt, sql } from "drizzle-orm";
+import { accounts, connectionRecords, sessions } from "../db/schema";
+import type { Deps } from "../deps";
+import { hmacHex, randomToken, sha256 } from "./crypto";
 
-export interface Session {
-  playerId: string;
-  username: string;
+export const SESSION_COOKIE = "cf_session";
+const SESSION_DAYS = 30;
+/** yönetici doğrulaması bu kadar geçerli */
+export const ADMIN_VERIFY_MS = 12 * 3600_000;
+
+export interface SessionInfo {
+  id: string;
+  account: typeof accounts.$inferSelect;
+  adminVerified: boolean;
 }
 
-/** Oturum iptali yayını (Redis pub/sub). Yük: { hashes: string[] }. */
-export const REVOKE_CHANNEL = "sess:revoked";
-
-/** Redis'te ham token değil, SHA-256 özeti anahtar olur. */
-export const hashToken = (token: string): string => createHash("sha256").update(token).digest("hex");
-const keyOfHash = (hash: string) => `sess:${hash}`;
-const playerSetKey = (playerId: string) => `psess:${playerId}`;
-
-export async function createSession(redis: Redis, session: Session): Promise<string> {
-  const token = randomBytes(32).toString("base64url");
-  const hash = hashToken(token);
-  await redis
-    .multi()
-    .set(keyOfHash(hash), JSON.stringify(session), "EX", config.sessionTtlSeconds)
-    .sadd(playerSetKey(session.playerId), hash)
-    .expire(playerSetKey(session.playerId), config.sessionTtlSeconds)
-    .exec();
-  return token;
+export async function createSession(deps: Deps, reply: FastifyReply, accountId: string, ip: string | undefined): Promise<string> {
+  const token = randomToken();
+  const now = deps.clock.now();
+  const [s] = await deps.db
+    .insert(sessions)
+    .values({ accountId, tokenHash: sha256(token), createdAt: now, lastSeenAt: now, expiresAt: new Date(now.getTime() + SESSION_DAYS * 86400_000) })
+    .returning({ id: sessions.id });
+  reply.setCookie(SESSION_COOKIE, token, {
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: deps.config.secureCookies,
+    maxAge: SESSION_DAYS * 86400,
+  });
+  await recordConnection(deps, accountId, ip, now);
+  return s!.id;
 }
 
-/** Geçersiz/süresi dolmuş token için null. Redis hatasında istisna fırlatır. */
-export async function getSession(redis: Redis, token: string | undefined | null): Promise<Session | null> {
-  if (!token || token.length < 16 || token.length > 128) return null;
-  return getSessionByHash(redis, hashToken(token));
+export function clearSessionCookie(deps: Deps, reply: FastifyReply): void {
+  reply.clearCookie(SESSION_COOKIE, { path: "/", httpOnly: true, sameSite: "lax", secure: deps.config.secureCookies });
 }
 
-/** Özetle oturum arama (MarketRoom ham token tutmaz). */
-export async function getSessionByHash(redis: Redis, hash: string): Promise<Session | null> {
-  const raw = await redis.get(keyOfHash(hash));
-  if (!raw) return null;
-  try {
-    const v: unknown = JSON.parse(raw);
-    if (typeof v !== "object" || v === null) return null;
-    const { playerId, username } = v as Record<string, unknown>;
-    return typeof playerId === "string" && typeof username === "string" ? { playerId, username } : null;
-  } catch {
-    return null;
+export function sessionToken(req: FastifyRequest): string | null {
+  return req.cookies?.[SESSION_COOKIE] ?? null;
+}
+
+export async function sessionFromRequest(deps: Deps, req: FastifyRequest): Promise<SessionInfo | null> {
+  const token = sessionToken(req);
+  if (!token) return null;
+  const now = deps.clock.now();
+  const r = await deps.db
+    .select({ s: sessions, a: accounts })
+    .from(sessions)
+    .innerJoin(accounts, eq(accounts.id, sessions.accountId))
+    .where(and(eq(sessions.tokenHash, sha256(token)), gt(sessions.expiresAt, now)))
+    .limit(1);
+  const row = r[0];
+  if (!row) return null;
+  // Son görülme ve bağlantı kaydı en fazla 5 dakikada bir güncellenir
+  if (now.getTime() - row.s.lastSeenAt.getTime() > 5 * 60_000) {
+    await deps.db.update(sessions).set({ lastSeenAt: now }).where(eq(sessions.id, row.s.id));
+    await recordConnection(deps, row.a.id, req.ip, now);
   }
+  const adminVerified = !!row.s.adminVerifiedAt && now.getTime() - row.s.adminVerifiedAt.getTime() < ADMIN_VERIFY_MS;
+  return { id: row.s.id, account: row.a, adminVerified };
 }
 
-/**
- * Oyuncunun tüm oturumlarını tek atomik adımda siler: üye kümesi okunur, her anahtar silinir, küme silinir
- * ve silinen özetler döner. Araya giren createSession betiğin dışında kalmaz (ya önce eklenir ve silinir, ya sonra kalır).
- */
-const REVOKE_ALL = `
-local members = redis.call('SMEMBERS', KEYS[1])
-for _, h in ipairs(members) do redis.call('DEL', 'sess:' .. h) end
-redis.call('DEL', KEYS[1])
-return members
-`;
-
-/**
- * Çıkış. Geçersiz/bilinmeyen token sessizce yok sayılır (idempotent). all=true oyuncunun tüm oturumlarını kapatır
- * (tek Lua betiği), ardından iptal edilen özetler kanala yayınlanır. Redis hatasında istisna fırlatır.
- */
-export async function revokeSession(redis: Redis, token: string | undefined | null, all: boolean): Promise<void> {
-  const session = await getSession(redis, token);
-  if (!session || !token) return;
-  const hash = hashToken(token);
-  let hashes = [hash];
-  if (all) {
-    const members = (await redis.eval(REVOKE_ALL, 1, playerSetKey(session.playerId))) as string[];
-    await redis.del(keyOfHash(hash));
-    hashes = [...new Set([hash, ...members])];
-  } else {
-    await redis.multi().del(keyOfHash(hash)).srem(playerSetKey(session.playerId), hash).exec();
-  }
-  await redis.publish(REVOKE_CHANNEL, JSON.stringify({ hashes }));
+/** Ham IP saklanmaz: anahtarlı karma (HMAC-SHA256). */
+export async function recordConnection(deps: Deps, accountId: string, ip: string | undefined, now: Date): Promise<void> {
+  if (!ip) return;
+  const ipHash = hmacHex(deps.config.ipHashKey, ip);
+  await deps.db
+    .insert(connectionRecords)
+    .values({ accountId, ipHash, firstSeenAt: now, lastSeenAt: now })
+    .onConflictDoUpdate({
+      target: [connectionRecords.accountId, connectionRecords.ipHash],
+      set: { lastSeenAt: now, hits: sql`${connectionRecords.hits} + 1` },
+    });
 }

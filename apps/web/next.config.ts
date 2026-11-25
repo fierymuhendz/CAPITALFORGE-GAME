@@ -4,10 +4,12 @@ import type { NextConfig } from "next";
 const gameServerUrl = process.env.GAME_SERVER_HTTP_URL ?? "http://localhost:2567";
 
 const nextConfig: NextConfig = {
+  // Paralel geliştirme için ayrı çıktı klasörü (varsayılan .next)
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   output: "standalone",
   transpilePackages: ["@capitalforge/shared", "@capitalforge/economy"],
   async rewrites() {
-    // Sunucuda /api öneki yok: önek kırpılır.
+    // Yerel geliştirme: /api/* → oyun sunucusu (önek kırpılır). Üretimde Caddy bu yolu doğrudan sunucuya yollar.
     return [{ source: "/api/:path*", destination: `${gameServerUrl}/:path*` }];
   },
 };

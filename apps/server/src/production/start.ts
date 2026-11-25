@@ -1,90 +1,82 @@
-import { RECIPES, batchIO, completesAtTick, type RecipeId } from "@capitalforge/economy";
-import type { ActionResult, StartProduction } from "@capitalforge/shared";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { ActionError } from "../actions/idempotency";
-import { currentTick, runAction } from "../actions/run";
-import type { Db } from "../db/client";
-import { companies, facilities, inventories, productionJobs, products } from "../db/schema";
-
 /**
- * Üretim başlat. Girdiler envanterden düşer (para hareketi yok). Kilit sırası:
- * products (çıktı, KEY SHARE) → facilities → production_jobs → inventories (ürün id artan). Sahiplik, kilit altında tesisin
- * şirketinin oyuncuya ait olmasıyla doğrulanır; başkasının tesisi (veya olmayan tesis) UNAUTHORIZED.
- * Tesis başına tek çalışan iş: önce kilitli kontrol, ikinci savunma kısmi UNIQUE indeksi.
+ * Üretim başlatma (elle veya tekrar modunda). Kilit sırası: tesis satırı → stok → defter.
+ * Defter: wip +(girdi + enerji + su + ücret), inventory −girdi, cash −(enerji + su + ücret).
  */
-export function startProduction(db: Db, playerId: string, input: StartProduction): Promise<ActionResult> {
-  return runAction(
-    db,
-    playerId,
-    input.idempotencyKey,
-    "startProduction",
-    { facilityId: input.facilityId, recipeId: input.recipeId, batches: input.batches },
-    async (tx) => {
-      const recipe = RECIPES[input.recipeId as RecipeId];
-      if (!recipe) throw new ActionError("UNKNOWN_RECIPE");
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import type { CostBreakdownDto } from "@capitalforge/shared";
+import type { Catalog } from "../catalog/catalog";
+import type { Tx } from "../db/client";
+import { facilities, productionJobs } from "../db/schema";
+import { AppError, fail } from "../errors";
+import type { UnitOfWork } from "../events/bus";
+import { removeStock } from "../inventory/holdings";
+import { co, post } from "../ledger/post";
+import { m } from "../lib/serialize";
+import { evaluateProduction } from "./eval";
 
-      // Kilit sırasının ilki: çıktı ürün satırı (FK için; ticker/ticaret FOR UPDATE ile aynı sıra).
-      await tx.select({ id: products.id }).from(products).where(eq(products.id, recipe.output.productId)).for("key share");
+export interface StartInput {
+  companyId: string;
+  facilityId: string;
+  recipeId: string;
+  batches: number;
+  repeat: boolean;
+  now: Date;
+}
 
-      const [facility] = await tx.select().from(facilities).where(eq(facilities.id, input.facilityId)).for("update");
-      if (!facility) throw new ActionError("UNAUTHORIZED");
-      const [company] = await tx
-        .select({ playerId: companies.playerId })
-        .from(companies)
-        .where(eq(companies.id, facility.companyId));
-      if (!company || company.playerId !== playerId) throw new ActionError("UNAUTHORIZED");
+export async function startProduction(tx: Tx, uow: UnitOfWork, catalog: Catalog, p: StartInput): Promise<typeof productionJobs.$inferSelect> {
+  const facility = (await tx.select().from(facilities).where(and(eq(facilities.id, p.facilityId), eq(facilities.companyId, p.companyId))).for("update"))[0];
+  if (!facility || facility.state === "demolished") fail("NOT_FOUND");
+  const ev = await evaluateProduction(tx, catalog, p.companyId, facility, p.recipeId, p.batches, true);
+  const first = ev.blockers[0];
+  if (first) {
+    const d: Record<string, string | number> = {};
+    if (first.productId) d.productId = first.productId;
+    if (first.missingKg !== undefined) d.missingKg = first.missingKg;
+    if (first.missing) d.missing = first.missing;
+    throw new AppError(first.code as never, d);
+  }
+  if (ev.plan.outputKg < 1) fail("BAD_REQUEST", { issue: "output" });
 
-      if (facility.type !== recipe.facility) throw new ActionError("RECIPE_FACILITY_MISMATCH");
-      if (facility.status !== "active") throw new ActionError("FACILITY_SUSPENDED");
-
-      const running = await tx
-        .select({ id: productionJobs.id })
-        .from(productionJobs)
-        .where(and(eq(productionJobs.facilityId, facility.id), eq(productionJobs.status, "running")))
-        .for("update");
-      if (running.length > 0) throw new ActionError("FACILITY_BUSY");
-
-      const io = batchIO(recipe, BigInt(input.batches));
-
-      // Girdileri ürün id'sine göre artan sırada kilitle ve düş.
-      const need = [...io.inputs].sort((a, b) => (a.productId < b.productId ? -1 : 1));
-      if (need.length > 0) {
-        const held = await tx
-          .select({ productId: inventories.productId, quantity: inventories.quantity })
-          .from(inventories)
-          .where(and(eq(inventories.playerId, playerId), inArray(inventories.productId, need.map((n) => n.productId))))
-          .orderBy(asc(inventories.productId))
-          .for("update");
-        const have = new Map(held.map((h) => [h.productId, h.quantity]));
-        for (const n of need) {
-          if ((have.get(n.productId) ?? 0n) < n.qty) throw new ActionError("INSUFFICIENT_INVENTORY");
-        }
-        for (const n of need) {
-          await tx
-            .update(inventories)
-            .set({ quantity: sql`${inventories.quantity} - ${n.qty}` })
-            .where(and(eq(inventories.playerId, playerId), eq(inventories.productId, n.productId)));
-        }
-      }
-
-      const tick = await currentTick(tx);
-      const inserted = await tx
-        .insert(productionJobs)
-        .values({
-          facilityId: facility.id,
-          playerId,
-          recipeId: recipe.id,
-          batches: input.batches,
-          startedTick: tick,
-          completesAtTick: completesAtTick(recipe, tick),
-          inputs: Object.fromEntries(io.inputs.map((n) => [n.productId, n.qty.toString()])),
-          outputProductId: io.output.productId,
-          outputQty: io.output.qty,
-        })
-        .onConflictDoNothing()
-        .returning({ id: productionJobs.id });
-      if (inserted.length === 0) throw new ActionError("FACILITY_BUSY");
-      return { refId: inserted[0]!.id, amount: 0n };
-    },
-  );
+  const jobId = randomUUID();
+  const used: CostBreakdownDto["inputs"] = [];
+  let inputsCost = 0n;
+  for (const inp of ev.inputs) {
+    for (const lot of inp.lots) {
+      const cost = await removeStock(
+        tx, { companyId: p.companyId, cityId: facility.cityId, productId: inp.productId, quality: lot.quality }, lot.kg,
+        { kind: "production_input", refType: "production_job", refId: jobId, at: p.now },
+      );
+      inputsCost += cost;
+      used.push({ productId: inp.productId, quality: lot.quality, qtyKg: lot.kg, cost: m(cost) });
+    }
+  }
+  const { plan } = ev;
+  const total = inputsCost + ev.operatingCost;
+  const breakdown: CostBreakdownDto = {
+    inputs: used, energy: m(plan.energyCost), water: m(plan.waterCost), labor: m(plan.laborCost), total: m(total),
+  };
+  const startTx = await post(tx, {
+    kind: "production_start", idempotencyKey: `prod-start:${jobId}`, refType: "production_job", refId: jobId, at: p.now,
+    memo: `Üretim: ${ev.recipe.id} × ${p.batches}`,
+    lines: [
+      { account: co(p.companyId, "wip"), amount: total },
+      { account: co(p.companyId, "inventory"), amount: -inputsCost },
+      { account: co(p.companyId, "cash"), amount: -ev.operatingCost },
+    ],
+  });
+  const [job] = await tx
+    .insert(productionJobs)
+    .values({
+      id: jobId, facilityId: facility.id, companyId: p.companyId, cityId: facility.cityId, recipeId: ev.recipe.id,
+      recipeVersion: ev.recipe.version, recipeSnapshot: { ...ev.recipe }, batches: p.batches, repeat: p.repeat, status: "running",
+      startedAt: p.now, endsAt: new Date(p.now.getTime() + plan.minutes * 60_000),
+      outputProductId: ev.recipe.output.productId, outputKg: plan.outputKg, outputQuality: plan.outputQuality,
+      costBreakdown: breakdown, costTotal: total, startTransactionId: startTx.id,
+    })
+    .returning();
+  await tx.update(facilities).set({ stalledReason: null }).where(eq(facilities.id, facility.id));
+  uow.invalidate(p.companyId, "company", "inventory", "facilities", "finance");
+  uow.world("map");
+  return job!;
 }

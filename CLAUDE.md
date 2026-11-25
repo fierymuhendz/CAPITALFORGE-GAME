@@ -1,89 +1,69 @@
 # CapitalForge
 
-Çok oyunculu, ekonomi temalı, tarayıcıda çalışan bir strateji oyunu. Oyuncular şirket kurar, üretir, alır, satar, borçlanır ve vergi öder. Fiyatlar arz-talep, enflasyon ve faizle canlı olarak değişir.
+Arkadaş grubunun haftalarca aynı kalıcı dünyada oynadığı, tarayıcıda çalışan çok oyunculu ekonomi simülasyonu. Her oyuncunun bir şirketi var: arsa alır, üretir, taşır, piyasada ve sözleşmelerle satar, borçlanır, araştırır. Ayrıntılı tasarım `docs/plans/v2-oyun-tasarimi.md`, kısa rehber `docs/PROJE-REHBERI.md`.
 
 ## Teknoloji yığını
 
 | Katman | Seçim |
 |---|---|
-| Arayüz | Next.js (App Router), TypeScript, Tailwind, grafikler için lightweight-charts veya Recharts |
-| Sunucu | Node.js 22, TypeScript, REST/HTTP için Fastify, para defteri `apps/server/src/ledger` |
-| Gerçek zamanlı | Colyseus (odalar, durum senkronizasyonu) |
-| Veritabanı | PostgreSQL, şema ve migration için Drizzle ORM |
-| Önbellek / kuyruk | Redis (oturum, sıralama tabloları, pub/sub, BullMQ işleri) |
-| Test | Vitest (birim), Playwright (uçtan uca), fast-check (özellik tabanlı ekonomi testleri) |
-| Paket yönetimi | pnpm workspaces (monorepo) |
-
-Farklı bir yığın seçilirse sadece bu bölümü güncelle.
+| Arayüz | Next.js (App Router), TypeScript, Tailwind; 3D şehir three.js (prosedürel, harici model yok), hafif görünüm için 2D harita |
+| Sunucu | Node.js 22, TypeScript, Fastify 5 (REST) + `@fastify/websocket` (`/events`, yalnızca "şu veri değişti" bildirimi) |
+| Veritabanı | PostgreSQL, Drizzle ORM; tüm tablolar `cf` şemasında, migration kaydı `cf_migrations` |
+| Önbellek | Redis (`cf:` önekli hız sınırı sayaçları) |
+| Zamanlama | Veritabanı tabanlı zamanlayıcı (`apps/server/src/scheduler`), `FOR UPDATE SKIP LOCKED` ile tam bir kez yerleşme |
+| Test | Vitest (`unit` ve `integration` projeleri), fast-check, Playwright |
+| Paket yönetimi | pnpm workspaces |
 
 ## Klasör yapısı
 
 ```
-apps/web/          Next.js istemcisi
-apps/server/       Node + Colyseus oyun sunucusu, HTTP API
-packages/shared/   Ortak tipler, şemalar (zod), sabitler
-packages/economy/  Saf ekonomi formülleri (yan etkisiz, test edilebilir)
-docs/plans/        Mimarın planları (özellik başına bir dosya)
-docs/economy/      Ekonomi parametreleri ve simülasyon sonuçları
+apps/web/            Next.js istemcisi (src/scene 3D, src/map2d 2D, src/ui bileşenler)
+apps/server/         HTTP API, zamanlayıcı, defter, modüller (http/modules/a-economy, b-trade, c-admin)
+packages/shared/     Katalog (şehir, ürün, tarif, bina, arsa), zod şemaları, API tipleri, TR/EN sözlük
+packages/economy/    Saf ekonomi formülleri ve denge simülasyonu (sim/run.ts)
+docs/plans/          Planlar (özellik başına bir dosya)
+docs/economy/        Denge simülasyonu çıktısı (denge.md)
+deploy/              Üretim compose, Caddy, yedek/geri yükleme
+e2e/                 Canlı adres duman testi
 ```
 
 ## Değişmez kurallar
 
-1. **Sunucu otoritedir.** İstemci sadece niyet gönderir ("şunu al"). Fiyat, bakiye, stok hesabını sadece sunucu yapar. İstemciden gelen hiçbir sayıya güvenilmez.
-2. **Para tam sayıdır.** Tüm tutarlar en küçük birimde `BIGINT` (ör. kuruş) tutulur. `float` ile para hesabı yasak. Yuvarlama kuralı `packages/economy` içinde tek yerde tanımlıdır.
-3. **Çift taraflı defter.** Her para hareketi `ledger_entries` tablosuna borç ve alacak olarak yazılır, toplam her zaman sıfırdır. Bakiye defterden türetilir veya defterle aynı işlemde güncellenir.
-4. **Para işlemleri atomiktir.** Tek bir veritabanı işleminde (transaction) yapılır, satır kilidi (`SELECT ... FOR UPDATE`) veya uygun izolasyon kullanılır. Her işlemin bir `idempotency_key` değeri vardır, aynı istek iki kez işlenmez.
-5. **Ekonomi formülleri saftır.** `packages/economy` içindeki fonksiyonlar veritabanına, ağa, saate erişmez. Zaman ve rastgelelik parametre olarak verilir (tohumlu RNG).
-6. **Girdi doğrulama.** Sunucuya gelen her mesaj `packages/shared` içindeki zod şemasıyla doğrulanır. Negatif, sıfır, aşırı büyük ve tam sayı olmayan miktarlar reddedilir.
-7. **Hız sınırı.** Oyuncu başına işlem hız sınırı Redis üzerinde uygulanır.
-8. **Sırlar koda girmez.** `.env` dosyaları commit edilmez, `.env.example` güncel tutulur.
+1. **Sunucu otoritedir.** İstemci yalnızca niyet gönderir. Fiyat, bakiye, stok, süre yalnızca sunucuda hesaplanır.
+2. **Para tam sayıdır.** Tutarlar kuruş cinsinden `bigint`, miktarlar tam sayı kg, fiyatlar kuruş/kg. API'de para string döner. `float` ile para hesabı yasak; yuvarlama `packages/economy/src/money.ts` içinde.
+3. **Çift taraflı defter.** Her para hareketi `ledger/post.ts` üzerinden; her işlem şirket başına dengeli (toplam sıfır), benzersiz `idempotency_key` taşır. Kayıtlı defter satırı değiştirilmez, düzeltme `reverse()` ile.
+4. **Atomiklik.** Para ve stok işlemleri tek transaction'da, satır kilidiyle. Mutasyon istekleri `idempotencyKey` taşır, tekrarında aynı yanıt döner.
+5. **Ekonomi formülleri saftır.** `packages/economy` veritabanına, ağa, saate erişmez.
+6. **Girdi doğrulama.** Her istek `packages/shared` zod şemasıyla doğrulanır.
+7. **Hız sınırı** Redis üzerinde, mutasyonlar `x-cf-intent: 1` başlığı ister (CSRF).
+8. **Sırlar ve IP'ler koda, loga, rapora girmez.** IP yalnızca HMAC karması olarak `connection_records`'ta, 30 gün.
+9. **Oyuncu ilerlemesi korunur.** Şema değişikliği yeni migration ile; katalog tohumlama yalnızca eksik satırları ekler. Eski oyunun silinmesi yalnızca `reset-legacy.yml` ile, elle.
 
 ## Kod standartları
 
-- TypeScript `strict` açık, `any` yok (gerekirse gerekçeli `unknown`).
-- Ortak tipler sadece `packages/shared` içinden içe aktarılır, kopyalanmaz.
-- Her yeni para akışı veya formül için test zorunludur.
-- Migration'lar geri alınabilir yazılır.
-- Commit mesajları Türkçe veya İngilizce olabilir, kısa ve emir kipinde.
+- TypeScript `strict`, `any` yok. Ortak tipler yalnızca `@capitalforge/shared` içinden.
+- Her yeni para akışı veya formül için test. Entegrasyon testlerinden sonra `checkInvariants` çağrılır.
+- Migration'lar geri alınabilir (`apps/server/drizzle/down/`).
+- Kullanıcıya görünen her metin TR ve EN sözlükte (`packages/shared/src/i18n`).
+- Commit mesajları kısa ve emir kipinde.
 
 ## Komutlar
 
 ```
 pnpm install
-pnpm dev             # web + server birlikte
-pnpm test            # tüm birim testleri
-pnpm db:generate     # Drizzle migration üret
-pnpm lint && pnpm typecheck
-pnpm sim             # ekonomi denge simülasyonu (packages/economy)
+pnpm dev                 # web + server
+pnpm test                # birim testleri
+pnpm test:int            # entegrasyon (TEST_DATABASE_URL, adında "test" geçen veritabanı)
+pnpm typecheck
+pnpm sim                 # denge simülasyonu, docs/economy/denge.md yazar, sorun varsa çıkış 1
+pnpm db:generate         # şemadan migration üret
+pnpm db:migrate          # migration + katalog tohumlama
 ```
 
-Playwright uçtan uca testleri ilk oynanabilir akışla birlikte eklenecek.
+## Ajan ekibi
 
-## Ajan ekibi ve iş akışı
+`.claude/agents/` altında: mimar (plan), oyun-tasarimci (katalog ve denge), backend-dev, sehir-3d, arayuz-dev, test-qa, guvenlik-reviewer, yayin. Her ajanın teslimatı ve doğrulama yöntemi kendi dosyasında. Ne zaman hangisi: `docs/PROJE-REHBERI.md`.
 
-Büyük bir özellik şu sırayla ilerler. Bir aşama özelliğe dokunmuyorsa atlanır (ör. sadece arayüz değişikliğinde ekonomi-tasarimci çağrılmaz).
-
-1. **mimar** (Opus, sadece okur): plan çıkarır. Ana oturum planı `docs/plans/<ozellik>.md` olarak kaydeder.
-2. **ekonomi-tasarimci** (Sonnet): formülleri `packages/economy` içine yazar, simülasyon çalıştırır.
-3. **backend-dev** (Sonnet): sunucu, veritabanı, Colyseus odaları, para işlemleri.
-4. **frontend-dev** (Sonnet): arayüz, grafikler, canlı veri.
-5. **test-qa** (Haiku): test yazar ve çalıştırır, hata raporlar.
-6. **guvenlik-reviewer** (Sonnet, sadece okur): para çoğaltma, hile, yetki açıklarını denetler.
-
-### Kredi kuralları
-
-- Tek dosyalık düzeltme, küçük yeniden adlandırma, metin değişikliği gibi işlerde ajan çağırma, ana oturum doğrudan yapsın.
-- Kod içinde arama için yerleşik Explore ajanını kullan, yeni ajan ekleme.
-- Bir ajana iş verirken plan dosyasının yolunu ve ilgili dosyaları açıkça yaz, ajan her şeyi baştan keşfetmesin.
-- Ajanlar arası bilgi aktarımı dosya üzerinden olur (`docs/plans/`, `docs/economy/`), uzun mesajlarla değil.
-
-### Rapor kuralı (tüm ajanlar)
-
-Her ajan işini şu kısa formatta bitirir, başka açıklama yazmaz:
-
-```
-DEĞİŞEN DOSYALAR:
-- yol/dosya.ts — tek satır ne değişti
-AÇIK KONULAR:
-- (varsa) çözülmeyen sorun, karar bekleyen nokta
-```
+- Tek dosyalık düzeltme, metin değişikliği gibi küçük işlerde ajan çağırma.
+- Bağımsız işler paralel; her ajan kendi dosya sahipliğinde çalışır, bilgi aktarımı `docs/plans/` üzerinden.
+- Ajan raporu: `DEĞİŞEN DOSYALAR` ve `AÇIK KONULAR`, başka açıklama yok.

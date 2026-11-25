@@ -62,7 +62,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET gerekli}
       # Yalnızca Caddy'nin X-Forwarded-For başlığına güvenilir (Caddy gerçek istemci IP'sini yazar)
       TRUST_PROXY: "172.30.0.11"
-      NEW_ACCOUNT_TRADE_DELAY_SECONDS: ${NEW_ACCOUNT_TRADE_DELAY_SECONDS:-600}
+      # Tek kullanımlık yönetici kurulum kodu (sunucuda secrets/admin_setup_code; yayın betiği .env'e yazar)
+      ADMIN_SETUP_CODE: ${ADMIN_SETUP_CODE:-}
     # Dışarıya port açılmaz: yalnızca Caddy üzerinden (/api, /ws) erişilir.
     logging: *logging
     healthcheck:

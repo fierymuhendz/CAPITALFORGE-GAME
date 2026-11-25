@@ -1,0 +1,68 @@
+/** POST /production/quote: başlatmadan aynı hesabı yapar (kilitsiz), en iyi alıcıları ekler. */
+import { and, eq, gt, ne } from "drizzle-orm";
+import type { z } from "zod";
+import { SYSTEM_PROFILES, roadDistanceKm, type ProductionQuoteDto, type ProductionQuoteReq } from "@capitalforge/shared";
+import { systemAsk, systemBid, systemBidCap, unitCostPerKg } from "@capitalforge/economy";
+import type { Catalog } from "../catalog/catalog";
+import type { Db } from "../db/client";
+import { companies, facilities, marketOrders, priceRefs } from "../db/schema";
+import { fail } from "../errors";
+import { m } from "../lib/serialize";
+import { evaluateProduction } from "./eval";
+
+type Buyer = ProductionQuoteDto["bestBuyers"][number];
+
+export async function bestBuyers(db: Db, catalog: Catalog, companyId: string, productId: string, quality: number, fromCityId: string): Promise<Buyer[]> {
+  const out: Buyer[] = [];
+  const orders = await db
+    .select({ o: marketOrders, name: companies.name })
+    .from(marketOrders)
+    .innerJoin(companies, eq(companies.id, marketOrders.companyId))
+    .where(and(eq(marketOrders.side, "buy"), eq(marketOrders.status, "open"), eq(marketOrders.productId, productId), gt(marketOrders.remainingKg, 0), ne(marketOrders.companyId, companyId)));
+  for (const { o, name } of orders) {
+    if (o.quality > quality) continue;
+    out.push({ cityId: o.cityId, companyName: name, isSystem: o.isSystem, pricePerKg: m(o.pricePerKg), km: roadDistanceKm(fromCityId, o.cityId) });
+  }
+  const refs = await db.select().from(priceRefs).where(eq(priceRefs.productId, productId));
+  const ref = (cityId: string) => refs.find((r) => r.cityId === cityId)?.refPricePerKg ?? BigInt(catalog.product(productId).basePricePerKg);
+  const s = catalog.settings.system;
+  const asks = SYSTEM_PROFILES.filter((p) => (p.sells[productId] ?? 0) > 0).map((p) => systemAsk(ref(p.cityId), s.askBp, 0, 1));
+  const cap = asks.length ? systemBidCap(asks.reduce((a, b) => (b < a ? b : a))) : null;
+  const seenSystem = new Set(out.filter((b) => b.isSystem).map((b) => `${b.cityId}|${b.companyName}`));
+  for (const p of SYSTEM_PROFILES) {
+    if ((p.buys[productId] ?? 0) <= 0 || seenSystem.has(`${p.cityId}|${p.name.tr}`)) continue;
+    out.push({ cityId: p.cityId, companyName: p.name.tr, isSystem: true, pricePerKg: m(systemBid(ref(p.cityId), s.bidBp, 0, 1, cap)), km: roadDistanceKm(fromCityId, p.cityId) });
+  }
+  out.sort((a, b) => (BigInt(b.pricePerKg) > BigInt(a.pricePerKg) ? 1 : BigInt(b.pricePerKg) < BigInt(a.pricePerKg) ? -1 : a.km - b.km));
+  return out.slice(0, 5);
+}
+
+export async function quote(db: Db, catalog: Catalog, companyId: string, req: z.infer<typeof ProductionQuoteReq>, now: Date): Promise<ProductionQuoteDto> {
+  const facility = (await db.select().from(facilities).where(and(eq(facilities.id, req.facilityId), eq(facilities.companyId, companyId))).limit(1))[0];
+  if (!facility || facility.state === "demolished") fail("NOT_FOUND");
+  const ev = await evaluateProduction(db, catalog, companyId, facility, req.recipeId, req.batches, false);
+  const refs = await db.select().from(priceRefs).where(eq(priceRefs.cityId, facility.cityId));
+  const ref = (pid: string) => refs.find((r) => r.productId === pid)?.refPricePerKg ?? BigInt(catalog.product(pid).basePricePerKg);
+  let inputsEst = 0n;
+  const inputs = ev.inputs.map((i) => {
+    // eksik kısım referans fiyatla tahmin edilir
+    const est = i.estCost + BigInt(i.missingKg) * ref(i.productId);
+    inputsEst += est;
+    const kg = i.lots.reduce((a, l) => a + l.kg, 0);
+    const wq = kg > 0 ? Math.round(i.lots.reduce((a, l) => a + l.kg * l.quality, 0) / kg) : null;
+    return { productId: i.productId, requiredKg: i.requiredKg, availableKg: i.availableKg, quality: wq, estCost: m(est) };
+  });
+  const total = inputsEst + ev.operatingCost;
+  const { plan } = ev;
+  return {
+    recipeId: ev.recipe.id, batches: req.batches, minutes: plan.minutes, endsAt: new Date(now.getTime() + plan.minutes * 60_000).toISOString(),
+    inputs,
+    output: { productId: ev.recipe.output.productId, qtyKg: plan.outputKg, quality: plan.outputQuality },
+    energyKwh: plan.energyKwh, waterM3: plan.waterM3, laborHours: plan.laborHours,
+    cost: { inputs: m(inputsEst), energy: m(plan.energyCost), water: m(plan.waterCost), labor: m(plan.laborCost), total: m(total) },
+    unitCostPerKg: m(unitCostPerKg(total, plan.outputKg)),
+    bestBuyers: await bestBuyers(db, catalog, companyId, ev.recipe.output.productId, plan.outputQuality, facility.cityId),
+    canStart: ev.blockers.length === 0,
+    blockers: ev.blockers.map((b) => ({ code: b.code, productId: b.productId, missingKg: b.missingKg, missing: b.missing })),
+  };
+}

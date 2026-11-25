@@ -114,14 +114,14 @@ jobs:
           pg="docker run --rm --network host -e PGPASSWORD -v $RUNNER_TEMP/verify:/in:ro postgres:17-alpine"
           $pg pg_restore --no-owner --no-privileges --exit-on-error -h localhost -U restore -d restore /in/restore.dump
           fail() { echo "::error::Doğrulama başarısız: $1"; exit 1; }
-          for t in players ledger_entries; do
+          for t in cf.accounts cf.companies cf.ledger_entries; do
             n=$($pg psql -h localhost -U restore -d restore -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM $t") || fail "$t tablosu okunamadı (eksik tablo olabilir)"
             echo "$t: $n satır"
           done
-          # Defter değişmezi (çift taraflı defter): ledger_entries.amount işaretli tutardır (borç +, alacak -);
-          # genel toplam 0 olmalı ve her transfer kendi içinde dengelenmeli.
-          total=$($pg psql -h localhost -U restore -d restore -v ON_ERROR_STOP=1 -Atc "SELECT COALESCE(sum(amount), 0) FROM ledger_entries") || fail "defter toplamı sorgusu hata verdi"
-          unbalanced=$($pg psql -h localhost -U restore -d restore -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM (SELECT transfer_id FROM ledger_entries GROUP BY transfer_id HAVING sum(amount) <> 0) x") || fail "transfer denge sorgusu hata verdi"
+          # Defter değişmezi (çift taraflı defter): cf.ledger_entries.amount işaretli tutardır (borç +, alacak -);
+          # genel toplam 0 olmalı ve her işlem (transaction_id) kendi içinde dengelenmeli.
+          total=$($pg psql -h localhost -U restore -d restore -v ON_ERROR_STOP=1 -Atc "SELECT COALESCE(sum(amount), 0) FROM cf.ledger_entries") || fail "defter toplamı sorgusu hata verdi"
+          unbalanced=$($pg psql -h localhost -U restore -d restore -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM (SELECT transaction_id FROM cf.ledger_entries GROUP BY transaction_id HAVING sum(amount) <> 0) x") || fail "transfer denge sorgusu hata verdi"
           echo "defter toplamı: $total; dengesiz transfer: $unbalanced"
           [ "$total" = "0" ] || fail "ledger_entries toplamı $total (0 olmalı)"
           [ "$unbalanced" = "0" ] || fail "$unbalanced transfer dengesiz"

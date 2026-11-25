@@ -1,322 +1,255 @@
-import { randomUUID } from "node:crypto";
-import { PARAMS, RECIPES, type RecipeId } from "@capitalforge/economy";
-import type { ActionResult, BuyFacility, StartProduction } from "@capitalforge/shared";
-import { and, eq, sql } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buyFacility } from "../company/buyFacility";
-import { foundCompany } from "../company/found";
-import { createGuest } from "../auth/guest";
-import type { Db } from "../db/client";
-import { accounts, facilities, inventories, productionJobs } from "../db/schema";
-import { transfer } from "../ledger/transfer";
-import { assertLedgerBalanced, closeTestResources, resetTestDb, setupTestDb } from "../test/db";
-import { runCompletionPhase } from "./complete";
-import { startProduction } from "./start";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { runDue } from "../scheduler/scheduler";
+import { createHarness, type Harness } from "../test/harness";
+import { checkInvariants } from "../test/invariants";
+import { balance, found, grantCash, grantStock, HOUR, setLevel, type Founded } from "./kit";
 
-/** Tarif süresi sabit yazılmaz; ekonomi parametreleriyle birlikte değişir. */
-const GROW_TICKS = RECIPES.grow_wheat.durationTicks;
+let h: Harness;
+beforeAll(async () => { h = await createHarness(); });
+afterAll(async () => { await h.close(); });
 
-let db: Db;
+const inv = async (f: Founded) => (await f.p.ok("GET", "/inventory")) as Array<{ productId: string; quality: number; qtyKg: number; costTotal: string }>;
 
-beforeAll(async () => {
-  db = await setupTestDb();
-});
-beforeEach(async () => {
-  await resetTestDb(db);
-});
-afterEach(async () => {
-  await assertLedgerBalanced(db);
-});
-afterAll(async () => {
-  await closeTestResources();
-});
-
-const uniq = () => randomUUID().replace(/-/g, "").slice(0, 12);
-
-function refOf(r: ActionResult): string {
-  if (!r.ok) throw new Error(`başarı beklendi, gelen hata: ${r.error}`);
-  if (!r.refId) throw new Error("refId beklendi");
-  return r.refId;
+/** Tarifle bir iş başlat, bitir, çıktıyı maliyetiyle doğrula */
+async function runFirstJob(f: Founded, recipeId: string, batches: number) {
+  const quote = await f.p.ok("POST", "/production/quote", { facilityId: f.facilityId, recipeId, batches });
+  expect(quote.blockers, JSON.stringify(quote.blockers)).toEqual([]);
+  expect(quote.canStart).toBe(true);
+  const cashBefore = BigInt((await f.p.ok("GET", "/company")).cash);
+  const job = await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId, batches, repeat: false, idempotencyKey: h.key() });
+  expect(job.status).toBe("running");
+  const cashAfter = BigInt((await f.p.ok("GET", "/company")).cash);
+  // Nakit yalnızca enerji + su + ücret kadar düşer (girdiler stoktan)
+  expect(cashBefore - cashAfter).toBe(BigInt(quote.cost.energy) + BigInt(quote.cost.water) + BigInt(quote.cost.labor));
+  const fin1 = await f.p.ok("GET", "/finance");
+  expect(BigInt(fin1.balances.wip)).toBe(BigInt(job.cost.total));
+  await h.advance(5 * HOUR);
+  const st = await f.p.ok("GET", `/facilities/${f.facilityId}`);
+  expect(st.jobs.find((j: { id: string }) => j.id === job.id).status).toBe("completed");
+  const stock = (await inv(f)).find((s) => s.productId === job.output.productId && s.quality === job.output.quality);
+  expect(stock, "çıktı depoda").toBeTruthy();
+  expect(stock!.qtyKg).toBe(job.output.qtyKg);
+  expect(stock!.costTotal).toBe(job.cost.total);
+  const fin2 = await f.p.ok("GET", "/finance");
+  expect(fin2.balances.wip).toBe("0");
+  const mv = await f.p.ok("GET", `/inventory/movements?productId=${job.output.productId}`);
+  const out = mv.find((x: { kind: string }) => x.kind === "production_output");
+  expect(out.breakdown.total).toBe(job.cost.total);
+  expect(out.breakdown.inputs.length).toBe(quote.inputs.length);
+  const me = await f.p.ok("GET", "/company");
+  expect(me.xp).toBe(h.deps.catalog.settings.xp.productionJob);
+  return { job, quote };
 }
 
-async function walletId(playerId: string): Promise<string> {
-  const [w] = await db
-    .select({ id: accounts.id })
-    .from(accounts)
-    .where(and(eq(accounts.playerId, playerId), eq(accounts.kind, "player")));
-  return w!.id;
-}
-
-async function balanceOf(playerId: string): Promise<bigint> {
-  const [w] = await db
-    .select({ balance: accounts.balance })
-    .from(accounts)
-    .where(and(eq(accounts.playerId, playerId), eq(accounts.kind, "player")));
-  return w!.balance;
-}
-
-/** Test kurulumu: bakiyeyi sistem:mint ile dengeli bir transferle hedef değere ayarlar. */
-async function setBalance(playerId: string, target: bigint): Promise<void> {
-  const diff = target - (await balanceOf(playerId));
-  if (diff === 0n) return;
-  const [mint] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.code, "system:mint"));
-  await transfer(db, `test:set:${playerId}:${randomUUID()}`, "test:set", [
-    { accountId: await walletId(playerId), amount: diff },
-    { accountId: mint!.id, amount: -diff },
-  ]);
-}
-
-async function newPlayer(balance: bigint = PARAMS.startingBalance): Promise<string> {
-  const res = await createGuest(db, `p_${uniq()}`);
-  if (!res.ok) throw new Error("test oyuncusu oluşturulamadı");
-  await setBalance(res.playerId, balance);
-  return res.playerId;
-}
-
-async function newCompany(playerId: string): Promise<void> {
-  refOf(await foundCompany(db, playerId, { name: `Firma${uniq()}`, idempotencyKey: randomUUID() }));
-}
-
-async function buy(playerId: string, type: BuyFacility["type"], plotX: number, plotY: number): Promise<ActionResult> {
-  return buyFacility(db, playerId, { type, plotX, plotY, idempotencyKey: randomUUID() });
-}
-
-async function grant(playerId: string, productId: string, qty: bigint): Promise<void> {
-  await db
-    .insert(inventories)
-    .values({ playerId, productId, quantity: qty })
-    .onConflictDoUpdate({
-      target: [inventories.playerId, inventories.productId],
-      set: { quantity: sql`${inventories.quantity} + ${qty}` },
-    });
-}
-
-async function invOf(playerId: string, productId: string): Promise<bigint> {
-  const [i] = await db
-    .select({ quantity: inventories.quantity })
-    .from(inventories)
-    .where(and(eq(inventories.playerId, playerId), eq(inventories.productId, productId)));
-  return i?.quantity ?? 0n;
-}
-
-function start(
-  playerId: string,
-  facilityId: string,
-  recipeId: RecipeId,
-  batches = 1,
-): Promise<ActionResult> {
-  const input: StartProduction = {
-    facilityId,
-    recipeId,
-    batches,
-    idempotencyKey: randomUUID(),
-  };
-  return startProduction(db, playerId, input);
-}
-
-async function jobsOf(facilityId: string) {
-  return db.select().from(productionJobs).where(eq(productionJobs.facilityId, facilityId));
-}
-
-async function runningCount(facilityId: string): Promise<number> {
-  return (await jobsOf(facilityId)).filter((j) => j.status === "running").length;
-}
-
-describe("üretim başlatma: eşzamanlılık", () => {
-  it("aynı tesise 20 paralel başlatma → tam 1 iş, diğerleri FACILITY_BUSY, girdi yalnızca bir kez düşer", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await grant(p, "energy", 100n);
-
-    const results = await Promise.all(Array.from({ length: 20 }, () => start(p, farm, "grow_wheat", 1)));
-
-    expect(results.filter((r) => r.ok)).toHaveLength(1);
-    const errors = results.flatMap((r) => (r.ok ? [] : [r.error]));
-    expect(errors).toEqual(Array(19).fill("FACILITY_BUSY"));
-    expect(await runningCount(farm)).toBe(1);
-    expect(await invOf(p, "energy")).toBe(99n);
+describe("her sektörün ilk işi", () => {
+  it("tarım: yem bitkisi", async () => {
+    const f = await found(h, "crop", "yesilova");
+    await runFirstJob(f, "grow_fodder", 2);
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
   });
+  it("hayvancılık: süt", async () => {
+    const f = await found(h, "livestock", "akyayla");
+    const { job } = await runFirstJob(f, "milk_cows", 2);
+    expect(job.output.productId).toBe("raw_milk");
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+  it("madencilik: arsadaki yatağa göre cevher/kömür", async () => {
+    const f = await found(h, "mining", "demirdag");
+    const recipe = f.plot.deposit?.kind === "coal" ? "mine_coal" : "mine_iron";
+    const { job } = await runFirstJob(f, recipe, 1);
+    expect(job.output.productId).toBe(recipe === "mine_coal" ? "coal" : "iron_ore");
+    // yanlış yatak tarifi reddedilir
+    const wrong = recipe === "mine_coal" ? "mine_iron" : "mine_coal";
+    const r = await f.p.post("/production/start", { facilityId: f.facilityId, recipeId: wrong, batches: 1, repeat: false, idempotencyKey: h.key() });
+    expect(r.body.error.code).toBe("DEPOSIT_MISMATCH");
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+  it("imalat: gıda fabrikası (un)", async () => {
+    const f = await found(h, "manufacturing", "korfezkent", "food_plant");
+    const { job } = await runFirstJob(f, "mill_flour", 1);
+    expect(job.output.productId).toBe("flour");
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+  it("imalat: çelikhane (çelik)", async () => {
+    const f = await found(h, "manufacturing", "korfezkent", "steel_mill");
+    const { job } = await runFirstJob(f, "smelt_steel", 1);
+    expect(job.output.productId).toBe("steel");
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+});
 
-  it("tek işlik girdiyle iki tesise 10 paralel başlatma → 1 başarı, envanter negatife düşmez", async () => {
-    const p = await newPlayer(10n ** 9n);
-    await newCompany(p);
-    const f1 = refOf(await buy(p, "farm", 0, 0));
-    const f2 = refOf(await buy(p, "farm", 1, 0));
-    await grant(p, "energy", 1n);
+describe("kapasite, hat ve engeller", () => {
+  it("parti kapasitesi, hat sınırı, tarif ve garaj", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const start = (batches: number, recipeId = "grow_fodder") =>
+      f.p.post("/production/start", { facilityId: f.facilityId, recipeId, batches, repeat: false, idempotencyKey: h.key() });
+    expect((await start(3)).body.error.code).toBe("BATCHES_EXCEED_CAPACITY");
+    expect((await start(1, "milk_cows")).body.error.code).toBe("RECIPE_NOT_ALLOWED");
+    expect((await start(1)).status).toBe(200);
+    // seviye 1: tek hat
+    expect((await start(1)).body.error.code).toBe("NO_FREE_LINE");
+    const q = await f.p.ok("POST", "/production/quote", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1 });
+    expect(q.canStart).toBe(false);
+    expect(q.blockers.map((b: { code: string }) => b.code)).toContain("NO_FREE_LINE");
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+  it("girdi yoksa INSUFFICIENT_STOCK, garaj üretim yapmaz", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const r = await f.p.post("/production/start", { facilityId: f.facilityId, recipeId: "grow_grain", batches: 2, repeat: false, idempotencyKey: h.key() });
+    expect(r.body.error.code).toBe("INSUFFICIENT_STOCK"); // 600 kg tohum gerekir, 400 var
+    const g = await found(h, "freight", "kavsak");
+    const r2 = await g.p.post("/production/start", { facilityId: g.facilityId, recipeId: "grow_fodder", batches: 1, repeat: false, idempotencyKey: h.key() });
+    expect(r2.body.error.code).toBe("RECIPE_NOT_ALLOWED");
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+  it("aynı idempotencyKey ikinci kez iş açmaz", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const body = { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1, repeat: false, idempotencyKey: h.key() };
+    const a = await f.p.ok("POST", "/production/start", body);
+    const b = await f.p.ok("POST", "/production/start", body);
+    expect(b.id).toBe(a.id);
+    const fac = await f.p.ok("GET", `/facilities/${f.facilityId}`);
+    expect(fac.jobs.filter((j: { status: string }) => j.status === "running").length).toBe(1);
+  });
+});
 
-    const results = await Promise.all(
-      Array.from({ length: 10 }, (_, i) => start(p, i % 2 === 0 ? f1 : f2, "grow_wheat", 1)),
-    );
-
-    expect(results.filter((r) => r.ok)).toHaveLength(1);
-    const allowed = new Set(["FACILITY_BUSY", "INSUFFICIENT_INVENTORY"]);
-    for (const r of results) {
-      if (!r.ok) expect(allowed.has(r.error)).toBe(true);
+describe("tekrar modu", () => {
+  it("girdi bitince hat durur, durma nedeni ve bildirim yazılır", async () => {
+    const f = await found(h, "crop", "yesilova");
+    await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1, repeat: true, idempotencyKey: h.key() });
+    await h.advance(6 * HOUR);
+    const fac = await f.p.ok("GET", `/facilities/${f.facilityId}`);
+    // 400 kg tohum: iki iş (200 + 200), üçüncü başlayamaz
+    expect(fac.jobs.filter((j: { status: string }) => j.status === "completed").length).toBe(2);
+    expect(fac.jobs.filter((j: { status: string }) => j.status === "running").length).toBe(0);
+    expect(fac.status).toBe("stalled");
+    expect(fac.stalledReason).toEqual({ code: "MISSING_INPUT", productId: "seed" });
+    const notes = await f.p.ok("GET", "/notifications");
+    expect(notes.some((n: { kind: string }) => n.kind === "line_stalled")).toBe(true);
+    expect(notes.filter((n: { kind: string }) => n.kind === "production_done").length).toBe(2);
+    const me = await f.p.ok("GET", "/company");
+    expect(me.nextSteps.some((s: { key: string }) => s.key === "fix_stalled")).toBe(true);
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+  it("stop-repeat zinciri durdurur", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const job = await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1, repeat: true, idempotencyKey: h.key() });
+    await f.p.ok("POST", `/production/${job.id}/stop-repeat`, { idempotencyKey: h.key() });
+    await h.advance(4 * HOUR);
+    const fac = await f.p.ok("GET", `/facilities/${f.facilityId}`);
+    expect(fac.jobs.filter((j: { status: string }) => j.status === "completed").length).toBe(1);
+    expect(fac.status).toBe("idle");
+    expect(fac.stalledReason).toBeNull();
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+  it("tekrar işi katalogdaki güncel tarifle başlar, çalışan iş kendi anlık görüntüsüyle biter", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const first = await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1, repeat: true, idempotencyKey: h.key() });
+    // yönetici tarifi değiştirir: çıktı 2400 → 4800 (katalog belleği)
+    const r = h.deps.catalog.recipes.get("grow_fodder")!;
+    const old = { ...r, output: { ...r.output } };
+    h.deps.catalog.recipes.set("grow_fodder", { ...r, output: { productId: "fodder", kg: 4800 }, version: r.version + 1 });
+    try {
+      await h.advance(4 * HOUR);
+      const fac = await f.p.ok("GET", `/facilities/${f.facilityId}`);
+      const jobs = fac.jobs as Array<{ id: string; output: { qtyKg: number } }>;
+      const a = jobs.find((j) => j.id === first.id)!;
+      const b = jobs.find((j) => j.id !== first.id)!;
+      expect(a.output.qtyKg).toBe(first.output.qtyKg);
+      expect(Math.abs(b.output.qtyKg - first.output.qtyKg * 2)).toBeLessThanOrEqual(1);
+    } finally {
+      h.deps.catalog.recipes.set("grow_fodder", old);
     }
-    const inv = await invOf(p, "energy");
-    expect(inv).toBe(0n);
-    expect(inv >= 0n).toBe(true);
-    const total = (await runningCount(f1)) + (await runningCount(f2));
-    expect(total).toBe(1);
-  });
-
-  it("iki paralel runCompletionPhase + tekrar çağrı → çıktı yalnızca bir kez envantere yazılır", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await grant(p, "energy", 2n);
-    expect((await start(p, farm, "grow_wheat", 2)).ok).toBe(true);
-
-    // Süre tarifin durationTicks değeri: bir önceki tick'te henüz tamamlanmamalı.
-    expect(await runCompletionPhase(db, GROW_TICKS - 1n)).toEqual([]);
-
-    const [a, b] = await Promise.all([runCompletionPhase(db, GROW_TICKS), runCompletionPhase(db, GROW_TICKS)]);
-    const again = await runCompletionPhase(db, GROW_TICKS);
-
-    expect(a.length + b.length + again.length).toBe(1);
-    expect(await invOf(p, "wheat")).toBe(RECIPES.grow_wheat.output.qty * 2n);
-    const [job] = await jobsOf(farm);
-    expect(job!.status).toBe("done");
-    expect(job!.completedTick).toBe(GROW_TICKS);
-  });
-
-  it("tamamlanan tesis yeniden başlatılabilir (kısmi UNIQUE yalnızca running için)", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await grant(p, "energy", 2n);
-    expect((await start(p, farm, "grow_wheat", 1)).ok).toBe(true);
-    await runCompletionPhase(db, GROW_TICKS);
-    expect((await start(p, farm, "grow_wheat", 1)).ok).toBe(true);
-    expect(await runningCount(farm)).toBe(1);
   });
 });
 
-describe("üretim tamamlama: askıdaki tesis", () => {
-  it("askıdaki tesisin işi tamamlanmaz; tesis yeniden aktif olunca tamamlanır", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await grant(p, "energy", 1n);
-    expect((await start(p, farm, "grow_wheat", 1)).ok).toBe(true);
-    await db.update(facilities).set({ status: "suspended" }).where(eq(facilities.id, farm));
-
-    expect(await runCompletionPhase(db, GROW_TICKS + 5n)).toEqual([]);
-    expect(await invOf(p, "wheat")).toBe(0n);
-    expect((await jobsOf(farm))[0]!.status).toBe("running");
-
-    await db.update(facilities).set({ status: "active" }).where(eq(facilities.id, farm));
-    expect(await runCompletionPhase(db, GROW_TICKS + 6n)).toHaveLength(1);
-    expect(await invOf(p, "wheat")).toBe(RECIPES.grow_wheat.output.qty);
+describe("çevrimdışı yerleşme ve tek seferlik", () => {
+  it("oturum olmadan zamanlayıcı işi bitirir; aynı anda iki runDue işi iki kez yerleştirmez", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const job = await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 2, repeat: false, idempotencyKey: h.key() });
+    // zamanı ilerlet ama görev çalıştırma (çevrimdışı oyuncu): saat ofseti
+    await h.deps.clock.advance(h.deps.db, 3 * HOUR);
+    const now = h.deps.clock.now();
+    const res = await Promise.all([runDue(h.deps, now, true), runDue(h.deps, now, true), runDue(h.deps, now, true)]);
+    expect(res.reduce((a, r) => a + (r["production.settle"] ?? 0), 0)).toBe(1);
+    const stock = (await inv(f)).filter((s) => s.productId === job.output.productId);
+    expect(stock.reduce((a, s) => a + s.qtyKg, 0)).toBe(job.output.qtyKg);
+    const rows = (await h.deps.db.execute(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (await import("drizzle-orm")).sql`SELECT count(*)::int n FROM cf.ledger_transactions WHERE idempotency_key = ${`prod-settle:${job.id}`}`,
+    )) as unknown as Array<{ n: number }>;
+    expect(rows[0]!.n).toBe(1);
+    const me = await f.p.ok("GET", "/company");
+    expect(me.xp).toBe(h.deps.catalog.settings.xp.productionJob);
+    expect(await balance(h, f.companyId, "wip")).toBe(0n);
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
   });
 });
 
-describe("üretim başlatma: yetki ve durum", () => {
-  it("başkasının tesisinde üretim UNAUTHORIZED; kimse envanter kaybetmez", async () => {
-    const owner = await newPlayer();
-    await newCompany(owner);
-    const farm = refOf(await buy(owner, "farm", 0, 0));
-    await grant(owner, "energy", 5n);
-
-    const intruder = await newPlayer();
-    await newCompany(intruder);
-    await grant(intruder, "energy", 5n);
-
-    const r = await start(intruder, farm, "grow_wheat", 1);
-    expect(r).toMatchObject({ ok: false, error: "UNAUTHORIZED" });
-    expect(await jobsOf(farm)).toHaveLength(0);
-    expect(await invOf(intruder, "energy")).toBe(5n);
-    expect(await invOf(owner, "energy")).toBe(5n);
+describe("kalite, araştırma", () => {
+  it("kalite iyileştirmesi çıktı kalitesini artırır", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const q1 = await f.p.ok("POST", "/production/quote", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1 });
+    await grantCash(h, f.companyId, 10_000_000n);
+    const up = await f.p.ok("POST", `/facilities/${f.facilityId}/quality`, { idempotencyKey: h.key() });
+    expect(up.upgrade.kind).toBe("quality");
+    const busy = await f.p.post(`/facilities/${f.facilityId}/quality`, { idempotencyKey: h.key() });
+    expect(busy.body.error.code).toBe("BUILDING_BUSY");
+    await h.advance(5 * HOUR);
+    const fac = await f.p.ok("GET", `/facilities/${f.facilityId}`);
+    expect(fac.qualityLevel).toBe(2);
+    expect(fac.upgrade).toBeNull();
+    const q2 = await f.p.ok("POST", "/production/quote", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1 });
+    expect(q2.output.quality).toBe(q1.output.quality + 1);
+    const notes = await f.p.ok("GET", "/notifications");
+    expect(notes.some((n: { kind: string }) => n.kind === "quality_upgrade_done")).toBe(true);
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
   });
-
-  it("olmayan tesis kimliği UNAUTHORIZED döner", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    await grant(p, "energy", 5n);
-    expect(await start(p, randomUUID(), "grow_wheat", 1)).toMatchObject({ ok: false, error: "UNAUTHORIZED" });
-  });
-
-  it("askıdaki tesiste FACILITY_SUSPENDED, girdi düşmez, iş oluşmaz", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await db.update(facilities).set({ status: "suspended" }).where(eq(facilities.id, farm));
-    await grant(p, "energy", 5n);
-
-    expect(await start(p, farm, "grow_wheat", 1)).toMatchObject({ ok: false, error: "FACILITY_SUSPENDED" });
-    expect(await jobsOf(farm)).toHaveLength(0);
-    expect(await invOf(p, "energy")).toBe(5n);
-  });
-
-  it("tarif-tesis uyuşmazlığı → RECIPE_FACILITY_MISMATCH, hiçbir şey değişmez", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await grant(p, "energy", 10n);
-    await grant(p, "iron", 10n);
-
-    expect(await start(p, farm, "mine_iron", 1)).toMatchObject({ ok: false, error: "RECIPE_FACILITY_MISMATCH" });
-    expect(await start(p, farm, "smelt_steel", 1)).toMatchObject({ ok: false, error: "RECIPE_FACILITY_MISMATCH" });
-    expect(await jobsOf(farm)).toHaveLength(0);
-    expect(await invOf(p, "energy")).toBe(10n);
-    expect(await invOf(p, "iron")).toBe(10n);
-  });
-
-  it("bilinmeyen tarif → UNKNOWN_RECIPE", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    const r = await startProduction(db, p, {
-      facilityId: farm,
-      recipeId: "yok" as unknown as StartProduction["recipeId"],
-      batches: 1,
-      idempotencyKey: randomUUID(),
-    });
-    expect(r).toMatchObject({ ok: false, error: "UNKNOWN_RECIPE" });
-    expect(await jobsOf(farm)).toHaveLength(0);
+  it("araştırma verimi artırır; seviye ve meşgul denetimi", async () => {
+    const f = await found(h, "crop", "yesilova");
+    const q1 = await f.p.ok("POST", "/production/quote", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 2 });
+    await grantCash(h, f.companyId, 20_000_000n);
+    const r = await f.p.ok("POST", "/research/agronomy/start", { idempotencyKey: h.key() });
+    expect(r.items.find((i: { researchId: string }) => i.researchId === "agronomy").inProgress).toBeTruthy();
+    expect((await f.p.post("/research/drilling/start", { idempotencyKey: h.key() })).body.error.code).toBe("RESEARCH_BUSY");
+    await h.advance(4 * HOUR);
+    const q2 = await f.p.ok("POST", "/production/quote", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 2 });
+    expect(q2.output.qtyKg).toBeGreaterThan(q1.output.qtyKg);
+    // %8 artış (taban 2400 × 2 parti, aşağı yuvarlı)
+    expect(q2.output.qtyKg).toBe(Math.floor((q1.output.qtyKg * 10800) / 10000));
+    // seviye 2 için şirket seviyesi 2 gerekir
+    expect((await f.p.post("/research/agronomy/start", { idempotencyKey: h.key() })).body.error.code).toBe("LEVEL_TOO_LOW");
+    await setLevel(h, f.companyId, 2);
+    await grantCash(h, f.companyId, 30_000_000n);
+    await f.p.ok("POST", "/research/agronomy/start", { idempotencyKey: h.key() });
+    await h.advance(7 * HOUR);
+    await setLevel(h, f.companyId, 3);
+    await f.p.ok("POST", "/research/agronomy/start", { idempotencyKey: h.key() });
+    await h.advance(10 * HOUR);
+    expect((await f.p.post("/research/agronomy/start", { idempotencyKey: h.key() })).body.error.code).toBe("RESEARCH_MAXED");
+    const view = await f.p.ok("GET", "/research");
+    expect(view.items.find((i: { researchId: string }) => i.researchId === "agronomy").level).toBe(3);
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
   });
 });
 
-describe("üretim başlatma: girdi yeterliliği", () => {
-  it("girdi yetersizse INSUFFICIENT_INVENTORY; batch büyükse kısmi düşüm olmaz", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await grant(p, "energy", 5n);
-
-    // 10 batch = 10 enerji gerekir, 5 var.
-    expect(await start(p, farm, "grow_wheat", 10)).toMatchObject({ ok: false, error: "INSUFFICIENT_INVENTORY" });
-    expect(await invOf(p, "energy")).toBe(5n);
-    expect(await jobsOf(farm)).toHaveLength(0);
-  });
-
-  it("çok girdili tarifte bir girdi eksikse hiçbiri düşmez", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const mill = refOf(await buy(p, "mill", 0, 0));
-    await grant(p, "wheat", 10n);
-    // Değirmen: 10 buğday + 1 enerji. Enerji yok.
-    expect(await start(p, mill, "mill_flour", 1)).toMatchObject({ ok: false, error: "INSUFFICIENT_INVENTORY" });
-    expect(await invOf(p, "wheat")).toBe(10n);
-    expect(await invOf(p, "energy")).toBe(0n);
-  });
-});
-
-describe("üretim tamamlama: süre ve çıktı", () => {
-  it("batch çıktısı doğrusaldır ve yalnızca süre dolunca envantere yazılır", async () => {
-    const p = await newPlayer();
-    await newCompany(p);
-    const farm = refOf(await buy(p, "farm", 0, 0));
-    await grant(p, "energy", 3n);
-    expect((await start(p, farm, "grow_wheat", 3)).ok).toBe(true);
-    expect(await invOf(p, "wheat")).toBe(0n);
-    expect(await invOf(p, "energy")).toBe(0n);
-
-    const done = await runCompletionPhase(db, GROW_TICKS);
-    expect(done).toHaveLength(1);
-    const expected = RECIPES.grow_wheat.output.qty * 3n;
-    expect(done[0]!.outputQty).toBe(expected.toString());
-    expect(await invOf(p, "wheat")).toBe(expected);
+describe("stok ve maliyet", () => {
+  it("lot maliyeti ağırlıklı ortalamayla düşer, kalite girdi ortalamasından gelir", async () => {
+    const f = await found(h, "livestock", "akyayla");
+    const before = (await inv(f)).find((s) => s.productId === "fodder")!.qtyKg;
+    // ek yem: kalite 4, pahalı → girdi ortalaması yukarı çeker
+    await grantStock(h, f.companyId, f.cityId, "fodder", 4, 1500, 3_000_000n);
+    const q = await f.p.ok("POST", "/production/quote", { facilityId: f.facilityId, recipeId: "milk_cows", batches: 2 });
+    // en yüksek kaliteden başlar: 1500 kg q4 + 1500 kg q2 → ağırlıklı ortalama 3
+    expect(q.output.quality).toBe(3);
+    const job = await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId: "milk_cows", batches: 2, repeat: false, idempotencyKey: h.key() });
+    expect(job.cost.inputs.map((i: { quality: number }) => i.quality).sort()).toEqual([2, 4]);
+    const lot4 = job.cost.inputs.find((i: { quality: number }) => i.quality === 4);
+    expect(lot4.cost).toBe("3000000");
+    await h.advance(3 * HOUR);
+    const stock = await inv(f);
+    const usedKg = (job.cost.inputs as Array<{ qtyKg: number }>).reduce((a, i) => a + i.qtyKg, 0);
+    expect(stock.filter((s) => s.productId === "fodder").map((s) => [s.quality, s.qtyKg])).toEqual([[2, before - (usedKg - 1500)]]);
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
   });
 });

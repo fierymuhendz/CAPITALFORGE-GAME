@@ -9,22 +9,24 @@
     "typecheck": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:reset-test": "tsx src/test/resetDb.ts"
   },
   "dependencies": {
     "@capitalforge/economy": "workspace:*",
     "@capitalforge/shared": "workspace:*",
-    "@colyseus/core": "0.16.26",
-    "@colyseus/schema": "3.0.76",
-    "@colyseus/ws-transport": "0.16.5",
+    "@fastify/cookie": "11.1.5",
+    "@fastify/websocket": "11.3.7",
     "drizzle-orm": "0.45.4",
     "fastify": "5.12.8",
     "ioredis": "5.8.2",
     "pino": "10.4.0",
     "postgres": "3.4.7",
-    "tsx": "4.20.6"
+    "tsx": "4.20.6",
+    "zod": "4.1.13"
   },
   "devDependencies": {
-    "drizzle-kit": "0.31.11"
+    "drizzle-kit": "0.31.11",
+    "@types/ws": "8.18.1"
   }
 }

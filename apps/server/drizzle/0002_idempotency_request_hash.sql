@@ -1,0 +1,1 @@
+ALTER TABLE "cf"."idempotency_keys" ADD COLUMN "request_hash" text;

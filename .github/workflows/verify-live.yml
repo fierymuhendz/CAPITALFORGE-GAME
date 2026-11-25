@@ -1,0 +1,45 @@
+name: Verify live
+
+# Yayından sonra canlı adreste kayıt/giriş, şirket, ilk iş, harita ve telefon/masaüstü arayüzünü dener.
+# Deploy bitince kendiliğinden ve elle çalışır. Tek bir sabit doğrulama hesabı (zz_dogrulama) kullanır;
+# parolası mevcut JWT_SECRET'tan türetilir, yeni sır gerekmez.
+on:
+  workflow_run:
+    workflows: [Deploy]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Playwright kur
+        run: |
+          mkdir -p /tmp/pw && cd /tmp/pw && npm init -y > /dev/null && npm install playwright@1.63.0 > /dev/null
+          npx playwright install --with-deps chromium
+      - name: Duman testi
+        env:
+          PUBLIC_DOMAIN: ${{ vars.PUBLIC_DOMAIN }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          export BASE_URL="https://$PUBLIC_DOMAIN"
+          SMOKE_PASSWORD="$(printf '%s' "smoke:$JWT_SECRET" | sha256sum | cut -c1-32)"
+          echo "::add-mask::$SMOKE_PASSWORD"
+          export SMOKE_PASSWORD
+          cp e2e/live-smoke.mjs /tmp/pw/ && cd /tmp/pw && node live-smoke.mjs
+      - name: Ekran görüntüleri
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canli-dogrulama
+          path: /tmp/pw/e2e/out/
+          retention-days: 14

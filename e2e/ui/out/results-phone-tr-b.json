@@ -1,0 +1,106 @@
+{
+  "cfg": "phone-tr",
+  "results": [
+    {
+      "cfg": "phone-tr",
+      "flow": 1,
+      "step": "kayıt sayfası açılır, dil düğmesi ile dil değişir",
+      "ok": true,
+      "detail": "",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 1,
+      "step": "yeni hesap kaydı -> /found",
+      "ok": true,
+      "detail": "",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 1,
+      "step": "sihirbaz: ad, şehir, sektör, uygun arsa; seçimde fiyat+konum+uzaklık görünür; /play şehir görünümü",
+      "ok": true,
+      "detail": "16 arsa; ayrıntı: Yeşilova 1·3 ₺17.000,00 Büyüklük 17 ha Verimlilik — Şehir merkezine 7 km En yakın hammadde Tahıl: Yeşilova 0 km · Tahıl: Kavşak 90 km · Tahıl: Körfezkent 180 km",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 1,
+      "step": "/play: şehir görünümü çizilir",
+      "ok": true,
+      "detail": "canvas 390x496",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 1,
+      "step": "dil düğmesi: hesap tercihi ile dil kalıcı",
+      "ok": true,
+      "detail": "",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 3,
+      "step": "gözlem",
+      "ok": true,
+      "detail": "nakliye sektöründe arsa ayrıntısında kaynağa/müşteriye uzaklık yok (yalnızca merkeze km)"
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 3,
+      "step": "nakliye şirketi kurulur (sihirbaz), başlangıç kamyonu görünür",
+      "ok": true,
+      "detail": "",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 3,
+      "step": "boş durumlar yönlendirme metni gösterir (envanter, sözleşmeler, satışlar, sevkiyatlar)",
+      "ok": true,
+      "detail": "",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 3,
+      "step": "nakliye panosundan iş kabul edilir; araç yük ve varış ile görünür",
+      "ok": true,
+      "detail": "",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 3,
+      "step": "araç harita üzerinde (şehir görünümü) çizilir",
+      "ok": true,
+      "detail": "canvas 390x496",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 6,
+      "step": "oyuncu hesabı /admin'de yönetim verisi göremez",
+      "ok": true,
+      "detail": "GET overview=403 advance=403",
+      "shot": ""
+    },
+    {
+      "cfg": "phone-tr",
+      "flow": 6,
+      "step": "yönetici: giriş sonrası 2FA doğrulama ekranı, ardından genel bakış yüklenir",
+      "ok": true,
+      "detail": "",
+      "shot": ""
+    }
+  ],
+  "bugs": [],
+  "monitor": {
+    "console": [],
+    "pageErrors": [],
+    "api": []
+  }
+}
