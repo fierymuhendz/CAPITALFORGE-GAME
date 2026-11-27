@@ -10,7 +10,7 @@ import type { Catalog } from "../catalog/catalog";
 import type { DbOrTx } from "../db/client";
 import { marketOrders } from "../db/schema";
 import { m } from "../lib/serialize";
-import { companyBriefs, HOUR } from "../market/common";
+import { HOUR } from "../market/common";
 import { ceilDiv, floorDiv, stockRows, systemFreightEstimate, topStockCity } from "../market/offers";
 import { effectivePrice } from "../market/spot";
 import { productBidCap, systemContractCap } from "../system/pricing";
@@ -135,8 +135,4 @@ export async function contractExpected(db: DbOrTx, catalog: Catalog, c: Contract
   }
   const goods = BigInt(d.total.goods);
   return { qtyKg: d.total.qtyKg, goods, freight: 0n, cost: goods, minutes: Math.round((last.getTime() - now.getTime()) / 60_000), at: last };
-}
-
-export async function nameIsSystem(db: DbOrTx, id: string): Promise<boolean> {
-  return (await companyBriefs(db, [id])).get(id)?.isSystem ?? false;
 }

@@ -1,6 +1,7 @@
 /** Piyasa görünümleri: defter, genel bakış, fiyat geçmişi. Başka şirketin nakdi/stoğu yanıtlara girmez. */
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { MarketDto, MarketOverviewDto, PriceHistoryDto } from "@capitalforge/shared";
+import { maxBig, minBig } from "@capitalforge/economy";
 import type { Catalog } from "../catalog/catalog";
 import type { Db } from "../db/client";
 import { marketOrders, priceHistory, priceRefs, trades } from "../db/schema";
@@ -60,9 +61,9 @@ export async function marketOverview(db: Db, catalog: Catalog, now: Date): Promi
       rows.push({
         productId: p.id, cityId: c.id,
         refPricePerKg: m(refs.get(`${p.id}|${c.id}`) ?? BigInt(p.basePricePerKg)),
-        bestAsk: asks.length ? m(asks.reduce((a, b) => (b < a ? b : a))) : null,
+        bestAsk: asks.length ? m(minBig(...asks)) : null,
         askKg: sells.reduce((a, b) => a + Number(b.kg), 0),
-        bestBid: bids.length ? m(bids.reduce((a, b) => (b > a ? b : a))) : null,
+        bestBid: bids.length ? m(maxBig(...bids)) : null,
         bidKg: buys.reduce((a, b) => a + Number(b.kg), 0),
         systemBidRemainingKg: buys.filter((b) => b.isSystem).reduce((a, b) => a + Number(b.kg), 0),
         volume24hKg: Number(vol.find((v) => v.productId === p.id && v.cityId === c.id)?.kg ?? 0),

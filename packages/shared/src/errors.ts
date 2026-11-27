@@ -57,7 +57,3 @@ export const ERROR_CODES = [
   "CONNECTION_LIMIT",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
-
-export interface ApiErrorBody {
-  error: { code: ErrorCode; reqId?: string; details?: Record<string, string | number> };
-}

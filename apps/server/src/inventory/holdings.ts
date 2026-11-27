@@ -3,7 +3,7 @@
  * bu modül yalnızca holdings + inventory_movements tutarlılığını sağlar.
  * Ağırlıklı ortalama maliyet kuralı packages/economy (wacRemovalCost) içindedir.
  */
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { wacRemovalCost } from "@capitalforge/economy";
 import type { Tx } from "../db/client";
 import { holdings, inventoryMovements } from "../db/schema";
@@ -84,30 +84,6 @@ export async function releaseStock(tx: Tx, k: HoldingKey, qtyKg: number): Promis
   const h = await lockHolding(tx, k);
   if (h.reservedKg < qtyKg) throw new Error("releaseStock: rezerveden fazla serbest bırakma");
   await tx.update(holdings).set({ reservedKg: h.reservedKg - qtyKg }).where(eq(holdings.id, h.id));
-}
-
-/**
- * Bir ürün için kullanılabilir stoktan en yüksek kaliteden başlayarak (veya minQuality üstü)
- * lot seçimi. Döndürür: [{quality, kg}] — çağıran bunları removeStock ile düşer.
- */
-export async function pickLots(tx: Tx, companyId: string, cityId: string, productId: string, needKg: number, minQuality = 1, lock = true): Promise<Array<{ quality: number; kg: number }> | null> {
-  const q = tx
-    .select()
-    .from(holdings)
-    .where(and(eq(holdings.companyId, companyId), eq(holdings.cityId, cityId), eq(holdings.productId, productId), gt(holdings.qtyKg, 0), sql`${holdings.quality} >= ${minQuality}`))
-    .orderBy(sql`${holdings.quality} desc`);
-  const rows = lock ? await q.for("update") : await q;
-  const out: Array<{ quality: number; kg: number }> = [];
-  let left = needKg;
-  for (const r of rows) {
-    const av = r.qtyKg - r.reservedKg;
-    if (av <= 0) continue;
-    const take = Math.min(av, left);
-    out.push({ quality: r.quality, kg: take });
-    left -= take;
-    if (left === 0) break;
-  }
-  return left === 0 ? out : null;
 }
 
 export async function availableKg(tx: Tx, companyId: string, cityId: string, productId: string, minQuality = 1): Promise<number> {

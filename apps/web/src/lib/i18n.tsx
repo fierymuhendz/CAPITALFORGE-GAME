@@ -9,7 +9,6 @@ const Ctx = createContext<LocaleCtx>({ locale: "tr", setLocale: () => undefined 
 export function LocaleProvider({ value, children }: { value: LocaleCtx; children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
-export const useLocaleCtx = (): LocaleCtx => useContext(Ctx);
 
 export function browserLocale(): Locale {
   if (typeof navigator === "undefined") return "tr";

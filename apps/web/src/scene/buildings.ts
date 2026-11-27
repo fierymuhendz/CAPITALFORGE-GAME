@@ -19,8 +19,6 @@ export interface BuildingDef {
   shutter: null | { w: number; h: number; x: number; y: number; z: number };
 }
 
-export const BUILDING_TYPE_IDS = ["field", "barn", "mine", "food_plant", "steel_mill", "garage"] as const;
-
 function empty(): Omit<BuildingDef, "geometry" | "height"> {
   return { smoke: [], glows: [], lamps: [], wheels: [], fans: [], tractor: false, shutter: null };
 }

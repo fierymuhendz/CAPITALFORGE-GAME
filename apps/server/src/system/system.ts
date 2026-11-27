@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, gt, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
-  applyBp, reputationBp, systemAsk, systemBid, systemBidForQuality, systemCarrierQuote, systemCarrierQuoteWithDeadline, systemContractPrice, systemFreightJobSpec, systemShareFactorBp,
+  applyBp, minBig, reputationBp, systemAsk, systemBid, systemBidForQuality, systemCarrierQuote, systemCarrierQuoteWithDeadline, systemContractPrice, systemFreightJobSpec, systemShareFactorBp,
 } from "@capitalforge/economy";
 import { QUALITY_PRICE_BP, SYSTEM_CARRIER, SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, SYSTEM_PROFILES, roadDistanceKm, type SystemProfile } from "@capitalforge/shared";
 import type { Tx } from "../db/client";
@@ -408,7 +408,7 @@ async function recurringContracts(deps: Deps, now: Date, sysCos: Map<string, Com
         const ref = refs.get(h.cityId) ?? BigInt(cat.product(h.productId).basePricePerKg);
         const cap = bidCapFromRefs(refs, sys.askBp);
         const asks = [...refs.values()].map((r) => systemAsk(r, sys.askBp, 0, 1));
-        const minAsk = asks.length ? asks.reduce((a, b) => (b < a ? b : a)) : null;
+        const minAsk = asks.length ? minBig(...asks) : null;
         const yday = await dailyOf(tx, comp.id, h.productId, new Date(now.getTime() - 24 * HOUR));
         const dToday = await dailyOf(tx, comp.id, h.productId, now);
         const saturationBp = Math.min(10000, Math.floor((10000 * Math.max(dToday.boughtKg, yday.boughtKg)) / B));

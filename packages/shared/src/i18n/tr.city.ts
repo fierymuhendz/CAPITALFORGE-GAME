@@ -10,10 +10,7 @@ export const trCity: Dict = {
       upgrading: "yükseltiliyor",
     },
     chip: { idle: "Boşta", stalled: "Durdu" },
-    mine: "benim",
-    forSale: "satılık arsa",
     to: "hedef",
-    cargo: "yük",
     chipLabel: "{type}, {status}",
   },
 };

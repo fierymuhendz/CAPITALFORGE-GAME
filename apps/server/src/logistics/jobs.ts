@@ -1,7 +1,7 @@
 /** Taşıma işi panosu: açma (emanet + yük rezervi), kabul, iptal, süre dolumu, DTO. */
 import { randomUUID } from "node:crypto";
-import { and, eq, lte, or } from "drizzle-orm";
-import { applyBp, estimateOwnTrip, systemCarrierQuote } from "@capitalforge/economy";
+import { and, eq, lte } from "drizzle-orm";
+import { applyBp, estimateOwnTrip, minBig, systemCarrierQuote } from "@capitalforge/economy";
 import { roadDistanceKm, type AcceptFreightReq, type CancelReq, type FreightJobDto, type FreightJobReq } from "@capitalforge/shared";
 import type { z } from "zod";
 import type { Catalog } from "../catalog/catalog";
@@ -191,14 +191,13 @@ export async function jobDtos(db: DbOrTx, catalog: Catalog, rows: JobRow[], me: 
     if (me && j.status === "open" && j.shipperCompanyId !== me.id) {
       const cand = myVehicles.filter((v) => v.cityId === j.originCityId && catalog.vehicleModel(v.modelId).capacityKg >= j.totalKg);
       if (cand.length) {
-        const best = cand
+        const best = minBig(...cand
           .map((v) => {
             const md = catalog.vehicleModel(v.modelId);
             return estimateOwnTrip(j.distanceKm, { capacityKg: md.capacityKg, speedKmh: md.speedKmh, fuelPerKm: BigInt(md.fuelPerKm) }, BigInt(catalog.city(j.originCityId).wage), {
               speedBonusBp: bonus.speedBp, fuelSavingBp: bonus.fuelBp, loadingHours: catalog.settings.freight.driverHoursPerTrip,
             }).total;
-          })
-          .reduce((a, b) => (b < a ? b : a));
+          }));
         est = m(best);
       }
     }
@@ -217,4 +216,3 @@ export async function jobDtos(db: DbOrTx, catalog: Catalog, rows: JobRow[], me: 
   });
 }
 
-export const mineJobsWhere = (companyId: string) => or(eq(freightJobs.shipperCompanyId, companyId), eq(freightJobs.carrierCompanyId, companyId));
