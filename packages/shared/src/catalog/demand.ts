@@ -66,13 +66,25 @@ const CONSUMER_INDUSTRIES = new Set<Industry>(["field_crops", "livestock", "dair
 const CONSUMER_IDS = new Set(["furniture", "paper_towel", "notebook", "charcoal", "tableware", "soap", "detergent", "candle"]);
 
 /** nihai mal: şehir başına günlük tüketim bütçesi (₺) → kg = bütçe / (fiyat × 0,85) */
-export const V4_DEMAND_BUDGET = { consumerTl: 18_000, industrialTl: 15_000, intermediateBatchShareBp: 2500, intermediateBidBp: 7500, supplyBatches: 1.5, finalMinBatchesPerCity: 0.6 } as const;
+export const V4_DEMAND_BUDGET = { consumerTl: 18_000, industrialTl: 15_000, intermediateBatchShareBp: 2500, intermediateBidBp: 7500, supplyBatches: 1.5, finalMinBatchesPerCity: 0.6, starterBatchShareBp: 12000 } as const;
 
 const round10 = (v: number) => Math.max(20, Math.round(v / 10) * 10);
 
 export type DemandBudget = { [K in keyof typeof V4_DEMAND_BUDGET]: number };
 
 /** v4 profilleri; `budget` verilmezse katalog değerleri (sim, "önce/sonra" karşılaştırması için başka değer verebilir) */
+/** girdisi yalnızca tohum olan hasat binaları; ucuz yan ürünler (saman, gübre) oyuncular arası pazara kalır */
+const STARTER_BUILDINGS = new Set(["field", "mine"]);
+const STARTER_MIN_PRICE = 300;
+/** başlangıç hasat binalarının araştırmasız reçetelerinin v4 çıktıları → en büyük parti (kg) */
+const STARTER_PRODUCTS = new Map<string, number>();
+for (const r of V4_RECIPES) {
+  if (!STARTER_BUILDINGS.has(r.buildingType) || r.research) continue;
+  const price = V4_PRODUCTS.find((p) => p.id === r.output.productId)?.basePricePerKg ?? 0;
+  if (price < STARTER_MIN_PRICE) continue;
+  STARTER_PRODUCTS.set(r.output.productId, Math.max(STARTER_PRODUCTS.get(r.output.productId) ?? 0, r.output.kg));
+}
+
 export function buildV4Profiles(budget: DemandBudget = V4_DEMAND_BUDGET): SystemProfile[] {
   const byId = new Map(V4_PRODUCTS.map((p) => [p.id, p]));
   const batchOut = (pid: string) => V4_RECIPES.find((r) => r.output.productId === pid && !r.research)?.output.kg ?? 1000;
@@ -93,7 +105,10 @@ export function buildV4Profiles(budget: DemandBudget = V4_DEMAND_BUDGET): System
       const kg = round10(Math.max((tl * 100) / (p.basePricePerKg * 0.85), budget.finalMinBatchesPerCity * batchOut(p.id)));
       for (const c of INDUSTRY_MARKETS[ind]) add(consumer ? retail : industry, c, p.id, kg);
     } else {
-      add(industry, INTERMEDIATE_OFFICE[ind], p.id, round10((batchOut(p.id) * budget.intermediateBatchShareBp) / 10000));
+      // hediye tarla/madenin ürettiği hasat: ilk iş tek partide yerel sistem alıcısına satılabilsin
+      const starterKg = STARTER_PRODUCTS.get(p.id);
+      const kg = starterKg !== undefined ? (starterKg * budget.starterBatchShareBp) / 10000 : (batchOut(p.id) * budget.intermediateBatchShareBp) / 10000;
+      add(industry, INTERMEDIATE_OFFICE[ind], p.id, round10(kg));
     }
   }
   for (const [city, ids] of Object.entries(V4_BASIC_SUPPLY)) {
