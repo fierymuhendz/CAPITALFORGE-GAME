@@ -11,6 +11,7 @@ import { fail } from "../errors";
 import { m } from "../lib/serialize";
 import { effectivePrice } from "../market/spot";
 import { productBidCap } from "../system/pricing";
+import { systemFreightEstimate } from "../market/offers";
 import { evaluateProduction } from "./eval";
 
 type Buyer = ProductionQuoteDto["bestBuyers"][number];
@@ -42,7 +43,8 @@ export async function bestBuyers(db: DbOrTx, catalog: Catalog, companyId: string
 
 /**
  * Çıktının en iyi alıcıya satılırsa tahmini: önce aynı şehirdeki en iyi alım emri (kaliteye göre fiyat, sellToOrder ile aynı formül),
- * yoksa bestBuyers'ın ilki. Gelir = miktar × fiyat, komisyon piyasa komisyonu, kâr = gelir − komisyon − üretim maliyeti.
+ * yoksa bestBuyers'ın navlun sonrası en çok kazandıranı. Gelir = miktar × fiyat, komisyon piyasa komisyonu,
+ * navlun alıcı başka şehirdeyse sistem taşımacısı tarifesi; kâr = gelir − komisyon − navlun − üretim maliyeti.
  */
 export async function estimateSale(
   db: DbOrTx, catalog: Catalog, companyId: string, cityId: string, productId: string, quality: number, qtyKg: number, cost: bigint, minutes: number,
@@ -63,14 +65,21 @@ export async function estimateSale(
       if (price === null || p > price) price = p;
     }
   } else {
-    const b = (buyers ?? (await bestBuyers(db, catalog, companyId, productId, quality, cityId)))[0];
-    if (b) { price = BigInt(b.pricePerKg); at = b.cityId; }
+    // başka şehirdeki alıcılar: navlun düşüldükten sonra en çok kazandıranı seç
+    let bestNet: bigint | null = null;
+    for (const b of buyers ?? (await bestBuyers(db, catalog, companyId, productId, quality, cityId))) {
+      const p = BigInt(b.pricePerKg);
+      const gross = BigInt(qtyKg) * p;
+      const net = gross - applyBp(gross, catalog.settings.marketFeeBp) - systemFreightEstimate(catalog, cityId, b.cityId, qtyKg).freight;
+      if (bestNet === null || net > bestNet) { bestNet = net; price = p; at = b.cityId; }
+    }
   }
   if (price === null) return null;
   const revenue = BigInt(qtyKg) * price;
   const fee = applyBp(revenue, catalog.settings.marketFeeBp);
-  const profit = revenue - fee - cost;
-  return { pricePerKg: m(price), cityId: at, revenue: m(revenue), fee: m(fee), profit: m(profit), profitPerHour: m(minutes > 0 ? (profit * 3600n) / BigInt(Math.max(1, Math.round(minutes * 60))) : 0n) };
+  const fr = systemFreightEstimate(catalog, cityId, at, qtyKg);
+  const profit = revenue - fee - fr.freight - cost;
+  return { pricePerKg: m(price), cityId: at, revenue: m(revenue), fee: m(fee), freight: m(fr.freight), km: fr.km, profit: m(profit), profitPerHour: m(minutes > 0 ? (profit * 3600n) / BigInt(Math.max(1, Math.round(minutes * 60))) : 0n) };
 }
 
 export async function quote(db: Db, catalog: Catalog, companyId: string, req: z.infer<typeof ProductionQuoteReq>, now: Date): Promise<ProductionQuoteDto> {

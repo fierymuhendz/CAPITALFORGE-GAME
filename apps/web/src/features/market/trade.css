@@ -1,0 +1,166 @@
+.trade-desk,
+.stock-register {
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.trade-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 116px), 1fr));
+  gap: 5px;
+}
+
+.trade-product {
+  appearance: none;
+  min-width: 0;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  text-align: start;
+  font: 600 var(--fs-sm) / 1.2 var(--font-body);
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.trade-product:hover { background: var(--surface-2); border-color: var(--line-strong); }
+.trade-product[aria-pressed="true"] { color: var(--text); border-color: var(--forge); background: var(--forge-soft); }
+.trade-product svg { margin-inline-start: auto; flex-shrink: 0; color: var(--forge); }
+.trade-product:focus-visible { outline: 2px solid var(--forge); outline-offset: 2px; }
+
+.trade-swatch {
+  flex: 0 0 7px;
+  width: 7px;
+  height: 15px;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
+}
+
+.trade-product-label { min-width: 0; overflow-wrap: anywhere; }
+.trade-product-label small, .inventory-available small, .trade-quote-title small {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 450;
+  color: var(--text-2);
+}
+
+.trade-parameters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 195px), 1fr));
+  gap: var(--sp-3);
+}
+
+.trade-quote,
+.inventory-totals,
+.trade-history {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.trade-quote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+  padding: 16px;
+  border-inline-start: 3px solid var(--forge);
+}
+.trade-quote-title, .inventory-product { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.trade-quote-title { flex: 1 1 150px; }
+.trade-quote-title strong { display: block; overflow-wrap: anywhere; font: 700 var(--fs-lg) / 1.25 var(--font-head); margin-block: 3px; }
+.trade-quote-icon, .inventory-emblem {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 35px;
+  height: 35px;
+  border-radius: var(--r-sm);
+}
+.trade-quote-icon { color: var(--forge); background: var(--forge-soft); }
+.trade-quote-numbers, .inventory-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); margin: 0; }
+.trade-quote-numbers { flex: 3 1 335px; }
+.trade-label, .trade-quote dt, .inventory-totals dt, .trade-history dt {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+}
+.trade-quote dd, .inventory-totals dd, .trade-history dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font: 650 var(--fs-lg) / 1.18 var(--font-head);
+  font-variant-numeric: tabular-nums;
+}
+.trade-quote dd { font-size: var(--fs-md); }
+.trade-quote-numbers > div, .inventory-totals > div { min-width: 0; }
+.trade-quality {
+  display: inline-block;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  padding: 1px 4px;
+  border-radius: 4px;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  font-weight: 550;
+}
+
+.inventory-totals { gap: 0; overflow: hidden; }
+.inventory-totals > div { padding: var(--sp-4); }
+.inventory-totals > div + div { border-inline-start: 1px solid var(--line); }
+.inventory-totals dt { display: flex; align-items: center; gap: 6px; }
+.inventory-totals dt svg { flex-shrink: 0; color: var(--steel); }
+.inventory-totals dd { margin-top: 8px; }
+.inventory-emblem { position: relative; overflow: hidden; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--line); }
+.inventory-emblem .trade-swatch { position: absolute; inset: 0 auto 0 0; width: 4px; height: 100%; border: 0; border-radius: 0; }
+.inventory-product b { overflow-wrap: anywhere; }
+.inventory-available { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.inventory-meter { display: block; width: 56px; height: 3px; overflow: hidden; border-radius: 2px; background: var(--surface-3); }
+.inventory-meter > span { display: block; height: 100%; background: var(--good); }
+
+@container (max-width: 720px) {
+  .inventory-available { align-items: flex-start; }
+}
+@container (max-width: 440px) {
+  .trade-products { display: flex; overflow-x: auto; padding: 2px 2px 5px; scroll-padding-inline: 2px; }
+  .trade-product { flex: 0 0 auto; max-width: 135px; }
+  .inventory-totals { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .inventory-totals > div { padding: 12px; }
+  .inventory-totals > div:last-child { grid-column: 1 / -1; border-inline-start: 0; border-top: 1px solid var(--line); }
+  .trade-parameters { grid-template-columns: minmax(0, 1fr); }
+  .trade-quote-numbers { flex-basis: 100%; gap: 7px; }
+}
+
+.trade-history {
+  display: flex;
+  align-items: center;
+  gap: 14px 32px;
+  flex-wrap: wrap;
+  padding: var(--sp-4);
+  border-inline-start: 3px solid var(--steel);
+}
+.trade-history dl { margin: 0; flex: 1 1 150px; }
+.trade-history dd { margin-top: 6px; font-size: var(--fs-xl); }
+.trade-history-plot { margin: 0; flex: 3 1 235px; min-width: 0; }
+.trade-history-plot figcaption, .trade-history-range { font-size: var(--fs-xs); color: var(--text-2); }
+.trade-history-line { display: flex; align-items: stretch; gap: 8px; margin-block: 5px; }
+.trade-history-line svg { display: block; flex: 1; min-width: 0; height: 60px; }
+.trade-history-limits { display: flex; flex-direction: column; justify-content: space-between; color: var(--text-2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.trade-history-limits:has(> :only-child) { justify-content: center; }
+.trade-history-range { display: flex; justify-content: space-between; gap: 8px; }
+.trade-history-range > :last-child { text-align: end; }
+
+/* Satış masası: en iyi teklif kartında kâr ve doğrudan eylem */
+.trade-quote-numbers { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.trade-quote-act { flex: 0 0 auto; }
+.trade-quote-act .btn { min-height: 44px; }
+.trade-return.btn { align-self: flex-start; }
+@container (max-width: 440px) {
+  .trade-quote-act { flex-basis: 100%; }
+  .trade-quote-act .btn { width: 100%; }
+  .trade-quote-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

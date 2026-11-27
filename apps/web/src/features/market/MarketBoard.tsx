@@ -6,7 +6,7 @@ import { useAction } from "@/lib/action";
 import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { Async, Badge, Button, Card, EmptyState, KV, Notice, PriceInput, QtyInput, SelectField, Seg, Sheet, SystemBadge, Table, type Col } from "@/ui";
+import { Async, Badge, Button, EmptyState, KV, Notice, PriceInput, QtyInput, SelectField, Seg, Sheet, SystemBadge, Table, type Col } from "@/ui";
 import { usePlay } from "../play/context";
 
 export type View = { productId: string; cityId: string } | null;
@@ -56,20 +56,34 @@ function Overview({ onPick }: { onPick: (productId: string, cityId: string) => v
 }
 
 function Spark({ productId, cityId }: { productId: string; cityId: string }) {
-  const { t } = useT();
+  const i = useT();
+  const { t } = i;
   const h = useData<PriceHistoryDto>("/market/history", { productId, cityId }, ["market"]);
   const pts = h.data?.points ?? [];
   if (pts.length < 2) return null;
-  const ys = pts.map((p) => Number(p.refPricePerKg));
-  const min = Math.min(...ys), max = Math.max(...ys);
-  const path = ys.map((y, n) => `${(n / (ys.length - 1)) * 100},${max === min ? 20 : 38 - ((y - min) / (max - min)) * 36}`).join(" ");
-  const up = ys[ys.length - 1]! >= ys[0]!;
+  const first = pts[0]!, last = pts[pts.length - 1]!;
+  const prices = pts.map((p) => Number(p.refPricePerKg));
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const start = Date.parse(first.at), duration = Date.parse(last.at) - start;
+  const path = pts.map((p, n) => {
+    const x = duration > 0 ? (Date.parse(p.at) - start) / duration : n / (pts.length - 1);
+    const y = max === min ? 30 : 56 - (prices[n]! - min) / (max - min) * 52;
+    return `${x * 240},${y}`;
+  }).join(" ");
+  const change = prices[prices.length - 1]! - prices[0]!;
+  const tone = change === 0 ? "var(--steel)" : change > 0 ? "var(--good)" : "var(--bad)";
   return (
-    <figure style={{ margin: 0 }}>
-      <svg viewBox="0 0 100 40" preserveAspectRatio="none" width="100%" height="56" role="img" aria-label={t("market.historyAlt")}>
-        <polyline points={path} fill="none" stroke={up ? "var(--good)" : "var(--bad)"} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <figcaption className="xs muted">{t("market.history")} {up ? "▲" : "▼"}</figcaption>
+    <figure className="trade-history-plot">
+      <figcaption>{t("market.history")}</figcaption>
+      <div className="trade-history-line">
+        <svg viewBox="0 0 240 60" preserveAspectRatio="none" role="img" aria-label={`${t("market.historyAlt")} · ${i.date(first.at)} (${i.price(first.refPricePerKg)}) – ${i.date(last.at)} (${i.price(last.refPricePerKg)})`}>
+          <path d="M0 4H240M0 30H240M0 56H240" stroke="var(--line)" fill="none" vectorEffect="non-scaling-stroke" />
+          <polygon points={`0,60 ${path} 240,60`} fill={tone} fillOpacity="0.12" />
+          <polyline points={path} fill="none" stroke={tone} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        </svg>
+        <div className="trade-history-limits" aria-hidden="true"><span>{i.price(max)}</span>{min === max ? null : <span>{i.price(min)}</span>}</div>
+      </div>
+      <div className="trade-history-range"><span>{i.date(first.at)}</span><span>{i.date(last.at)}</span></div>
     </figure>
   );
 }
@@ -100,7 +114,10 @@ function ProductPage({ view, setView, createSide, setCreateSide }: { view: NonNu
       <Async res={res}>
         {(m) => (
           <div className="col">
-            <Card tight><div className="row between"><span className="muted2">{t("market.ref")}</span><b className="num">{i.price(m.refPricePerKg)}</b></div><Spark productId={view.productId} cityId={view.cityId} /></Card>
+            <div className="trade-history">
+              <dl><dt>{t("market.ref")}</dt><dd>{i.price(m.refPricePerKg)}</dd></dl>
+              <Spark productId={view.productId} cityId={view.cityId} />
+            </div>
             <div className="row wrap"><Button variant="primary" onClick={() => setCreateSide("sell")}>{t("market.newListing")}</Button><Button onClick={() => setCreateSide("buy")}>{t("market.newOrder")}</Button></div>
 
             <h4>{t("market.asks")}</h4>

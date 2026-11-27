@@ -152,3 +152,6 @@ export interface OutcomeDto {
   saleIds: string[];
   ledgerTransactionIds: string[];
 }
+
+/** POST /market/haul yanıtı */
+export interface HaulResultDto { jobIds: string[]; freight: string; loads: number; arrivesBy: string }

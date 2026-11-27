@@ -295,3 +295,22 @@ a.brand { color: inherit; text-decoration: none; }
 @media (max-width: 420px) { .hide-xs { display: none; } }
 
 .col > .btn.ghost.sm { align-self: flex-start; }
+
+/* Durum işareti: çalışıyor dolu daire, boşta halka, durdu kare, yolda ok, dikkat üçgen, inşaat yarım daire */
+.st { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 650; white-space: nowrap; color: var(--text-2); }
+.st > i { width: 9px; height: 9px; flex: 0 0 auto; display: inline-block; }
+.st-run { color: var(--good); } .st-run > i { background: var(--good); border-radius: 50%; }
+.st-idle { color: var(--text-3); } .st-idle > i { border: 2px solid var(--text-3); border-radius: 50%; }
+.st-stop { color: var(--bad); } .st-stop > i { background: var(--bad); border-radius: 1px; }
+.st-road { color: var(--steel); } .st-road > i { width: 0; height: 0; border-left: 9px solid var(--steel); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.st-attn { color: var(--amber); } .st-attn > i { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 9px solid var(--amber); }
+.st-build { color: var(--text-2); } .st-build > i { border-radius: 50%; background: linear-gradient(90deg, var(--text-2) 50%, transparent 50%); border: 1px solid var(--text-2); }
+.tbl td.r, .tbl th.r { font-variant-numeric: tabular-nums; }
+.tbl tr.sel td { background: var(--surface-3); }
+.tbl tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--forge); }
+@container (max-width: 720px) { .tbl.cards-sm tr.sel { border-color: var(--forge); background: var(--surface-3); } }
+.tbl th, .stat .k { text-transform: none; letter-spacing: 0; }
+@container (max-width: 720px) {
+  .tbl.cards-sm tr.sel td:first-child { box-shadow: none; }
+  .ops-input-cell { white-space: normal; }
+}

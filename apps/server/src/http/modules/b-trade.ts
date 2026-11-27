@@ -6,7 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { and, desc, eq, inArray, ne, or } from "drizzle-orm";
 import {
   BoardScopeQuery, BuyFromListingReq, BuyOrderReq, BuyVehicleReq, CancelReq, ContractProposalReq, DeliverReq, FreightJobReq, FreightQuoteQuery,
-  AcceptFreightReq, ListingReq, MarketHistoryQuery, MarketQuery, MineScopeQuery, OffersQuery, SellToOrderReq, ShipmentReq,
+  AcceptFreightReq, HaulReq, ListingReq, MarketHistoryQuery, MarketQuery, MineScopeQuery, OffersQuery, SellToOrderReq, ShipmentReq,
 } from "@capitalforge/shared";
 import { z } from "zod";
 import { contracts, freightJobs, marketOrders, shipmentCargo, shipments, vehicles } from "../../db/schema";
@@ -17,6 +17,7 @@ import { route } from "../route";
 import { companyBriefs, needCompany, uuidParam } from "../../market/common";
 import { cancelOrder, createBuyOrder, createListing, orderDto, sellToOrder } from "../../market/spot";
 import { buyWithDelivery } from "../../market/buy";
+import { haulForSale } from "../../market/haul";
 import { offers } from "../../market/offers";
 import { contractCompare } from "../../contracts/compare";
 import { marketOverview, marketView, priceHistoryView } from "../../market/views";
@@ -233,6 +234,11 @@ export function register(app: FastifyInstance, deps: Deps): void {
       if (s.carrierCompanyId !== c.id && !cargo.some((x) => x.ownerCompanyId === c.id || x.consigneeCompanyId === c.id)) fail("NOT_PARTY");
       return shipmentDto(deps.db, s, c.id);
     },
+  });
+
+  route(app, deps, {
+    method: "POST", url: "/market/haul", auth: "company", kind: "mutation", body: HaulReq,
+    handler: async ({ tx, uow, body, company, now }) => haulForSale(tx, uow, cat, needCompany(company), body, now),
   });
 
   // ------------------------------------------------------------ taşıma işleri

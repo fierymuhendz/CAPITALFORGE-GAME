@@ -177,7 +177,8 @@ export interface ProductionQuoteDto {
   canStart: boolean;
   blockers: Array<{ code: string; productId?: string; missingKg?: number; missing?: Money }>;
   /** en iyi alıcıya satılırsa (aynı şehirdeki en iyi teklif, kaliteye göre): gelir, komisyon, kâr tahmini */
-  estimate: null | { pricePerKg: Money; cityId: string; revenue: Money; fee: Money; profit: Money; profitPerHour: Money };
+  /** Satış tahmini; alıcı başka şehirdeyse `freight` sistem taşımacısı navlunudur ve kâra dahildir (kâr = gelir − komisyon − navlun − maliyet). */
+  estimate: null | { pricePerKg: Money; cityId: string; revenue: Money; fee: Money; freight: Money; km: number; profit: Money; profitPerHour: Money };
 }
 
 export interface VehicleDto {

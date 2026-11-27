@@ -6,8 +6,9 @@ import { LoginReq, RegisterReq } from "@capitalforge/shared";
 import { api, ApiError } from "@/lib/api";
 import { useApp } from "@/lib/app";
 import { useT } from "@/lib/i18n";
-import { Button, Card, Notice, TextField } from "@/ui";
-import { Brand, LangSwitch, ThemeToggle } from "../common/Chrome";
+import { Button, Notice, TextField } from "@/ui";
+import { LangSwitch, ThemeToggle } from "../common/Chrome";
+import "./entry.css";
 
 export function AuthScreen({ mode }: { mode: "login" | "register" }) {
   const { t, locale, err } = useT();
@@ -45,14 +46,17 @@ export function AuthScreen({ mode }: { mode: "login" | "register" }) {
   }
 
   return (
-    <main className="page">
-      <div className="topbar"><Brand /><span className="grow" /><ThemeToggle /><LangSwitch /></div>
-      <div className="auth-card col" style={{ gap: "var(--sp-5)" }}>
-        <div className="col tight">
-          <h1>{mode === "login" ? t("auth.loginTitle") : t("auth.registerTitle")}</h1>
-          <p className="muted2">{t("auth.tagline")}</p>
+    <main className="entry-screen auth-entry">
+      <div className="entry-landscape">
+        <div className="entry-signature">
+          <div className="entry-wordmark">Capital <span>Forge</span></div>
+          <p>{t("auth.tagline")}</p>
         </div>
-        <Card>
+      </div>
+      <div className="entry-desk">
+        <div className="entry-settings"><ThemeToggle /><LangSwitch /></div>
+        <section className="entry-form" aria-labelledby="entry-title">
+          <h1 id="entry-title">{mode === "login" ? t("auth.loginTitle") : t("auth.registerTitle")}</h1>
           <form className="col" onSubmit={submit} noValidate>
             <TextField label={t("auth.username")} value={username} onChange={(e) => setU(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} maxLength={24} hint={mode === "register" ? t("auth.usernameHint") : undefined} />
             <TextField label={t("auth.password")} type="password" value={password} onChange={(e) => setP(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} maxLength={128} hint={mode === "register" ? t("auth.passwordHint") : undefined} />
@@ -60,11 +64,11 @@ export function AuthScreen({ mode }: { mode: "login" | "register" }) {
             {error ? <Notice tone="bad">{error}</Notice> : null}
             <Button type="submit" variant="primary" size="lg" loading={busy}>{mode === "login" ? t("auth.login") : t("auth.register")}</Button>
           </form>
-        </Card>
-        <p className="muted2 small" style={{ textAlign: "center" }}>
-          {mode === "login" ? t("auth.noAccount") : t("auth.haveAccount")}{" "}
-          <Link href={mode === "login" ? "/register" : "/login"}>{mode === "login" ? t("auth.register") : t("auth.login")}</Link>
-        </p>
+          <p className="entry-switch">
+            {mode === "login" ? t("auth.noAccount") : t("auth.haveAccount")}{" "}
+            <Link href={mode === "login" ? "/register" : "/login"}>{mode === "login" ? t("auth.register") : t("auth.login")}</Link>
+          </p>
+        </section>
       </div>
     </main>
   );
