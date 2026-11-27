@@ -114,7 +114,7 @@ await step("ilk iş: teklif ve başlatma (boşsa)", async () => {
     const mk = must(await api("GET", `/market?cityId=${f.cityId}&productId=seed`), 200);
     const l = (mk.listings ?? []).filter((x) => !x.mine && x.remainingKg >= miss.missingKg).sort((a, b) => Number(a.pricePerKg) - Number(b.pricePerKg))[0];
     if (!l) throw new Error(`tohum eksik (${miss.missingKg} kg) ve ${f.cityId} pazarında ilan yok`);
-    must(await api("POST", `/market/listings/${l.id}/buy`, { qtyKg: miss.missingKg, expectedPricePerKg: l.pricePerKg, idempotencyKey: key() }), 200, 201);
+    must(await api("POST", `/market/listings/${l.id}/buy`, { qtyKg: miss.missingKg, expectedPricePerKg: Number(l.pricePerKg), idempotencyKey: key() }), 200, 201);
     bought = `${miss.missingKg} kg tohum alındı`;
     q = must(await api("POST", "/production/quote", body), 200);
   }
