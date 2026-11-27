@@ -8,7 +8,7 @@ import { and, eq, gt, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import {
   applyBp, reputationBp, systemAsk, systemBid, systemBidForQuality, systemCarrierQuote, systemCarrierQuoteWithDeadline, systemContractPrice, systemFreightJobSpec, systemShareFactorBp,
 } from "@capitalforge/economy";
-import { QUALITY_PRICE_BP, SYSTEM_CARRIER, SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, SYSTEM_PROFILES, roadDistanceKm, type SystemProfile } from "@capitalforge/shared";
+import { QUALITY_PRICE_BP, profileBidBp, SYSTEM_CARRIER, SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, SYSTEM_PROFILES, roadDistanceKm, type SystemProfile } from "@capitalforge/shared";
 import type { Tx } from "../db/client";
 import { companies, contracts, freightJobs, holdings, marketOrders, meta, shipments, trades, vehicles } from "../db/schema";
 import type { Deps } from "../deps";
@@ -23,6 +23,7 @@ import { dayKey, dayStart, HOUR, linkMovements } from "../market/common";
 import { closeOrder, settleSpot } from "../market/spot";
 import { minutesToMs, pickupMinutes, playtestMs } from "../catalog/pace";
 import { bidCapFromRefs, loadRefs } from "./pricing";
+import { sameGroupExpr } from "../fairplay/anomaly";
 import { dailyOf, spentToday } from "./daily";
 
 type CompanyRow = typeof companies.$inferSelect;
@@ -107,7 +108,12 @@ async function playerShareBp(tx: Tx, productId: string, cityId: string, nominalK
   const r = await tx
     .select({ pp: sql<string>`coalesce(sum(${trades.qtyKg}), 0)::text` })
     .from(trades)
-    .where(and(eq(trades.productId, productId), eq(trades.cityId, cityId), eq(trades.buyerIsSystem, false), eq(trades.sellerIsSystem, false), gte(trades.createdAt, new Date(now.getTime() - 24 * HOUR))));
+    .where(and(
+      eq(trades.productId, productId), eq(trades.cityId, cityId), eq(trades.buyerIsSystem, false), eq(trades.sellerIsSystem, false),
+      gte(trades.createdAt, new Date(now.getTime() - 24 * HOUR)),
+      // aynı bağlantı grubundaki şirketler arası işlemler sistem desteğini azaltmaz (kendi kendine ticaretle sistemi itme yok)
+      sql`NOT ${sameGroupExpr("cf.trades.seller_company_id", "cf.trades.buyer_company_id")}`,
+    ));
   const pp = Number(r[0]?.pp ?? 0);
   return pp + nominalKg > 0 ? Math.min(10000, Math.floor((pp * 10000) / (pp + nominalKg))) : 0;
 }
@@ -165,7 +171,7 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
       const factor = systemShareFactorBp(await playerShareBp(tx, p, prof.cityId, B + (prof.sells[p] ?? 0), now), sys.shareDampBp);
       const eff = Math.floor((B * factor) / 10000);
       const d = await dailyOf(tx, comp.id, p, now);
-      const bid = systemBid(refOf(p), sys.bidBp, d.boughtKg, B, bidCapFromRefs(refs, sys.askBp));
+      const bid = systemBid(refOf(p), profileBidBp(prof, p, sys.bidBp), d.boughtKg, B, bidCapFromRefs(refs, sys.askBp));
       const bidCap = bidCapFromRefs(refs, sys.askBp);
       const maxUnit = systemBidForQuality(bid, 5, bidCap, QUALITY_PRICE_BP);
       const share = weightSum > 0n ? (BigInt(prof.dailyBudget) * BigInt(B) * refOf(p)) / weightSum : 0n;

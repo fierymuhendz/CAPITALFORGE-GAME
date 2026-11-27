@@ -3,7 +3,7 @@
  * Para: kuruş, ondalık METİN (bigint kayıpsız). Miktar: kg, sayı. Zaman: ISO metin.
  * Yol önekleri: istemci `/api/...` çağırır, Caddy `/api` önekini kırpar; sunucu yolları öneksizdir.
  */
-import type { Localized, Sector } from "./catalog/types";
+import type { BuildingArchetype, DepositKind, Industry, Localized, ProductStage, ResearchBranch, ResearchEffect, Sector } from "./catalog/types";
 
 export type Money = string;
 export type Iso = string;
@@ -51,18 +51,25 @@ export interface WorldDto {
     sectorYieldBp: Partial<Record<Sector, number>>;
   }>;
   roads: Array<{ a: string; b: string; km: number }>;
-  products: Array<{ id: string; name: Localized; category: string; color: string; basePricePerKg: Money }>;
+  products: Array<{ id: string; name: Localized; category: string; color: string; basePricePerKg: Money; industry: Industry | null; stage: ProductStage | null }>;
   buildingTypes: Array<{
     id: string; sector: Sector; name: Localized; buildCost: Money; buildSteelKg: number; buildMinutes: number;
     levels: Array<{ level: number; lines: number; maxBatches: number; upkeepPerDay: Money; upgradeCost: Money; upgradeSteelKg: number; upgradeMinutes: number; yieldBp?: number; efficiencyBp?: number; inputSavingBp?: number; qualityBonus?: number }>;
     qualityUpgradeCosts: Money[]; vehicleSlots?: number[]; requiresDeposit?: boolean;
+    deposits: DepositKind[] | null; industry: Industry | null; archetype: BuildingArchetype | null; tier: number; minCompanyLevel: number; description: Localized | null;
   }>;
   recipes: Array<{
     id: string; buildingType: string; name: Localized; inputs: Array<{ productId: string; kg: number }>;
     output: { productId: string; kg: number }; minutes: number; laborHours: number; energyKwh: number; waterM3: number;
-    minBuildingLevel: number; deposit?: "iron" | "coal"; version: number;
+    minBuildingLevel: number; deposit?: DepositKind; research?: { researchId: string; level: number }; version: number;
   }>;
-  research: Array<{ id: string; name: Localized; description: Localized; maxLevel: number; baseCost: Money; baseMinutes: number; effect: unknown }>;
+  research: Array<{
+    id: string; name: Localized; description: Localized; maxLevel: number; baseCost: Money; baseMinutes: number; effect: ResearchEffect;
+    branch: ResearchBranch | null; prerequisites: Array<{ researchId: string; level: number }>;
+  }>;
+  /** sistem şirketlerinin günlük nominal alım/satımı (oyuncu payına göre küçülür) */
+  systemDemand: Array<{ productId: string; cityId: string; side: "buy" | "sell"; dailyKg: number; companyName: Localized }>;
+  industries: Industry[];
   vehicleModels: Array<{ id: string; name: Localized; capacityKg: number; speedKmh: number; fuelPerKm: Money; price: Money; upkeepPerDay: Money; minCompanyLevel: number; minGarageLevel: number }>;
   levelXp: number[];
   marketFeeBp: number;
@@ -77,7 +84,7 @@ export interface WorldDto {
 export interface PlotDto {
   id: string; cityId: string; gx: number; gz: number;
   price: Money; minLevel: number; sizeHa: number; fertilityBp: number; pastureBp: number;
-  deposit: null | { kind: "iron" | "coal"; richnessBp: number };
+  deposit: null | { kind: DepositKind; richnessBp: number };
   distanceToCenterKm: number;
   owner: null | { companyId: string; companyName: string; isSystem: boolean };
   building: null | FacilityMapDto;
@@ -389,7 +396,12 @@ export interface NotificationDto {
 }
 
 export interface ResearchDto {
-  items: Array<{ researchId: string; level: number; nextCost: Money | null; nextMinutes: number | null; minCompanyLevel: number; inProgress: null | { targetLevel: number; endsAt: Iso } }>;
+  items: Array<{
+    researchId: string; level: number; nextCost: Money | null; nextMinutes: number | null; minCompanyLevel: number; inProgress: null | { targetLevel: number; endsAt: Iso };
+    /** başlatılabilir mi; değilse ilk engel */
+    blocked: null | "MAXED" | "LEVEL_TOO_LOW" | "PREREQUISITE_MISSING";
+    missingPrerequisites: Array<{ researchId: string; level: number; have: number }>;
+  }>;
 }
 
 /** WebSocket olayları (/ws/events) */

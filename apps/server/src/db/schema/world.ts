@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, integer, jsonb, primaryKey, text, timestamp, index, date, uuid } from "drizzle-orm/pg-core";
+import type { DepositKind } from "@capitalforge/shared";
 import { cf } from "./_base";
 
 /**
@@ -50,7 +51,7 @@ export const plots = cf.table(
     sizeHa: integer("size_ha").notNull(),
     fertilityBp: integer("fertility_bp").notNull(),
     pastureBp: integer("pasture_bp").notNull(),
-    depositKind: text("deposit_kind").$type<"iron" | "coal">(),
+    depositKind: text("deposit_kind").$type<DepositKind>(),
     depositRichnessBp: integer("deposit_richness_bp"),
     distanceToCenterKm: integer("distance_to_center_km").notNull(),
     ownerCompanyId: uuid("owner_company_id"),

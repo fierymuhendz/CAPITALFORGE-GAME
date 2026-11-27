@@ -19,8 +19,8 @@ function makeWorld(): WorldDto {
       laborNote: c.labor.note, laborAvailability: c.labor.availability, sectorYieldBp: c.sectorYieldBp,
     })),
     roads: ROAD_LIST.map(([a, b, km]) => ({ a, b, km })),
-    products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, category: p.category, color: p.color, basePricePerKg: String(p.basePricePerKg) })),
-    buildingTypes: [], recipes: [], research: [], vehicleModels: [], levelXp: [], marketFeeBp: 0, qualityPriceBp: [],
+    products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, category: p.category, color: p.color, basePricePerKg: String(p.basePricePerKg), industry: p.industry ?? null, stage: p.stage ?? null })),
+    buildingTypes: [], recipes: [], research: [], systemDemand: [], industries: [], vehicleModels: [], levelXp: [], marketFeeBp: 0, qualityPriceBp: [],
     freight: { systemBaseFee: "0", systemPerKm: "0", driverHoursPerTrip: 1 },
     startingCash: "0", pace: { maxMinutes: 0, travelScaleBp: 10000, playtestSeconds: 0 },
   };

@@ -27,6 +27,10 @@ export interface ProductionContext {
   levelYieldBp?: number;
   levelEfficiencyBp?: number;
   levelInputSavingBp?: number;
+  /** araştırma: yalnızca enerji azaltma (bp, verimlilikle toplanır, enerji için toplam en çok %60) */
+  researchEnergyBp?: number;
+  /** araştırma: üretim süresi azaltma (bp, en çok %50) */
+  researchDurationBp?: number;
   /** şehir iş gücü durumu (bp, 10000 nötr) */
   laborAvailabilityBp: number;
   /** girdi kaliteleri: her girdi için kullanılacak lotların (kg, kalite) listesi */
@@ -72,11 +76,13 @@ export function planProduction(recipe: RecipeLike, ctx: ProductionContext): Prod
   const yieldNum = toBig(recipe.output.kg) * b * toBig(ctx.plotYieldBp) * toBig(ctx.cityYieldBp) * (BP + toBig(ctx.researchYieldBp)) * (BP + toBig(ctx.levelYieldBp ?? 0));
   const outputKg = Number(yieldNum / (BP * BP * BP * BP));
   const eff = BP - toBig(clamp(ctx.researchEfficiencyBp + (ctx.levelEfficiencyBp ?? 0), 0, 6000));
-  const energyKwh = Number((toBig(recipe.energyKwh) * b * eff) / BP);
+  const effEnergy = BP - toBig(clamp(ctx.researchEfficiencyBp + (ctx.levelEfficiencyBp ?? 0) + (ctx.researchEnergyBp ?? 0), 0, 6000));
+  const energyKwh = Number((toBig(recipe.energyKwh) * b * effEnergy) / BP);
   const laborHours = Number((toBig(recipe.laborHours) * b * eff) / BP);
   const waterM3 = recipe.waterM3 * ctx.batches;
   const durBp = 10000 + Math.round((10000 - ctx.laborAvailabilityBp) / 2);
-  const minutes = Math.max(1, Math.ceil((recipe.minutes * clamp(durBp, 7000, 13000)) / 10000));
+  const speedBp = 10000 - clamp(ctx.researchDurationBp ?? 0, 0, 5000);
+  const minutes = Math.max(1, Math.ceil((recipe.minutes * clamp(durBp, 7000, 13000) * speedBp) / 100_000_000));
   return {
     inputs: requiredInputs(recipe, ctx.batches, ctx.levelInputSavingBp ?? 0),
     outputKg,

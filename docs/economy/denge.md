@@ -9,17 +9,69 @@ Varsayılanlar: N = 2 oyuncu aynı pazarı paylaşır, sistem alış fiyatı kal
 |---|---|---|---|---|---|---|---|
 | crop | Yeşilova | Yem bitkisi ekimi | 60 dk | ₺3.024 | 2400 kg | ₺6.277 | ₺3.253 |
 | crop | Yeşilova | Tahıl ekimi | 60 dk | ₺4.710 | 2000 kg | ₺10.354 | ₺5.644 |
-| crop | Kavşak | Yem bitkisi ekimi | 60 dk | ₺3.430 | 2400 kg | ₺5.307 | ₺1.877 |
-| crop | Kavşak | Tahıl ekimi | 60 dk | ₺5.378 | 2000 kg | ₺8.953 | ₺3.575 |
-| livestock | Akyayla | Süt sağımı | 60 dk | ₺4.961 | 1000 kg | ₺8.064 | ₺3.103 |
+| crop | Yeşilova | Arpa ekimi | 60 dk | ₺4.670 | 2200 kg | ₺1.758 | ₺-2.912 |
+| crop | Yeşilova | Mısır ekimi | 60 dk | ₺4.455 | 2600 kg | ₺1.898 | ₺-2.558 |
+| crop | Yeşilova | Soya ekimi | 60 dk | ₺4.745 | 1200 kg | ₺1.893 | ₺-2.852 |
+| crop | Yeşilova | Ayçiçeği ekimi | 60 dk | ₺3.539 | 1000 kg | ₺2.313 | ₺-1.227 |
+| crop | Yeşilova | Şeker pancarı ekimi | 60 dk | ₺4.008 | 6000 kg | ₺1.973 | ₺-2.036 |
+| crop | Yeşilova | Patates ekimi | 60 dk | ₺8.075 | 4000 kg | ₺12.355 | ₺4.281 |
+| crop | Yeşilova | Soğan ekimi | 60 dk | ₺3.097 | 3000 kg | ₺11.030 | ₺7.933 |
+| crop | Yeşilova | Tohumluk ayırma | 60 dk | ₺6.290 | 800 kg | ₺0 | ₺-6.290 |
+| crop | Yeşilova | Saman balyalama | 60 dk | ₺1.412 | 2500 kg | ₺470 | ₺-942 |
+| crop | Yeşilova | Gübreli tahıl ekimi | 60 dk | ₺5.968 | 2900 kg | ₺14.868 | ₺8.900 |
+| crop | Yeşilova | Gübreli mısır ekimi | 60 dk | ₺5.713 | 3600 kg | ₺1.898 | ₺-3.816 |
+| crop | Yeşilova | Gübreli arpa ekimi | 60 dk | ₺5.928 | 3100 kg | ₺1.758 | ₺-4.170 |
+| crop | Yeşilova | Gübreli patates ekimi | 60 dk | ₺9.615 | 5600 kg | ₺16.709 | ₺7.094 |
+| crop | Kavşak | Yem bitkisi ekimi | 60 dk | ₺3.430 | 2400 kg | ₺5.107 | ₺1.677 |
+| crop | Kavşak | Tahıl ekimi | 60 dk | ₺5.378 | 2000 kg | ₺8.606 | ₺3.228 |
+| crop | Kavşak | Arpa ekimi | 60 dk | ₺5.303 | 2200 kg | ₺1.653 | ₺-3.651 |
+| crop | Kavşak | Mısır ekimi | 60 dk | ₺5.230 | 2600 kg | ₺1.795 | ₺-3.435 |
+| crop | Kavşak | Soya ekimi | 60 dk | ₺5.488 | 1200 kg | ₺1.840 | ₺-3.648 |
+| crop | Kavşak | Ayçiçeği ekimi | 60 dk | ₺4.070 | 1000 kg | ₺2.260 | ₺-1.810 |
+| crop | Kavşak | Şeker pancarı ekimi | 60 dk | ₺4.910 | 6000 kg | ₺1.660 | ₺-3.250 |
+| crop | Kavşak | Patates ekimi | 60 dk | ₺9.071 | 4000 kg | ₺10.532 | ₺1.461 |
+| crop | Kavşak | Soğan ekimi | 60 dk | ₺3.710 | 3000 kg | ₺9.286 | ₺5.576 |
+| crop | Kavşak | Tohumluk ayırma | 60 dk | ₺7.055 | 800 kg | ₺0 | ₺-7.055 |
+| crop | Kavşak | Saman balyalama | 60 dk | ₺1.596 | 2500 kg | ₺368 | ₺-1.229 |
+| crop | Kavşak | Gübreli tahıl ekimi | 60 dk | ₺6.656 | 2900 kg | ₺12.379 | ₺5.723 |
+| crop | Kavşak | Gübreli mısır ekimi | 60 dk | ₺6.508 | 3600 kg | ₺1.795 | ₺-4.713 |
+| crop | Kavşak | Gübreli arpa ekimi | 60 dk | ₺6.581 | 3100 kg | ₺1.653 | ₺-4.929 |
+| crop | Kavşak | Gübreli patates ekimi | 60 dk | ₺10.631 | 5600 kg | ₺14.371 | ₺3.740 |
+| livestock | Akyayla | Süt sağımı | 60 dk | ₺4.961 | 1000 kg | ₺8.920 | ₺3.959 |
+| livestock | Akyayla | Karma yemle süt | 60 dk | ₺7.768 | 1300 kg | ₺11.571 | ₺3.803 |
+| livestock | Akyayla | Silaj ve kuru otla süt | 60 dk | ₺12.421 | 1150 kg | ₺10.247 | ₺-2.174 |
+| livestock | Akyayla | Altlıktan gübre | 60 dk | ₺1.513 | 3000 kg | ₺450 | ₺-1.063 |
+| livestock | Akyayla | Makineli sağım | 60 dk | ₺8.601 | 1650 kg | ₺14.654 | ₺6.053 |
 | livestock | Yeşilova | Süt sağımı | 60 dk | ₺4.281 | 1000 kg | ₺7.625 | ₺3.344 |
+| livestock | Yeşilova | Karma yemle süt | 60 dk | ₺7.529 | 1300 kg | ₺9.899 | ₺2.370 |
+| livestock | Yeşilova | Silaj ve kuru otla süt | 60 dk | ₺12.157 | 1150 kg | ₺8.764 | ₺-3.394 |
+| livestock | Yeşilova | Altlıktan gübre | 60 dk | ₺1.368 | 3000 kg | ₺330 | ₺-1.038 |
+| livestock | Yeşilova | Makineli sağım | 60 dk | ₺8.373 | 1650 kg | ₺12.555 | ₺4.182 |
 | mining | Demirdağ | Demir cevheri çıkarma | 60 dk | ₺3.300 | 4000 kg | ₺8.809 | ₺5.509 |
 | mining | Demirdağ | Kömür çıkarma | 60 dk | ₺3.100 | 3000 kg | ₺8.214 | ₺5.114 |
+| mining | Demirdağ | Bakır cevheri çıkarma | 60 dk | ₺3.475 | 3000 kg | ₺3.403 | ₺-73 |
+| mining | Demirdağ | Mekanize demir | 60 dk | ₺4.308 | 6000 kg | ₺13.131 | ₺8.824 |
+| mining | Demirdağ | Mekanize kömür | 60 dk | ₺4.083 | 4500 kg | ₺12.302 | ₺8.220 |
+| mining | Demirdağ | Mekanize bakır | 60 dk | ₺4.483 | 4500 kg | ₺3.403 | ₺-1.080 |
 | mining | Kavşak | Kömür çıkarma | 60 dk | ₺2.425 | 3000 kg | ₺7.371 | ₺4.946 |
+| mining | Kavşak | Mekanize kömür | 60 dk | ₺3.572 | 4500 kg | ₺11.057 | ₺7.485 |
 | manufacturing | Körfezkent | Un öğütme | 60 dk | ₺14.748 | 1500 kg | ₺19.134 | ₺4.387 |
 | manufacturing | Körfezkent | Süt paketleme | 60 dk | ₺11.918 | 950 kg | ₺14.801 | ₺2.883 |
 | manufacturing | Körfezkent | Peynir yapımı | 60 dk | ₺24.628 | 200 kg | ₺26.609 | ₺1.982 |
+| manufacturing | Körfezkent | Kepekli öğütme | 60 dk | ₺7.483 | 950 kg | ₺0 | ₺-7.483 |
+| manufacturing | Körfezkent | Bulgur kaynatma | 60 dk | ₺8.263 | 850 kg | ₺9.578 | ₺1.315 |
+| manufacturing | Körfezkent | Makarna üretimi | 60 dk | ₺21.861 | 1000 kg | ₺23.812 | ₺1.951 |
+| manufacturing | Körfezkent | Nişasta çekimi | 60 dk | ₺11.430 | 900 kg | ₺0 | ₺-11.430 |
+| manufacturing | Körfezkent | Kutulu süt dolumu | 60 dk | ₺19.928 | 1000 kg | ₺15.565 | ₺-4.363 |
+| manufacturing | Körfezkent | Cips üretimi | 60 dk | ₺21.124 | 600 kg | ₺19.740 | ₺-1.384 |
+| manufacturing | Körfezkent | Fındık kavurma | 60 dk | ₺35.555 | 450 kg | ₺0 | ₺-35.555 |
+| manufacturing | Körfezkent | Maya üretimi | 60 dk | ₺15.265 | 300 kg | ₺0 | ₺-15.265 |
+| manufacturing | Körfezkent | Turşu kurma | 60 dk | ₺8.373 | 900 kg | ₺10.275 | ₺1.902 |
+| manufacturing | Körfezkent | Hazır yemek hattı | 60 dk | ₺89.774 | 600 kg | ₺0 | ₺-89.774 |
+| manufacturing | Körfezkent | Çuvallı un | 60 dk | ₺17.284 | 1600 kg | ₺20.383 | ₺3.099 |
 | manufacturing | Demirdağ | Çelik dökümü | 60 dk | ₺12.370 | 1000 kg | ₺15.900 | ₺3.530 |
+| manufacturing | Demirdağ | Konvertör çeliği | 60 dk | ₺28.339 | 1000 kg | ₺15.900 | ₺-12.439 |
+| manufacturing | Demirdağ | Koklu çelik dökümü | 60 dk | ₺16.389 | 1150 kg | ₺18.246 | ₺1.857 |
 
 Bağış girdileri (tohum 400 kg, yem 3000 kg, tahıl 2000 kg, cevher 2000 + kömür 1000 kg) her sektörde en az bir tam partiyi karşılar.
 
@@ -30,26 +82,26 @@ Bağış girdileri (tohum 400 kg, yem 3000 kg, tahıl 2000 kg, cevher 2000 + kö
 | Sektör | Günlük kâr L1 | L2 | L3 | 21 gün işletme kârı | Yatırım harcaması | Alınan yatırımlar |
 |---|---|---|---|---|---|---|
 | Tarım: tahıl (Yeşilova) | ₺27.654 | ₺31.016 | ₺36.286 | ₺768.028 | ₺113.970 | g1:L2, g2:Q2, g3:RY1 |
-| Hayvancılık: süt (Akyayla) | ₺31.830 | ₺42.410 | ₺47.278 | ₺1.173.041 | ₺282.920 | g1:L2, g2:Q2, g3:RY1, g5:RQ1 |
+| Hayvancılık: süt (Akyayla) | ₺36.886 | ₺46.351 | ₺50.274 | ₺1.260.957 | ₺282.920 | g1:L2, g2:Q2, g3:RY1, g4:RQ1 |
 | Madencilik: kömür (Demirdağ) | ₺29.745 | ₺40.227 | ₺43.189 | ₺1.039.819 | ₺286.350 | g1:L2, g2:Q2, g3:RY1, g5:RQ1 |
 | Madencilik: demir (Demirdağ) | ₺25.180 | ₺32.185 | ₺35.018 | ₺796.143 | ₺186.350 | g1:L2, g2:RY1, g3:Q2 |
 | İmalat: un (Körfezkent) | ₺29.805 | ₺40.294 | ₺47.619 | ₺1.165.850 | ₺317.330 | g1:Q2, g3:RQ1, g6:L2 |
-| İmalat: paketli süt (Körfezkent) | ₺27.055 | ₺38.758 | ₺45.299 | ₺1.165.980 | ₺317.330 | g1:Q2, g4:L2, g6:RQ1 |
+| İmalat: paketli süt (Körfezkent) | ₺27.055 | ₺38.758 | ₺45.299 | ₺1.169.471 | ₺317.330 | g1:Q2, g3:RQ1, g6:L2 |
 | İmalat: peynir (Körfezkent) | ₺18.569 | ₺27.821 | ₺35.484 | ₺819.808 | ₺317.330 | g1:Q2, g5:L2, g8:RQ1 |
-| İmalat: çelik (Demirdağ) | ₺23.718 | ₺31.536 | ₺39.325 | ₺990.643 | ₺277.080 | g1:Q2, g3:L2, g6:RQ1 |
+| İmalat: çelik (Demirdağ) | ₺23.718 | ₺31.536 | ₺39.325 | ₺1.000.004 | ₺277.080 | g1:Q2, g3:L2, g5:RQ1 |
 | Taşımacılık: kamyon, sistem işleri (N = 2) | ₺38.420 (1 kamyon) | ₺38.120 (2 kamyon) | ₺37.820 (3 kamyon) | ₺797.515 | ₺360.000 | g3:kamyon, g8:kamyon |
 
-Beş sektörün temsilcileri (tarım, hayvancılık, madencilik, imalat-un, imalat-çelik, taşımacılık) arasında en yüksek / en düşük 21 gün işletme kârı = ₺1.173.041 (livestock) / ₺768.028 (crop) = 1.53×. Hedef ≤ 2,2×.
+Beş sektörün temsilcileri (tarım, hayvancılık, madencilik, imalat-un, imalat-çelik, taşımacılık) arasında en yüksek / en düşük 21 gün işletme kârı = ₺1.260.957 (livestock) / ₺768.028 (crop) = 1.64×. Hedef ≤ 2,2×.
 
 Rakip sayısına duyarlılık (21 gün işletme kârı, ₺): bina seviyesi 3 yalnızca pazarı tek başına dolduran oyuncuya yarar.
 
 | Sektör | N = 1 | N = 2 | N = 3 |
 |---|---|---|---|
 | Tarım: tahıl (Yeşilova) | ₺1.838.006 | ₺768.028 | ₺489.806 |
-| Hayvancılık: süt (Akyayla) | ₺2.652.466 | ₺1.173.041 | ₺703.130 |
+| Hayvancılık: süt (Akyayla) | ₺2.793.403 | ₺1.260.957 | ₺744.429 |
 | Madencilik: kömür (Demirdağ) | ₺2.128.856 | ₺1.039.819 | ₺621.553 |
 | İmalat: un (Körfezkent) | ₺2.724.220 | ₺1.165.850 | ₺695.195 |
-| İmalat: çelik (Demirdağ) | ₺2.429.239 | ₺990.643 | ₺593.113 |
+| İmalat: çelik (Demirdağ) | ₺2.449.138 | ₺1.000.004 | ₺593.113 |
 | Taşımacılık (kamyon) | ₺1.532.261 | ₺797.515 | ₺530.482 |
 
 ## 3. H1: kalite primi (sistem alış fiyatı kuruş/kg, tahıl, doygunluk 0)
@@ -79,6 +131,24 @@ Sistem satışı yalnızca kalite 2'dir; kalite ancak üretimle elde edilir. Aş
 - Demir cevheri: en yüksek normalleştirilmiş sistem alış 187 < en düşük sistem satış 265 kuruş/kg → zarar (doğru)
 - Kömür: en yüksek normalleştirilmiş sistem alış 276 < en düşük sistem satış 346 kuruş/kg → zarar (doğru)
 - Çelik: en yüksek normalleştirilmiş sistem alış 1683 < en düşük sistem satış 2203 kuruş/kg → zarar (doğru)
+- Arpa: en yüksek normalleştirilmiş sistem alış 382 < en düşük sistem satış 540 kuruş/kg → zarar (doğru)
+- Mısır: en yüksek normalleştirilmiş sistem alış 408 < en düşük sistem satış 576 kuruş/kg → zarar (doğru)
+- Soya fasulyesi: en yüksek normalleştirilmiş sistem alış 765 < en düşük sistem satış 1080 kuruş/kg → zarar (doğru)
+- Ayçiçeği tohumu: en yüksek normalleştirilmiş sistem alış 935 < en düşük sistem satış 1320 kuruş/kg → zarar (doğru)
+- Şeker pancarı: en yüksek normalleştirilmiş sistem alış 153 < en düşük sistem satış 216 kuruş/kg → zarar (doğru)
+- Saman: en yüksek normalleştirilmiş sistem alış 102 < en düşük sistem satış 144 kuruş/kg → zarar (doğru)
+- Kütlü pamuk: en yüksek normalleştirilmiş sistem alış 1275 < en düşük sistem satış 1800 kuruş/kg → zarar (doğru)
+- Keten sapı: en yüksek normalleştirilmiş sistem alış 1105 < en düşük sistem satış 1560 kuruş/kg → zarar (doğru)
+- Kuru ot: en yüksek normalleştirilmiş sistem alış 501 < en düşük sistem satış 708 kuruş/kg → zarar (doğru)
+- Ham yapağı: en yüksek normalleştirilmiş sistem alış 4564 < en düşük sistem satış 6444 kuruş/kg → zarar (doğru)
+- Ahır gübresi: en yüksek normalleştirilmiş sistem alış 68 < en düşük sistem satış 96 kuruş/kg → zarar (doğru)
+- Tomruk: en yüksek normalleştirilmiş sistem alış 382 < en düşük sistem satış 540 kuruş/kg → zarar (doğru)
+- Bakır cevheri: en yüksek normalleştirilmiş sistem alış 510 < en düşük sistem satış 720 kuruş/kg → zarar (doğru)
+- Kireçtaşı: en yüksek normalleştirilmiş sistem alış 102 < en düşük sistem satış 144 kuruş/kg → zarar (doğru)
+- Kil: en yüksek normalleştirilmiş sistem alış 127 < en düşük sistem satış 180 kuruş/kg → zarar (doğru)
+- Kuvars kumu: en yüksek normalleştirilmiş sistem alış 119 < en düşük sistem satış 168 kuruş/kg → zarar (doğru)
+- Kaya tuzu: en yüksek normalleştirilmiş sistem alış 255 < en düşük sistem satış 360 kuruş/kg → zarar (doğru)
+- Organik gübre: en yüksek normalleştirilmiş sistem alış 399 < en düşük sistem satış 564 kuruş/kg → zarar (doğru)
 
 ## 5. H6: yatırım geri dönüşü (başlangıç durumu: seviye 1, kalite 1, araştırma 0; N = 2)
 
@@ -88,10 +158,10 @@ Sistem satışı yalnızca kalite 2'dir; kalite ancak üretimle elde edilir. Aş
 | Tarım: tahıl (Yeşilova) | tesis kalitesi 2 | ₺50.000 | ₺4.147 | 13 |
 | Tarım: tahıl (Yeşilova) | kalite kontrol 1 | ₺100.000 | ₺4.147 | 25 |
 | Tarım: tahıl (Yeşilova) | agronomy 1 | ₺25.000 | ₺1.845 | 14 |
-| Hayvancılık: süt (Akyayla) | Ahır seviye 2 (en kısa) | ₺82.920 | ₺10.581 | 8 |
-| Hayvancılık: süt (Akyayla) | tesis kalitesi 2 | ₺70.000 | ₺7.490 | 10 |
-| Hayvancılık: süt (Akyayla) | kalite kontrol 1 | ₺100.000 | ₺7.490 | 14 |
-| Hayvancılık: süt (Akyayla) | herd_health 1 | ₺30.000 | ₺3.428 | 9 |
+| Hayvancılık: süt (Akyayla) | Ahır seviye 2 (en kısa) | ₺82.920 | ₺9.466 | 9 |
+| Hayvancılık: süt (Akyayla) | tesis kalitesi 2 | ₺70.000 | ₺7.295 | 10 |
+| Hayvancılık: süt (Akyayla) | kalite kontrol 1 | ₺100.000 | ₺7.295 | 14 |
+| Hayvancılık: süt (Akyayla) | herd_health 1 | ₺30.000 | ₺2.927 | 11 |
 | Madencilik: kömür (Demirdağ) | Maden ocağı seviye 2 (en kısa) | ₺96.350 | ₺10.482 | 10 |
 | Madencilik: kömür (Demirdağ) | tesis kalitesi 2 | ₺60.000 | ₺5.312 | 12 |
 | Madencilik: kömür (Demirdağ) | kalite kontrol 1 | ₺100.000 | ₺5.312 | 19 |
@@ -172,9 +242,53 @@ Un fabrikası seviye 1, günlük kâr: yalnızca sistem girdisi ₺26.390, oyunc
 | Ulusal İnşaat Kavşak | ₺140.000 | ₺99.840 | ₺124.800 |
 | Kavşak Termik Santrali | ₺115.000 | ₺82.800 | ₺103.500 |
 | Demirdağ Santrali | ₺55.000 | ₺36.750 | ₺45.900 |
+| Körfezkent Perakende Zinciri | ₺1.181.000 | ₺912.660 | ₺1.140.658 |
+| Körfezkent Sanayi Alım Ofisi | ₺626.000 | ₺483.908 | ₺604.789 |
+| Körfezkent Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
+| Yeşilova Sanayi Alım Ofisi | ₺43.000 | ₺32.885 | ₺41.088 |
+| Yeşilova Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
+| Akyayla Sanayi Alım Ofisi | ₺73.000 | ₺56.187 | ₺70.227 |
+| Akyayla Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
+| Demirdağ Perakende Zinciri | ₺256.000 | ₺198.130 | ₺247.560 |
+| Demirdağ Sanayi Alım Ofisi | ₺645.000 | ₺498.020 | ₺622.384 |
+| Demirdağ Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
+| Kavşak Perakende Zinciri | ₺925.000 | ₺714.531 | ₺893.098 |
+| Kavşak Sanayi Alım Ofisi | ₺554.000 | ₺428.273 | ₺535.314 |
+| Kavşak Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
 
-Toplam günlük bütçe tavanı ₺2.750.000; nominal alım değeri ₺1.981.404. Beklenen gerçek harcama (5 sektörden 2'şer oyuncu, seviye 2, + taşıma işleri): yaklaşık ₺961.496 (tavanın %34'i). Sistem parayı yalnızca oyuncu üretimine karşılık basar; bütçe tavandır, hedef değil.
+Toplam günlük bütçe tavanı ₺7.153.000; nominal alım değeri ₺5.305.998. Beklenen gerçek harcama (5 sektörden 2'şer oyuncu, seviye 2, + taşıma işleri): yaklaşık ₺962.337 (tavanın %13'i). Sistem parayı yalnızca oyuncu üretimine karşılık basar; bütçe tavandır, hedef değil.
 
-## Sonuç
+## SORUNLAR
 
-Tüm denetimler geçti: ilk iş her sektörde kârlı ve bağışla karşılanır, beş sektör de 21 günde kâr eder (en yüksek / en düşük ≤ 2,2×), sistem arbitrajı yok, spot/sözleşme, tedarikçi ve taşımacı kararları parametreyle çevrilir.
+- ilk iş zararda: crop/yesilova/grow_barley (₺-2.912)
+- ilk iş zararda: crop/yesilova/grow_corn (₺-2.558)
+- ilk iş zararda: crop/yesilova/grow_soybean (₺-2.852)
+- ilk iş zararda: crop/yesilova/grow_sunflower (₺-1.227)
+- ilk iş zararda: crop/yesilova/grow_sugar_beet (₺-2.036)
+- ilk iş zararda: crop/yesilova/save_seed (₺-6.290)
+- ilk iş zararda: crop/yesilova/bale_straw (₺-942)
+- ilk iş zararda: crop/yesilova/grow_corn_fert (₺-3.816)
+- ilk iş zararda: crop/yesilova/grow_barley_fert (₺-4.170)
+- ilk iş zararda: crop/kavsak/grow_barley (₺-3.651)
+- ilk iş zararda: crop/kavsak/grow_corn (₺-3.435)
+- ilk iş zararda: crop/kavsak/grow_soybean (₺-3.648)
+- ilk iş zararda: crop/kavsak/grow_sunflower (₺-1.810)
+- ilk iş zararda: crop/kavsak/grow_sugar_beet (₺-3.250)
+- ilk iş zararda: crop/kavsak/save_seed (₺-7.055)
+- ilk iş zararda: crop/kavsak/bale_straw (₺-1.229)
+- ilk iş zararda: crop/kavsak/grow_corn_fert (₺-4.713)
+- ilk iş zararda: crop/kavsak/grow_barley_fert (₺-4.929)
+- ilk iş zararda: livestock/akyayla/milk_cows_silage (₺-2.174)
+- ilk iş zararda: livestock/akyayla/collect_manure (₺-1.063)
+- ilk iş zararda: livestock/yesilova/milk_cows_silage (₺-3.394)
+- ilk iş zararda: livestock/yesilova/collect_manure (₺-1.038)
+- ilk iş zararda: mining/demirdag/mine_copper (₺-73)
+- ilk iş zararda: mining/demirdag/mine_copper_mech (₺-1.080)
+- ilk iş zararda: manufacturing/korfezkent/sift_bran (₺-7.483)
+- ilk iş zararda: manufacturing/korfezkent/make_corn_starch (₺-11.430)
+- ilk iş zararda: manufacturing/korfezkent/pack_milk_carton (₺-4.363)
+- ilk iş zararda: manufacturing/korfezkent/make_chips (₺-1.384)
+- ilk iş zararda: manufacturing/korfezkent/roast_hazelnut (₺-35.555)
+- ilk iş zararda: manufacturing/korfezkent/make_yeast (₺-15.265)
+- ilk iş zararda: manufacturing/korfezkent/make_ready_meal (₺-89.774)
+- ilk iş zararda: manufacturing/demirdag/convert_steel (₺-12.439)

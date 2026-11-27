@@ -5,7 +5,7 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import type { z } from "zod";
-import type { BuyPlotReq, FacilityDto } from "@capitalforge/shared";
+import { depositFits, type BuyPlotReq, type FacilityDto } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
 import { minutesToMs, paceDuration } from "../catalog/pace";
 import type { Tx } from "../db/client";
@@ -49,7 +49,8 @@ export async function buyPlot(tx: Tx, uow: UnitOfWork, catalog: Catalog, company
   if (plot.ownerCompanyId) fail("PLOT_TAKEN");
   const level = await freshLevel(tx, companyId);
   if (plot.minLevel > level) fail("LEVEL_TOO_LOW", { required: plot.minLevel });
-  if (bt.requiresDeposit && !plot.depositKind) fail("PLOT_NOT_ELIGIBLE");
+  if ((bt.minCompanyLevel ?? 1) > level) fail("LEVEL_TOO_LOW", { required: bt.minCompanyLevel ?? 1 });
+  if (!depositFits(bt, plot.depositKind)) fail("PLOT_NOT_ELIGIBLE");
   const cashNeed = plot.price + BigInt(bt.buildCost);
   await precheckCash(tx, companyId, cashNeed);
 

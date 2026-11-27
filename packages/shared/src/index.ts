@@ -5,3 +5,4 @@ export * from "./schemas";
 export * from "./api";
 export * from "./i18n";
 export * from "./trade";
+export * from "./market-stats";

@@ -67,6 +67,8 @@ export const tr: Dict = {
     LOAN_NOT_ACTIVE: "Kredi aktif değil.",
     RESEARCH_BUSY: "Aynı anda tek araştırma yürütülebilir; süren araştırma bitince yenisini başlatın.",
     RESEARCH_MAXED: "Araştırma en yüksek seviyede.",
+    PREREQUISITE_MISSING: "Önce önkoşul araştırmasını tamamlayın.",
+    RESEARCH_REQUIRED: "Bu reçete için gereken araştırma tamamlanmadı.",
     TRADE_COOLDOWN: "Yeni hesaplar kısa bir süre ticaret yapamaz.",
     TIME_TRAVEL_DISABLED: "Zaman ilerletme yalnızca test ortamında.",
     COMPANY_COOLDOWN: "Şirketinizi yakın zamanda kapattınız; yeniden kurmak için bekleme süresi dolmalı.",

@@ -67,6 +67,8 @@ export const en: Dict = {
     LOAN_NOT_ACTIVE: "The loan is not active.",
     RESEARCH_BUSY: "Only one research project can run at a time. Start the next one when the current one finishes.",
     RESEARCH_MAXED: "Research is at its highest level.",
+    PREREQUISITE_MISSING: "Finish the prerequisite research first.",
+    RESEARCH_REQUIRED: "This recipe needs research you have not finished yet.",
     TRADE_COOLDOWN: "New accounts must wait briefly before trading.",
     TIME_TRAVEL_DISABLED: "Time travel is only available in test environments.",
     COMPANY_COOLDOWN: "You closed a company recently; wait for the cooldown before founding a new one.",

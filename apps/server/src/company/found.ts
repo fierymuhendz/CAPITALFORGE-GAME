@@ -5,7 +5,7 @@
  */
 import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { z } from "zod";
-import type { FoundCompanyReq, Sector } from "@capitalforge/shared";
+import { depositFits, type FoundCompanyReq, type Sector } from "@capitalforge/shared";
 import type { Catalog } from "../catalog/catalog";
 import { playtestMs } from "../catalog/pace";
 import type { Tx } from "../db/client";
@@ -88,7 +88,7 @@ export async function foundCompany(
 
   const buildingType = starterBuildingFor(req.sector, req.starterBuilding);
   const bt = catalog.buildingType(buildingType);
-  if (bt.requiresDeposit && !plot.depositKind) fail("PLOT_NOT_ELIGIBLE");
+  if (!depositFits(bt, plot.depositKind)) fail("PLOT_NOT_ELIGIBLE");
 
   const [company] = await tx
     .insert(companies)

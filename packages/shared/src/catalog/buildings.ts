@@ -1,4 +1,5 @@
 import type { BuildingTypeDef } from "./types";
+import { V4_BUILDING_TYPES, V4_LEGACY_BUILDING_EXTRAS } from "./v4-buildings";
 
 const lv = (
   level: number, lines: number, maxBatches: number, upkeepPerDay: number,
@@ -13,7 +14,7 @@ const lv = (
  * levels[i].upgradeCost: i. seviyeden i+1'e geçiş maliyeti (son seviyede 0).
  * Para kuruş. Ör. 8_000_000 = ₺80.000.
  */
-export const BUILDING_TYPES: BuildingTypeDef[] = [
+export const LEGACY_BUILDING_TYPES: BuildingTypeDef[] = [
   {
     id: "field", sector: "crop", name: { tr: "Tarla", en: "Field" },
     buildCost: 6_000_000, buildSteelKg: 1000, buildMinutes: 240,
@@ -51,4 +52,9 @@ export const BUILDING_TYPES: BuildingTypeDef[] = [
     qualityUpgradeCosts: [], qualityUpgradeMinutes: 0,
     vehicleSlots: [2, 4, 8],
   },
+];
+
+export const BUILDING_TYPES: BuildingTypeDef[] = [
+  ...LEGACY_BUILDING_TYPES.map((b) => ({ ...b, ...V4_LEGACY_BUILDING_EXTRAS[b.id] })),
+  ...V4_BUILDING_TYPES,
 ];

@@ -7,6 +7,27 @@ export const SECTORS: readonly Sector[] = ["crop", "livestock", "mining", "manuf
 
 export type Localized = { tr: string; en: string };
 
+/** İş kolu: ürün, bina ve araştırmanın ekranda gruplandığı sanayi dalı (verim çarpanları `Sector` ile kalır). */
+export type Industry =
+  | "field_crops" | "feed" | "livestock" | "dairy_food" | "textile" | "forestry" | "packaging"
+  | "mining_metal" | "glass_ceramic" | "construction" | "machinery" | "logistics" | "chemicals";
+export const INDUSTRIES: readonly Industry[] = [
+  "field_crops", "feed", "livestock", "dairy_food", "textile", "forestry", "packaging",
+  "mining_metal", "glass_ceramic", "construction", "machinery", "logistics", "chemicals",
+];
+
+/** Maden/ocak yatağı türleri (arsada en fazla bir yatak) */
+export type DepositKind = "iron" | "coal" | "copper" | "limestone" | "clay" | "sand" | "salt";
+export const DEPOSIT_KINDS: readonly DepositKind[] = ["iron", "coal", "copper", "limestone", "clay", "sand", "salt"];
+
+/** Zincirdeki aşama: hammadde (girdisiz/temel), ara mal (başka reçetede girdi), nihai mal (tüketiciye/sanayiye satılır) */
+export type ProductStage = "raw" | "intermediate" | "final";
+
+/** 3D/2D haritada binanın prosedürel silüeti */
+export type BuildingArchetype =
+  | "field" | "barn" | "mine" | "quarry" | "factory" | "mill" | "kiln" | "warehouse"
+  | "greenhouse" | "orchard" | "forest" | "workshop" | "garage";
+
 export interface CityDef {
   id: string;
   name: Localized;
@@ -38,6 +59,9 @@ export interface ProductDef {
   /** kuruş / kg, kalite 2, şehir çarpanı öncesi */
   basePricePerKg: number;
   color: string;
+  /** isteğe bağlı (eski kayıtlarda revizyonla eklenir) */
+  industry?: Industry;
+  stage?: ProductStage;
 }
 
 export interface BuildingTypeDef {
@@ -71,6 +95,16 @@ export interface BuildingTypeDef {
   vehicleSlots?: number[];
   /** maden: yalnızca yataklı arsa */
   requiresDeposit?: boolean;
+  /** yataklı bina: kabul ettiği yatak türleri (yoksa herhangi bir yatak) */
+  deposits?: DepositKind[];
+  industry?: Industry;
+  archetype?: BuildingArchetype;
+  /** ilerleme basamağı: 1 başlangıç, 2 uzmanlaşma, 3 ileri sanayi */
+  tier?: 1 | 2 | 3;
+  /** arsa alıp inşa etmek için gereken şirket seviyesi (yoksa 1) */
+  minCompanyLevel?: number;
+  /** bu binanın değiştirdiği karar (kısa açıklama) */
+  description?: Localized;
 }
 
 export interface RecipeDef {
@@ -85,7 +119,9 @@ export interface RecipeDef {
   waterM3: number;
   minBuildingLevel: number;
   /** maden tarifi: arsada bu yatak olmalı */
-  deposit?: "iron" | "coal";
+  deposit?: DepositKind;
+  /** araştırma kilidi: şirkette bu araştırma en az bu seviyede olmalı */
+  research?: { researchId: string; level: number };
 }
 
 export type ResearchEffect =
@@ -93,7 +129,25 @@ export type ResearchEffect =
   | { kind: "efficiency"; sector: Sector; bpPerLevel: number }
   | { kind: "quality"; perLevel: number }
   | { kind: "fuel"; bpPerLevel: number }
-  | { kind: "speed"; bpPerLevel: number };
+  | { kind: "speed"; bpPerLevel: number }
+  /** belirli bina türlerinde çıktı + */
+  | { kind: "building_yield"; buildingTypes: string[]; bpPerLevel: number }
+  /** belirli bina türlerinde enerji ve işçilik − */
+  | { kind: "building_efficiency"; buildingTypes: string[]; bpPerLevel: number }
+  /** belirli bina türlerinde yalnızca enerji − */
+  | { kind: "energy"; buildingTypes: string[]; bpPerLevel: number }
+  /** belirli bina türlerinde girdi tasarrufu */
+  | { kind: "input_saving"; buildingTypes: string[]; bpPerLevel: number }
+  /** belirli bina türlerinde üretim süresi − */
+  | { kind: "duration"; buildingTypes: string[]; bpPerLevel: number }
+  /** belirli bina türlerinde parti kapasitesi + (seviye başına) */
+  | { kind: "capacity"; buildingTypes: string[]; batchesPerLevel: number }
+  /** belirli bina türlerinde çıktı kalitesi + */
+  | { kind: "building_quality"; buildingTypes: string[]; perLevel: number }
+  /** reçete kilidi açar (RecipeDef.research bu araştırmayı gösterir) */
+  | { kind: "unlock"; recipeIds: string[] };
+
+export type ResearchBranch = Industry | "general";
 
 export interface ResearchDef {
   id: string;
@@ -105,6 +159,9 @@ export interface ResearchDef {
   /** seviye n süresi = baseMinutes × n */
   baseMinutes: number;
   effect: ResearchEffect;
+  branch?: ResearchBranch;
+  /** önkoşullar: her biri en az bu seviyede olmalı (ilk seviyeyi başlatmak için) */
+  prerequisites?: Array<{ researchId: string; level: number }>;
 }
 
 export interface VehicleModelDef {
@@ -131,7 +188,14 @@ export interface PlotDef {
   sizeHa: number;
   fertilityBp: number;
   pastureBp: number;
-  deposit: null | { kind: "iron" | "coal"; richnessBp: number };
+  deposit: null | { kind: DepositKind; richnessBp: number };
   /** şehir merkezine (müşterilere) uzaklık km */
   distanceToCenterKm: number;
+}
+
+/** Arsa bu bina türü için uygun mu (yatak kuralı). Yataksız binalar her arsaya kurulur. */
+export function depositFits(bt: Pick<BuildingTypeDef, "requiresDeposit" | "deposits">, depositKind: string | null | undefined): boolean {
+  if (!bt.requiresDeposit) return true;
+  if (!depositKind) return false;
+  return !bt.deposits || bt.deposits.includes(depositKind as DepositKind);
 }

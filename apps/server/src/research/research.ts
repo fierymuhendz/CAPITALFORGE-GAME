@@ -20,15 +20,25 @@ export const researchCost = (baseCost: number, level: number): bigint => BigInt(
 export const researchMinutes = (baseMinutes: number, level: number): number => baseMinutes * level;
 const paced = (c: Catalog, baseMinutes: number, level: number): number => paceDuration(c, researchMinutes(baseMinutes, level));
 
+/** Eksik önkoşullar: her önkoşul en az istenen seviyede olmalı (yalnızca ilk seviye için; sonraki seviyeler aynı kuralla korunur) */
+export function missingPrerequisites(def: { prerequisites?: Array<{ researchId: string; level: number }> }, levels: Map<string, number>): Array<{ researchId: string; level: number; have: number }> {
+  return (def.prerequisites ?? []).map((p) => ({ ...p, have: levels.get(p.researchId) ?? 0 })).filter((p) => p.have < p.level);
+}
+
 export async function researchView(db: Tx | Deps["db"], catalog: Catalog, companyId: string): Promise<ResearchDto> {
   const rows = await db.select().from(research).where(eq(research.companyId, companyId));
   const by = new Map(rows.map((r) => [r.researchId, r]));
+  const levels = new Map(rows.map((r) => [r.researchId, r.level]));
+  const co = (await db.select({ level: companies.level }).from(companies).where(eq(companies.id, companyId)).limit(1))[0];
   return {
     items: [...catalog.research.values()].map((d) => {
       const r = by.get(d.id);
       const level = r?.level ?? 0;
       const maxed = level >= d.maxLevel;
+      const missing = missingPrerequisites(d, levels);
+      const blocked: ResearchDto["items"][number]["blocked"] = maxed ? "MAXED" : missing.length ? "PREREQUISITE_MISSING" : (co?.level ?? 1) < level + 1 ? "LEVEL_TOO_LOW" : null;
       return {
+        blocked, missingPrerequisites: missing,
         researchId: d.id, level,
         nextCost: maxed ? null : m(researchCost(d.baseCost, level + 1)),
         nextMinutes: maxed ? null : paced(catalog, d.baseMinutes, level + 1),
@@ -50,6 +60,8 @@ export async function startResearch(tx: Tx, uow: UnitOfWork, catalog: Catalog, c
   if (level >= def.maxLevel) fail("RESEARCH_MAXED");
   const target = level + 1;
   if (c.level < target) fail("LEVEL_TOO_LOW", { required: target });
+  const missing = missingPrerequisites(def, new Map(rows.map((r) => [r.researchId, r.level])));
+  if (missing.length) fail("PREREQUISITE_MISSING", { researchId: missing[0]!.researchId, level: missing[0]!.level });
   const cost = researchCost(def.baseCost, target);
   await post(tx, {
     kind: "research", idempotencyKey: `research:${companyId}:${researchId}:${target}`, refType: "research", refId: researchId, at: now,

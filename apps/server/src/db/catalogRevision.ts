@@ -13,6 +13,7 @@
  * `patch` yolları noktalı gösterim, dizi indeksi sayıyla: "levels.0.cost", "output.kg".
  */
 import { and, eq, like, sql } from "drizzle-orm";
+import { LEGACY_PRODUCT_EXTRAS, LEGACY_RESEARCH_BRANCH, V4_LEGACY_BUILDING_EXTRAS } from "@capitalforge/shared";
 import type { Db } from "./client";
 import { catalogHistory, catalogItems, meta, settings } from "./schema";
 
@@ -115,7 +116,26 @@ const V3_2026_11B: CatalogRevision = {
   ],
 };
 
-export const CATALOG_REVISIONS: CatalogRevision[] = [V3_2026_11, V3_2026_11B];
+/**
+ * v4 katalog genişlemesi: mevcut 10 ürün, 6 bina ve 7 araştırmaya yeni isteğe bağlı alanlar (iş kolu, aşama, arketip, kademe,
+ * yatak listesi, dal, önkoşul). Yalnızca alan yoksa eklenir (from: null); değerler değişmez. Yeni satırlar seedWorld ile eklenir.
+ */
+const V4_2026_11: CatalogRevision = {
+  id: "v4-2026-11-katalog",
+  changes: [
+    ...Object.entries(LEGACY_PRODUCT_EXTRAS).map(([id, x]): RevisionChange => ({
+      kind: "product", id, patch: [{ path: "industry", from: null, to: x.industry }, { path: "stage", from: null, to: x.stage }],
+    })),
+    ...Object.entries(V4_LEGACY_BUILDING_EXTRAS).map(([id, x]): RevisionChange => ({
+      kind: "building_type", id, patch: Object.entries(x).map(([path, to]) => ({ path, from: null, to })),
+    })),
+    ...Object.entries(LEGACY_RESEARCH_BRANCH).map(([id, branch]): RevisionChange => ({
+      kind: "research", id, patch: [{ path: "branch", from: null, to: branch }, { path: "prerequisites", from: null, to: [] }],
+    })),
+  ],
+};
+
+export const CATALOG_REVISIONS: CatalogRevision[] = [V3_2026_11, V3_2026_11B, V4_2026_11];
 
 export interface RevisionReport {
   revisionId: string;
