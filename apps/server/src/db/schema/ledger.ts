@@ -35,7 +35,12 @@ export const ledgerTransactions = cf.table(
     reversesId: uuid("reverses_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   },
-  (t) => [uniqueIndex("ledger_tx_idem_uq").on(t.idempotencyKey), index("ledger_tx_ref_idx").on(t.refType, t.refId)],
+  (t) => [
+    uniqueIndex("ledger_tx_idem_uq").on(t.idempotencyKey),
+    index("ledger_tx_ref_idx").on(t.refType, t.refId),
+    // pazar istatistiği ve sistem payı ters kayıtlı işlemleri dışlar
+    index("ledger_tx_reverses_idx").on(t.reversesId).where(sql`${t.reversesId} IS NOT NULL`),
+  ],
 );
 
 /** amount işaretli: borç (+), alacak (−). Her işlemin satırları toplamı 0. */

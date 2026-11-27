@@ -27,7 +27,10 @@ import { bal, grantStock, holding, HOUR, withKey } from "./trade-helpers";
 
 const MIN = 60_000;
 const RESULTS: Record<string, unknown> = {};
-const DOWN_0003 = readFileSync(join(process.cwd(), "apps/server/drizzle/down/0003_v3_deal_outcomes.sql"), "utf8");
+// geri alma sondan başa: 0003'ü geri almak için önce ondan sonraki migration'lar geri alınır
+const DOWN_0003 = ["0004_v4_market_indexes", "0003_v3_deal_outcomes"]
+  .map((n) => readFileSync(join(process.cwd(), `apps/server/drizzle/down/${n}.sql`), "utf8"))
+  .join(";\n");
 const URL_ = process.env.DATABASE_URL ?? "postgres://capitalforge:capitalforge@localhost:5432/capitalforge_test";
 
 let h: Harness;

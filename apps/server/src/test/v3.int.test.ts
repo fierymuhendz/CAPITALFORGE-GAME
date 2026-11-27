@@ -578,7 +578,9 @@ describe("migration 0003: canlı veriden sağ çıkma", () => {
     const before2 = { companies: await count("companies"), entries: await count("ledger_entries"), contracts: await count("contracts"), inst: await count("contract_installments") };
 
     // geri alma betiği (yalnızca tahmin tablosu gider)
-    const down = readFileSync(new URL("../../drizzle/down/0003_v3_deal_outcomes.sql", import.meta.url), "utf8");
+    const down = ["0004_v4_market_indexes", "0003_v3_deal_outcomes"]
+      .map((n) => readFileSync(new URL(`../../drizzle/down/${n}.sql`, import.meta.url), "utf8"))
+      .join(";\n");
     for (const stmt of down.replace(/^--.*$/gm, "").split(";").map((x) => x.trim()).filter(Boolean)) await h.deps.db.execute(sql.raw(stmt));
     const gone = (await h.deps.db.execute(sql`SELECT to_regclass('cf.deal_outcomes')::text t`)) as unknown as Array<{ t: string | null }>;
     expect(gone[0]!.t).toBeNull();

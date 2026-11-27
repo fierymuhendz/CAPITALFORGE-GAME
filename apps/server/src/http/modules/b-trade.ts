@@ -59,11 +59,11 @@ export function register(app: FastifyInstance, deps: Deps): void {
     },
   });
   route(app, deps, {
-    method: "GET", url: "/market/stats", auth: "none", body: MarketStatsQuery,
+    method: "GET", url: "/market/stats", auth: "none", body: MarketStatsQuery, rateLimitPerMin: 30, rateKey: "mstat",
     handler: async ({ body, company, now }) => marketStats(deps.db, cat, body, company?.id ?? null, now),
   });
   route(app, deps, {
-    method: "GET", url: "/market/compare", auth: "none", body: MarketCompareQuery,
+    method: "GET", url: "/market/compare", auth: "none", body: MarketCompareQuery, rateLimitPerMin: 20, rateKey: "mcmp",
     handler: async ({ body, company, now }) => marketCompare(deps.db, cat, body, company, now),
   });
   route(app, deps, {

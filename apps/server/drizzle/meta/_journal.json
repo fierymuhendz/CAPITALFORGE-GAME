@@ -29,6 +29,13 @@
       "when": 1795617389977,
       "tag": "0003_v3_deal_outcomes",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795787294438,
+      "tag": "0004_v4_market_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@
  * Fiyata ve hacme yalnızca bağımsız işlemler girer (prices.ts ile aynı dışlamalar): ters kayıtla düzeltilmiş, aynı
  * bağlantı grubundaki ve fiyat anomalisi uyarılı işlemler dışlanır. Sistem işlemleri ayrı sayılır, fiyat/vwap'a girmez.
  */
-import { and, eq, gt, ne, sql } from "drizzle-orm";
+import { and, eq, gt, ne, notInArray, sql } from "drizzle-orm";
 import { applyBp } from "@capitalforge/economy";
 import {
   type BookQuoteDto, type CompareCityDto, type LastTradeDto, type MarketCompareDto, type MarketCompareQuery, type MarketStatsDto,
@@ -27,7 +27,7 @@ interface TradeRow {
   cityId: string; price: bigint; qty: number; quality: number; buyer: string; seller: string; system: boolean; at: Date;
 }
 
-const MAX_TRADE_ROWS = 50_000;
+const MAX_TRADE_ROWS = 5_000;
 
 /** Dönemdeki geçerli işlemler (en yeni önce). cityId null: tüm şehirler. */
 async function loadTrades(db: DbOrTx, productId: string, cityId: string | null, since: Date): Promise<TradeRow[]> {
@@ -101,13 +101,26 @@ const bestOf = (xs: Priced[], side: "buy" | "sell"): Priced | null => {
   return best;
 };
 
+/** Kendi bağlantı grubumdaki (ortak IP karması) diğer şirketler: en iyi teklifte "bağımsız alıcı" gibi görünmesinler */
+async function groupMates(db: DbOrTx, myId: string): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT gcb.id::text AS id
+    FROM cf.companies gcs
+    JOIN cf.connection_records grs ON grs.account_id = gcs.account_id
+    JOIN cf.connection_records grb ON grb.ip_hash = grs.ip_hash AND grb.account_id <> grs.account_id
+    JOIN cf.companies gcb ON gcb.account_id = grb.account_id
+    WHERE gcs.id = ${myId}::uuid`)) as unknown as Array<{ id: string }>;
+  return rows.map((r) => r.id);
+}
+
 async function openOrders(db: DbOrTx, productId: string, cityId: string | null, myId: string | null): Promise<OrderRow[]> {
+  const mates = myId ? await groupMates(db, myId) : [];
   return db
     .select()
     .from(marketOrders)
     .where(and(
       eq(marketOrders.productId, productId), eq(marketOrders.status, "open"), gt(marketOrders.remainingKg, 0),
-      ...(cityId ? [eq(marketOrders.cityId, cityId)] : []), ...(myId ? [ne(marketOrders.companyId, myId)] : []),
+      ...(cityId ? [eq(marketOrders.cityId, cityId)] : []), ...(myId ? [ne(marketOrders.companyId, myId)] : []), ...(mates.length ? [notInArray(marketOrders.companyId, mates)] : []),
     ));
 }
 

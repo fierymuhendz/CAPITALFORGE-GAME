@@ -103,18 +103,31 @@ async function consumeStock(tx: Tx, companyId: string, prof: SystemProfile | nul
   }
 }
 
-/** Oyuncular arası işlem hacmine göre oyuncu payı (bp): pp / (pp + nominal günlük) */
-async function playerShareBp(tx: Tx, productId: string, cityId: string, nominalKg: number, now: Date): Promise<number> {
-  const r = await tx
-    .select({ pp: sql<string>`coalesce(sum(${trades.qtyKg}), 0)::text` })
-    .from(trades)
-    .where(and(
-      eq(trades.productId, productId), eq(trades.cityId, cityId), eq(trades.buyerIsSystem, false), eq(trades.sellerIsSystem, false),
-      gte(trades.createdAt, new Date(now.getTime() - 24 * HOUR)),
-      // aynı bağlantı grubundaki şirketler arası işlemler sistem desteğini azaltmaz (kendi kendine ticaretle sistemi itme yok)
-      sql`NOT ${sameGroupExpr("cf.trades.seller_company_id", "cf.trades.buyer_company_id")}`,
-    ));
-  const pp = Number(r[0]?.pp ?? 0);
+/**
+ * Oyuncular arası işlem hacmine göre oyuncu payı (bp): pp / (pp + nominal günlük).
+ * Yıkama ticaretine karşı yalnızca bağımsız işlemler sayılır (market/stats.ts ile aynı dışlamalar): ters kayıtla
+ * düzeltilmiş, aynı bağlantı grubundaki ve fiyat anomalisi uyarılı işlemler ile taban fiyatın yarısının altındaki
+ * işlemler girmez. Tek bir alıcı>satıcı çiftinin katkısı nominal günlük hacmin üçte biriyle sınırlıdır, yani sistem
+ * desteğini tabana indirmek en az üç bağımsız çift ister.
+ */
+async function playerShareBp(tx: Tx, cat: Deps["catalog"], productId: string, cityId: string, nominalKg: number, now: Date): Promise<number> {
+  const floor = BigInt(cat.product(productId).basePricePerKg) / 2n;
+  const pairCap = Math.max(1, Math.floor(nominalKg / 3));
+  const since = new Date(now.getTime() - 24 * HOUR).toISOString();
+  const rows = (await tx.execute(sql`
+    SELECT coalesce(sum(LEAST(p.kg, ${pairCap}::bigint)), 0)::text AS pp FROM (
+      SELECT t.buyer_company_id, t.seller_company_id, sum(t.qty_kg) AS kg
+      FROM cf.trades t
+      WHERE t.product_id = ${productId} AND t.city_id = ${cityId}
+        AND t.buyer_is_system = false AND t.seller_is_system = false
+        AND t.created_at >= ${since}::timestamptz
+        AND t.price_per_kg >= ${floor.toString()}::bigint
+        AND NOT ${sameGroupExpr("t.seller_company_id", "t.buyer_company_id")}
+        AND NOT EXISTS (SELECT 1 FROM cf.ledger_transactions r WHERE r.reverses_id = t.transaction_id)
+        AND NOT EXISTS (SELECT 1 FROM cf.alerts a WHERE a.kind = 'price_anomaly' AND a.details->>'tradeId' = t.id::text)
+      GROUP BY t.buyer_company_id, t.seller_company_id
+    ) p`)) as unknown as Array<{ pp: string }>;
+  const pp = Number(rows[0]?.pp ?? 0);
   return pp + nominalKg > 0 ? Math.min(10000, Math.floor((pp * 10000) / (pp + nominalKg))) : 0;
 }
 
@@ -133,7 +146,7 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
     const weightSum = Object.entries(prof.buys).reduce((a, [p, kg]) => a + BigInt(kg) * refOf(p), 0n);
 
     for (const [p, S] of Object.entries(prof.sells)) {
-      const factor = systemShareFactorBp(await playerShareBp(tx, p, prof.cityId, S + (prof.buys[p] ?? 0), now), sys.shareDampBp);
+      const factor = systemShareFactorBp(await playerShareBp(tx, cat, p, prof.cityId, S + (prof.buys[p] ?? 0), now), sys.shareDampBp);
       const eff = Math.floor((S * factor) / 10000);
       const d = await dailyOf(tx, comp.id, p, now);
       const target = Math.max(0, Math.min(S - d.soldKg, eff - d.soldKg));
@@ -168,7 +181,7 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
 
     for (const [p, B] of Object.entries(prof.buys)) {
       const refs = refsBy.get(p)!;
-      const factor = systemShareFactorBp(await playerShareBp(tx, p, prof.cityId, B + (prof.sells[p] ?? 0), now), sys.shareDampBp);
+      const factor = systemShareFactorBp(await playerShareBp(tx, cat, p, prof.cityId, B + (prof.sells[p] ?? 0), now), sys.shareDampBp);
       const eff = Math.floor((B * factor) / 10000);
       const d = await dailyOf(tx, comp.id, p, now);
       const bid = systemBid(refOf(p), profileBidBp(prof, p, sys.bidBp), d.boughtKg, B, bidCapFromRefs(refs, sys.askBp));
@@ -218,7 +231,7 @@ async function adoptOrphans(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
           const ref = refs.get(o.cityId) ?? BigInt(cat.product(o.productId).basePricePerKg);
           const B = prof.buys[o.productId]!;
           const d = await dailyOf(tx, comp.id, o.productId, now);
-          const factor = systemShareFactorBp(await playerShareBp(tx, o.productId, o.cityId, B, now), sys.shareDampBp);
+          const factor = systemShareFactorBp(await playerShareBp(tx, cat, o.productId, o.cityId, B, now), sys.shareDampBp);
           const bidCap = bidCapFromRefs(refs, sys.askBp);
           const unitBid = systemBidForQuality(systemBid(ref, sys.bidBp, d.boughtKg, B, bidCap), o.quality, bidCap, QUALITY_PRICE_BP);
           if (o.pricePerKg > unitBid) continue;
@@ -258,7 +271,7 @@ async function adoptOrphans(deps: Deps, now: Date, sysCos: Map<string, CompanyRo
         const ref = refs.get(o.cityId) ?? BigInt(cat.product(o.productId).basePricePerKg);
         const ask = systemAsk(ref, sys.askBp, d.soldKg, S);
         if (o.pricePerKg < ask) return false;
-        const factor = systemShareFactorBp(await playerShareBp(tx, o.productId, o.cityId, S + (prof.buys[o.productId] ?? 0), now), sys.shareDampBp);
+        const factor = systemShareFactorBp(await playerShareBp(tx, cat, o.productId, o.cityId, S + (prof.buys[o.productId] ?? 0), now), sys.shareDampBp);
         const qty = Math.min(o.remainingKg, Math.floor((S * factor) / 10000) - d.soldKg);
         if (qty < 1) return false;
         await produceStock(tx, comp.id, o.cityId, o.productId, 2, qty, ref, now);
@@ -422,7 +435,7 @@ async function recurringContracts(deps: Deps, now: Date, sysCos: Map<string, Com
         const value = price * BigInt(qty) * 3n;
         if (value > BigInt(prof.dailyBudget) / 2n) continue;
         // Açık sistem sözleşmesi toplamı: 2 × günlük bütçe × oyuncu payı çarpanı (günlük bütçeyi sözleşmeyle aşma yok)
-        const factor = systemShareFactorBp(await playerShareBp(tx, h.productId, h.cityId, B, now), sys.shareDampBp);
+        const factor = systemShareFactorBp(await playerShareBp(tx, cat, h.productId, h.cityId, B, now), sys.shareDampBp);
         const limit = applyBp(BigInt(prof.dailyBudget) * 2n, factor);
         if ((await openSystemContractValue(tx, comp.id)) + value > limit) continue;
         await topUp(tx, comp.id, value, now);
