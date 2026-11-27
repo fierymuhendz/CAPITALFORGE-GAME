@@ -67,7 +67,7 @@ describe("finans raporu", () => {
     expect(trace.transactions.length).toBe(1);
     expect(trace.transactions[0].lines.length).toBeGreaterThan(0);
     const bTrace = await b.p.ok("GET", `/finance/sales/${sale!.id}`);
-    expect(bTrace.transactions[0].lines).toEqual([]); // alıcı satıcının defter satırlarını görmez
+    expect(bTrace.transactions).toEqual([]); // alıcı satıcının defter işlemlerini (satır, not) görmez
     const c = await found(h, "crop", "korfezkent");
     expect((await c.p.get(`/finance/sales/${sale!.id}`)).status).toBe(404);
     expect((await b.p.ok("GET", "/finance/sales")).length).toBe(0);

@@ -104,3 +104,6 @@ html[data-theme="light"] .cf-workspace, html[data-theme="light"] body:has(.cf-wo
   .cf-city-grid .cf-decisions { order: -1; padding: 12px; }
 }
 @media (max-width: 980px) { .cf-workspace .tabbar { grid-template-columns: repeat(6, minmax(0, 1fr)); } .cf-workspace .tabbar button { font-size: 10.5px; } }
+
+/* panel geçişinde odak başlığa taşınır; fareyle gelende halka gösterilmez */
+#panel-title:focus, #panel-title:focus-visible { outline: none; box-shadow: none; }

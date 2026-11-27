@@ -1,9 +1,10 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { HoldingDto, MovementDto } from "@capitalforge/shared";
 import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
-import { setMarketIntent } from "@/lib/intent";
+import { sellParams, setMarketIntent } from "@/lib/intent";
 import { useT } from "@/lib/i18n";
 import { Async, Button, EmptyState, Icon, KV, Sheet, SkeletonList, Table, type Col } from "@/ui";
 import { usePlay } from "../play/context";
@@ -18,7 +19,19 @@ export function InventoryPanel() {
   const res = useData<HoldingDto[]>("/inventory", undefined, ["inventory"]);
   const [city, setCity] = useState<string>("");
   const [sel, setSel] = useState<HoldingDto | null>(null);
-  const sell = (h: HoldingDto) => { setMarketIntent({ productId: h.productId, cityId: h.cityId, side: "sell", quality: h.quality, qtyKg: h.availableKg }); setSel(null); open("market"); };
+  const sell = (h: HoldingDto) => { setMarketIntent({ productId: h.productId, cityId: h.cityId, side: "sell", quality: h.quality, qtyKg: h.availableKg }); setSel(null); open("market", { params: sellParams(h) }); };
+  // Üretim bitti bildiriminden / tesisten gelen ürün: ilgili lot doğrudan açılır
+  const sp = useSearchParams();
+  const want = sp.get("product");
+  const wantCity = sp.get("city");
+  const wantQ = sp.get("quality");
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current || !want || !res.data) return;
+    const h = res.data.filter((x) => x.productId === want && (!wantCity || x.cityId === wantCity) && (!wantQ || String(x.quality) === wantQ)).sort((a, b) => b.availableKg - a.availableKg)[0];
+    opened.current = true;
+    if (h) setSel(h);
+  }, [want, wantCity, wantQ, res.data]);
   const cities = useMemo(() => [...new Set((res.data ?? []).map((h) => h.cityId))], [res.data]);
   const cols: Col<HoldingDto>[] = [
     { key: "p", head: t("inventory.product"), lead: true, cell: (h) => <span className="inventory-product"><span className="inventory-emblem" aria-hidden="true"><span className="trade-swatch" style={{ backgroundColor: cat.productColor(h.productId) }} /><Icon name="box" size={19} /></span><b>{cat.product(h.productId)}</b><span className="trade-quality" aria-label={`${t("common.quality")} ${h.quality}`}>★ {h.quality}</span></span> },

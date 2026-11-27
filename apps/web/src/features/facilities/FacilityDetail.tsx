@@ -62,6 +62,7 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
   const quotes = quoteSet?.batches === batches ? quoteSet.entries : {};
   const tick = useInvalidateTick(["inventory", "company", "market", "facilities"]);
   const running = f.jobs.filter((j) => j.status === "running");
+  const lastDone = f.jobs.filter((j) => j.status === "completed").sort((a, b) => (b.completedAt ?? b.endsAt).localeCompare(a.completedAt ?? a.endsAt))[0];
   const freeLines = Math.max(0, f.lines - running.length);
   const ready = f.status !== "constructing";
   const bt = w.buildingTypes.find((b) => b.id === f.type);
@@ -118,6 +119,17 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
     } },
     { key: "h", head: t("decide.recipes.perHour"), right: true, nowrap: true, cell: (r) => { const st = quotes[r.id]; const e = st && "q" in st ? st.q.estimate : null; return e ? <span className="num">{i.signed(e.profitPerHour)}</span> : <span className="muted">—</span>; } },
   ];
+  type Blocker = ProductionQuoteDto["blockers"][number];
+  const blockerText = (b: Blocker) => b.productId && b.missingKg
+    ? t("flow.missingShort", { q: i.qty(b.missingKg), product: cat.product(b.productId) })
+    : `${codeText(i, "quote.blocker", b.code).replace(/\.$/, "")}${b.productId ? `: ${cat.product(b.productId)}` : ""}${b.missing ? ` (${i.money(b.missing)})` : ""}`;
+  /** Engelin yanında çözüm: eksik girdiyi pazarda al, nakit yetmiyorsa kredi, borç varsa öde */
+  const fixFor = (b: Blocker) => {
+    if (b.productId && b.missingKg) return <Button size="sm" className="ops-fix" onClick={() => buyMissing(b.productId!, b.missingKg!)}><Icon name="chart" size={15} />{t("flow.buyFix", { q: i.qty(b.missingKg), product: cat.product(b.productId) })}</Button>;
+    if (b.code === "INSUFFICIENT_FUNDS") return <Button size="sm" className="ops-fix" onClick={() => open("finance", { params: { view: "loans" } })}>{t("flow.fundsFix")}</Button>;
+    if (b.code === "ARREARS" || b.code === "ARREARS_OUTSTANDING") return <Button size="sm" className="ops-fix" onClick={() => open("finance", { params: { view: "loans" } })}>{t("flow.arrearsFix")}</Button>;
+    return null;
+  };
   const sel = quotes[recipeId];
   const q = sel && "q" in sel ? sel.q : null;
   const start = () => run(() => api.post("/production/start", { facilityId: f.id, recipeId, batches, repeat }), { ok: "facility.started" });
@@ -144,6 +156,13 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
             <Stat label={t("facility.maxBatches")} value={i.num(f.maxBatches)} />
             <Stat label={t("facility.upkeep")} value={i.money(f.upkeepPerDay, true)} />
           </div>
+          {lastDone ? (
+            <div className="ops-done" role="status">
+              <Icon name="check" size={16} />
+              <span className="grow">{t("flow.lastDone", { product: cat.product(lastDone.output.productId), q: i.qty(lastDone.output.qtyKg) })} <span className="muted xs">· {i.date(lastDone.completedAt ?? lastDone.endsAt)}</span></span>
+              <Button size="sm" onClick={() => open("inventory", { params: { product: lastDone.output.productId, city: f.cityId, quality: String(lastDone.output.quality) } })}><Icon name="box" size={15} />{t("flow.openInStock")}</Button>
+            </div>
+          ) : null}
           {running.map((j) => <JobRow key={j.id} job={j} busy={busy} onStop={(id) => void run(() => api.post(`/production/${id}/stop-repeat`), { ok: "facility.repeatStopped" })} />)}
 
           {ready && freeLines > 0 ? (
@@ -193,7 +212,7 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
               ) : null}
               <ActionBar>
                 {q ? <div className="total"><span>{t("quote.total")}</span><b className="num">{i.money(q.cost.total)}</b></div> : null}
-                {q && !q.canStart && q.blockers[0] ? <div className="total" id={`why-${f.id}`}><span>{t("decide.recipes.cantStart")}</span><b className="warn">{codeText(i, "quote.blocker", q.blockers[0].code).replace(/\.$/, "")}{q.blockers[0].productId ? `: ${cat.product(q.blockers[0].productId)}` : ""}</b></div>
+                {q && !q.canStart && q.blockers[0] ? <div className="total" id={`why-${f.id}`}><span>{t("decide.recipes.cantStart")}</span><b className="warn">{blockerText(q.blockers[0])}</b>{fixFor(q.blockers[0])}</div>
                   : q?.estimate ? <div className="total"><span>{t("decide.recipes.profit")}</span><b className={`num ${BigInt(q.estimate.profit) < 0n ? "bad" : "good"}`}>{i.signed(q.estimate.profit)}</b></div> : null}
                 <Button variant="primary" loading={busy} disabled={!q?.canStart} aria-describedby={q && !q.canStart ? `why-${f.id}` : undefined} onClick={() => void start()}>{t("facility.start")}</Button>
               </ActionBar>

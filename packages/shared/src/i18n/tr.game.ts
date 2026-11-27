@@ -125,7 +125,7 @@ export const trGame: Dict = {
     market: "Piyasa",
     contracts: "Sözleşmeler",
     logistics: "Lojistik",
-    finance: "Finans",
+    finance: "Şirket Muhasebesi",
     research: "Araştırma",
     notifications: "Bildirimler",
     account: "Hesap",
@@ -333,7 +333,7 @@ export const trGame: Dict = {
   },
   nextSteps: {
     go: {
-      finance: "Finansa git",
+      finance: "Şirket Muhasebesine git",
       facilities: "Tesislere git",
       market: "Piyasaya git",
       logistics: "Lojistiğe git",

@@ -4,12 +4,15 @@ import { enAdmin } from "./en.admin";
 import { enCity } from "./en.city";
 import { enOperations } from "./operations-design";
 import { enDecisions } from "./decisions-design";
+import { enAccounting, enTxKinds } from "./accounting-design";
 
 export const en: Dict = {
   ...enGame,
   ...enAdmin,
   ...enCity,
   ...enOperations,
+  ...enAccounting,
+  txKind: { ...(enGame.txKind as Dict), ...enTxKinds },
   decide: enDecisions.decide,
   tabs: { ...(enGame.tabs as Dict), ...enDecisions.tabs },
   workspace: { home: "Overview", map: "City map", exchange: "Open market" },

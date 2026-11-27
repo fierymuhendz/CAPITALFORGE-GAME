@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import type { HaulResultDto, HoldingDto, OfferNote, OfferRowDto, OffersDto, VehicleDto } from "@capitalforge/shared";
+import { useSearchParams } from "next/navigation";
+import type { BuyResultDto, HaulResultDto, HoldingDto, OfferNote, OfferRowDto, OffersDto, VehicleDto } from "@capitalforge/shared";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/action";
 import { useApp } from "@/lib/app";
@@ -32,8 +33,16 @@ export function MarketPanel() {
   const [qtySell, setQtySell] = useState<number | null>(null);
   const [create, setCreate] = useState<"sell" | "buy" | null>(null);
   const [returnTo, setReturnTo] = useState<MarketIntent["returnTo"] | null>(null);
+  const [sold, setSold] = useState<SoldInfo | null>(null);
+  const sp = useSearchParams();
   useEffect(() => {
-    const it = takeMarketIntent();
+    // URL (yenilemede korunur) yoksa bellek içi niyet
+    const up = sp.get("product");
+    const fromUrl: MarketIntent | null = up && cat.world.products.some((p) => p.id === up)
+      ? { productId: up, cityId: sp.get("city") ?? me?.company?.homeCityId ?? cat.world.cities[0]!.id, side: sp.get("side") === "sell" ? "sell" : "buy", quality: sp.get("quality") ? Number(sp.get("quality")) : undefined, qtyKg: sp.get("qty") ? Number(sp.get("qty")) : undefined }
+      : null;
+    const mem = takeMarketIntent();
+    const it = mem ?? fromUrl;
     if (!it) return;
     setProductId(it.productId);
     setReturnTo(it.returnTo ?? null);
@@ -46,7 +55,7 @@ export function MarketPanel() {
       setToCity(it.cityId);
       if (it.qtyKg !== undefined && it.qtyKg > 0) setQtyBuy(it.qtyKg);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const inv = useData<HoldingDto[]>("/inventory", undefined, ["inventory"]);
   const held = useMemo(() => {
     const m = new Map<string, number>();
@@ -104,12 +113,13 @@ export function MarketPanel() {
                   ? <QtyInput label={t("market.qty")} value={qtyBuy} onChange={setQtyBuy} />
                   : <QtyInput label={t("market.qty")} value={sellQty} onChange={setQtySell} max={stockKg} />}
               </div>
-              <Offers key={`${tab}-${prodId}-${tab === "sell" ? lot?.quality : ""}`} side={tab} quality={tab === "sell" ? lot?.quality : undefined} productId={prodId} cityId={tab === "buy" ? toCity : from} fromCityId={tab === "sell" ? from : null} qtyKg={tab === "buy" ? qtyBuy : sellQty} onCreate={setCreate} />
+              <Offers key={`${tab}-${prodId}-${tab === "sell" ? lot?.quality : ""}`} side={tab} quality={tab === "sell" ? lot?.quality : undefined} productId={prodId} cityId={tab === "buy" ? toCity : from} fromCityId={tab === "sell" ? from : null} qtyKg={tab === "buy" ? qtyBuy : sellQty} onCreate={setCreate} onSold={setSold} />
             </>
           )}
         </>
       )}
       <CreateSheet side={create} onClose={() => setCreate(null)} view={createView} refPrice={null} />
+      <SoldSheet sold={sold} onClose={() => setSold(null)} />
     </div>
   );
 }
@@ -126,7 +136,7 @@ function noteTag(i: I18n, n: OfferNote, r: OfferRowDto) {
   }
 }
 
-function Offers({ side, productId, cityId, fromCityId, qtyKg, quality, onCreate }: { side: "buy" | "sell"; productId: string; cityId: string | null; fromCityId: string | null; quality?: number; qtyKg: number | null; onCreate: (s: "sell" | "buy") => void }) {
+function Offers({ side, productId, cityId, fromCityId, qtyKg, quality, onCreate, onSold }: { side: "buy" | "sell"; productId: string; cityId: string | null; fromCityId: string | null; quality?: number; qtyKg: number | null; onCreate: (s: "sell" | "buy") => void; onSold: (s: SoldInfo) => void }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
@@ -201,7 +211,7 @@ function Offers({ side, productId, cityId, fromCityId, qtyKg, quality, onCreate 
             )}
             {d.rows.length ? <div className="row wrap"><Button size="sm" onClick={() => onCreate(side === "buy" ? "buy" : "sell")}>{t(side === "buy" ? "market.newOrder" : "market.newListing")}</Button></div> : null}
             <BuySheet row={buy} data={d} onClose={() => setBuy(null)} reload={res.reload} />
-            <SellSheet row={sell} data={d} onClose={() => setSell(null)} reload={res.reload} />
+            <SellSheet row={sell} data={d} onClose={() => setSell(null)} reload={res.reload} onSold={onSold} />
             <HaulSheet row={haul} data={d} onClose={() => setHaul(null)} />
           </div>
         );
@@ -256,14 +266,36 @@ function BuySheet({ row, data, onClose, reload }: { row: OfferRowDto | null; dat
   );
 }
 
-function SellSheet({ row, data, onClose, reload }: { row: OfferRowDto | null; data: OffersDto; onClose: () => void; reload: () => void }) {
+export type SoldInfo = { saleId: string; productId: string; qtyKg: number; gross: string; profit: string };
+
+/** Satış sonrası: tahsilat ve kâr, satışın muhasebe ayrıntısına tek dokunuş. Panel düzeyinde durur (stok bitince teklif listesi kaybolsa da kalır). */
+function SoldSheet({ sold, onClose }: { sold: SoldInfo | null; onClose: () => void }) {
+  const i = useT();
+  const { t } = i;
+  const cat = useCat();
+  const { open } = usePlay();
+  return (
+    <Sheet open={!!sold} onClose={onClose} closeLabel={t("common.close")} title={t("flow.soldTitle")}
+      footer={sold ? <><Button onClick={onClose}>{t("flow.keepSelling")}</Button><Button variant="primary" size="lg" onClick={() => { onClose(); open("finance", { params: { view: "sales", sale: sold.saleId } }); }}><Icon name="wallet" size={16} />{t("flow.openAccounting")}</Button></> : undefined}>
+      {sold ? (
+        <div className="col tight" role="status">
+          <p style={{ margin: 0 }}>{t("flow.soldText", { q: i.qty(sold.qtyKg), product: cat.product(sold.productId), g: i.money(sold.gross), p: i.signed(sold.profit) })}</p>
+          <KV k={t("accounting.remaining")} v={<Trend value={sold.profit} text={i.signed(sold.profit)} />} />
+        </div>
+      ) : null}
+    </Sheet>
+  );
+}
+
+function SellSheet({ row, data, onClose, reload, onSold }: { row: OfferRowDto | null; data: OffersDto; onClose: () => void; reload: () => void; onSold: (s: SoldInfo) => void }) {
   const i = useT();
   const { t } = i;
   const { run, busy } = useAction();
   const go = async () => {
     if (!row) return;
-    const r = await run(() => api.post(`/market/orders/${row.orderId}/sell`, { qtyKg: row.fillKg, quality: row.quality, expectedPricePerKg: Number(row.pricePerKg) }), { ok: "market.sold" });
-    if (r) onClose(); else reload();
+    const r = await run(() => api.post<BuyResultDto>(`/market/orders/${row.orderId}/sell`, { qtyKg: row.fillKg, quality: row.quality, expectedPricePerKg: Number(row.pricePerKg) }));
+    if (r) { onClose(); onSold({ saleId: r.saleId, productId: data.productId, qtyKg: row.fillKg, gross: r.gross, profit: (BigInt(r.gross) - BigInt(r.fee) - BigInt(r.cogs)).toString() }); }
+    else reload();
   };
   return (
     <Sheet open={!!row} onClose={onClose} closeLabel={t("common.close")} title={t("market.sell")}
