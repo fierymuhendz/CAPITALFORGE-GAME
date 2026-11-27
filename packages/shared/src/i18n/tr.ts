@@ -4,12 +4,15 @@ import { trAdmin } from "./tr.admin";
 import { trCity } from "./tr.city";
 import { trOperations } from "./operations-design";
 import { trDecisions } from "./decisions-design";
+import { trAccounting, trTxKinds } from "./accounting-design";
 
 export const tr: Dict = {
   ...trGame,
   ...trAdmin,
   ...trCity,
   ...trOperations,
+  ...trAccounting,
+  txKind: { ...(trGame.txKind as Dict), ...trTxKinds },
   decide: trDecisions.decide,
   tabs: { ...(trGame.tabs as Dict), ...trDecisions.tabs },
   workspace: { home: "Genel bakış", map: "Şehir haritası", exchange: "Pazara git" },

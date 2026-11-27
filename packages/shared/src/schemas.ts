@@ -111,6 +111,16 @@ export const ResearchStartReq = z.object({ idempotencyKey });
 export const NotificationsReadReq = z.object({ ids: z.array(uuid).max(200).optional(), all: z.boolean().optional() });
 // Modül A: GET sorgu şemaları
 export const BeforeQuery = z.object({ before: z.iso.datetime().optional() });
+/** Şirket Muhasebesi dönemi: bugün (oyun günü, İstanbul saati), son 7 veya 30 takvim günü */
+export const ACCOUNTING_PERIODS = ["today", "7d", "30d"] as const;
+export const AccountingQuery = z.object({ period: z.enum(ACCOUNTING_PERIODS).default("7d") });
+/** İşlem geçmişi sayfası: imleç önceki sayfanın son işleminin zamanı ve kimliği */
+export const AccountingTxQuery = z.object({
+  period: z.enum(ACCOUNTING_PERIODS).default("7d"),
+  before: z.iso.datetime().optional(),
+  beforeId: z.uuid().optional(),
+  limit: z.coerce.number().int().min(5).max(50).default(20),
+}).refine((q) => !q.before === !q.beforeId, { message: "before ve beforeId birlikte", path: ["beforeId"] });
 export const MovementsQuery = z.object({ productId: id.optional(), cityId: id.optional(), quality: z.coerce.number().int().min(1).max(5).optional() });
 export const CompanySearchQuery = z.object({ q: z.string().trim().min(1).max(40) });
 

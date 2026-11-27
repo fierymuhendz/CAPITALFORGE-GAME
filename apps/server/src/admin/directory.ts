@@ -77,7 +77,7 @@ export async function companyDetail(db: Db, id: string): Promise<AdminCompanyDet
     id: s.id, at: s.createdAt.toISOString(), source: s.source, productId: s.productId, quality: s.quality, qtyKg: s.qtyKg,
     pricePerKg: m(s.pricePerKg), buyerName: names.get(s.buyerCompanyId) ?? "", sellerName: names.get(s.sellerCompanyId) ?? "",
     cityId: s.cityId, gross: m(s.gross), cogs: m(s.cogs), freight: m(s.freight), fees: m(s.fees), netProfit: m(s.netProfit),
-    contractId: s.contractId, installmentId: s.installmentId, shipmentId: s.shipmentId, ledgerTransactionIds: s.transactionIds,
+    contractId: s.contractId, installmentId: s.installmentId, shipmentId: s.shipmentId, ledgerTransactionIds: s.transactionIds, viewerRole: s.sellerCompanyId === id ? "seller" : "buyer",
   }));
 
   const hold = await db.select().from(holdings).where(and(eq(holdings.companyId, id), sql`${holdings.qtyKg} > 0`)).orderBy(holdings.productId, holdings.cityId);

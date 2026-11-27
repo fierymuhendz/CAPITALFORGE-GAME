@@ -52,7 +52,7 @@ export async function settleJob(tx: Tx, uow: UnitOfWork, catalog: Catalog, jobId
   await addXp(tx, job.companyId, catalog.settings.xp.productionJob, catalog.settings.levelXp);
   await notify(tx, uow, job.companyId, "production_done", {
     recipe: snap.id, product: snap.output.productId, qtyKg: job.outputKg, quality: job.outputQuality, city: job.cityId,
-  }, now, "/play?tab=facilities");
+  }, now, `/play?tab=inventory&product=${encodeURIComponent(snap.output.productId)}&city=${encodeURIComponent(job.cityId)}&quality=${job.outputQuality}`);
   uow.invalidate(job.companyId, "company", "inventory", "facilities", "finance");
   uow.world("map");
 
@@ -72,7 +72,7 @@ export async function settleJob(tx: Tx, uow: UnitOfWork, catalog: Catalog, jobId
           .where(eq(facilities.id, job.facilityId));
         await notify(tx, uow, job.companyId, "line_stalled", {
           facility: fac.type, city: fac.cityId, reason: reason.code, product: reason.productId ?? "", recipe: job.recipeId,
-        }, now, "/play?tab=facilities");
+        }, now, `/play?tab=inventory&product=${encodeURIComponent(snap.output.productId)}&city=${encodeURIComponent(job.cityId)}&quality=${job.outputQuality}`);
       }
     }
   }

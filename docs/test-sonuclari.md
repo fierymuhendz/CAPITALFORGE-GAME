@@ -298,3 +298,15 @@ Eski durum: fiyatlar iron_ore 180, coal 220, flour 1050, packaged_milk 1400; max
 
 - Başka bir koşu aynı `capitalforge_test` şemasını sildiği için çakışma oldu (500 / "cf.companies yok"); testler izole `capitalforge_test_v3acc` ile koşuldu.
 - İlk koşudaki `perKg −490 ≠ −489` ve `−87.500` nakit farkı gerçek hata değil, test hatasıydı: compare `floorDiv` kullanır (negatifte aşağı), bakım/iade nakdi test ölçümüne karışmıştı. İzole koşuda iki doğrulama da doğru değerle geçiyor.
+
+## Şirket Muhasebesi ve ilk satış akışı (2026-11-27)
+
+| Takım | Komut | Sonuç |
+|---|---|---|
+| Tür denetimi | `pnpm typecheck` | temiz |
+| Birim | `pnpm test` | 41/41 |
+| Entegrasyon | `pnpm test:int` | 124/124 (14 dosya), yeni `finance/accounting.int.test.ts` 4/4 |
+| Web derlemesi | `pnpm --filter @capitalforge/web build` | başarılı |
+| Uçtan uca | `node e2e/ui/accounting-flow.mjs phone-tr desktop-tr phone-en desktop-en` | 4 yapılandırmada 9/9 adım |
+
+Kabul: örnek satış 1.000 − 600 − 50 − 10 = 340 net kâr; ardından 500 kredi kasayı +500 artırır, gelir/gider/net değişmez, kredi finansman nakit akışında. İki şirket yalıtımı (özet, işlem listesi, satış izi 404, alıcıya maliyet/kâr/defter işlemi gizli, `?companyId=` etkisiz, `private, no-store`), dönem sınırı (dün 23:59:59.999 / bugün 00:00 İstanbul, 8 gün önce 7 günde yok 30 günde var), ters kayıt kendi gününe düşer ve ikinci kez yazılmaz, aynı idempotency anahtarıyla satış ve kredi bir kez sayılır, her dönemde açılış + net nakit = kapanış = şimdiki kasa.

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompanyDto, ShipmentDto, WorldMapDto } from "@capitalforge/shared";
 import { useApp } from "@/lib/app";
 import { useData, useList } from "@/lib/data";
@@ -61,6 +61,13 @@ export function PlayShell() {
   const pMapped = pRaw ? ALIAS[pRaw] ?? pRaw : null;
   const panel: PanelId | null = PANEL_IDS.includes(pMapped as PanelId) ? (pMapped as PanelId) : null;
   useEffect(() => { setSelection(null); }, [pRaw]);
+  // panel değişince klavye odağı yeni sayfanın başlığına (yeniden bağlanan <main> odağı body'ye düşürmesin)
+  const firstPanel = useRef(true);
+  useEffect(() => {
+    if (firstPanel.current) { firstPanel.current = false; return; }
+    const h = requestAnimationFrame(() => document.getElementById("panel-title")?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(h);
+  }, [panel]);
   const homeCity = me?.company?.homeCityId ?? null;
   const focusCityId = focus ?? homeCity;
 
@@ -148,7 +155,10 @@ export function PlayShell() {
               <div className={mapOnly && !selection ? "cf-home cf-map-only" : "cf-home"}>
                 <div className="cf-title">
                   <div><p>{t(`sector.${c.sector}`)} · {i.name(world.cities.find((city) => city.id === c.homeCityId)?.name ?? { tr: "", en: "" })}</p><h1>{c.name}</h1></div>
-                  <Button size="sm" onClick={() => open("market")}><Icon name="chart" size={16} />{t("workspace.exchange")}</Button>
+                  <div className="row wrap cf-title-acts">
+                    <Button size="sm" onClick={() => open("finance")}><Icon name="wallet" size={16} />{t("accounting.open")}</Button>
+                    <Button size="sm" onClick={() => open("market")}><Icon name="chart" size={16} />{t("workspace.exchange")}</Button>
+                  </div>
                 </div>
                 <div className="cf-ledger">
                   {figures.map((f) => <button type="button" key={f.label} onClick={() => open(f.target)}><span>{t(f.label)}</span><strong>{f.value}</strong></button>)}
@@ -169,7 +179,7 @@ export function PlayShell() {
             ) : (
               <section className="cf-data pane" aria-label={title}>
                 <div className="pane-head cf-page-head">
-                  <div><p>{c.name}</p><h1>{title}</h1></div>
+                  <div><h1 tabIndex={-1} id="panel-title">{title}</h1></div>
                   <Button variant="ghost" size="sm" aria-label={selection ? t("common.back") : t("workspace.home")} onClick={() => selection ? setSelection(null) : open(null)}><Icon name="back" size={16}/><span>{selection ? t("common.back") : t("workspace.home")}</span></Button>
                 </div>
                 <div className="pane-body">{selection ? <SelectionPanel onClose={() => setSelection(null)} /> : <Active.Comp />}</div>

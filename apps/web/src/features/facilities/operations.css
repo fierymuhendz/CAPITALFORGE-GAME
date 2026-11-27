@@ -151,3 +151,12 @@
   .ops-split-list { position: sticky; top: 0; }
 }
 @media (max-width: 1179px) { .ops-split.has-detail .ops-split-list { display: none; } }
+
+/* Son biten üretim → depo; başlatma engelinin yanında çözüm */
+.ops-done { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--good-soft); font-size: var(--fs-sm); }
+.ops-done .grow { flex: 1 1 180px; min-width: 0; }
+.ops-panel .action-bar { flex-wrap: wrap; align-items: center; }
+.ops-panel .action-bar .total { flex: 1 1 160px; }
+.ops-panel .action-bar .total b { white-space: normal; }
+.ops-panel .action-bar .ops-fix { margin-top: 4px; align-self: flex-start; }
+.ops-panel .action-bar > .btn { flex: 1 1 140px; }

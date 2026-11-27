@@ -125,7 +125,7 @@ export const enGame: Dict = {
     market: "Market",
     contracts: "Contracts",
     logistics: "Logistics",
-    finance: "Finance",
+    finance: "Company Accounting",
     research: "Research",
     notifications: "Notifications",
     account: "Account",
@@ -333,7 +333,7 @@ export const enGame: Dict = {
   },
   nextSteps: {
     go: {
-      finance: "Open finance",
+      finance: "Open Company Accounting",
       facilities: "Open facilities",
       market: "Open market",
       logistics: "Open logistics",

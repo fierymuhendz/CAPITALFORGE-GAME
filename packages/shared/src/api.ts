@@ -230,6 +230,8 @@ export interface SaleDto {
   gross: Money; cogs: Money; freight: Money; fees: Money; netProfit: Money;
   contractId: string | null; installmentId: string | null; shipmentId: string | null;
   ledgerTransactionIds: string[];
+  /** isteyen şirketin bu satıştaki rolü; alıcı için maliyet, navlun, komisyon ve kâr "0" döner (satıcıya özel) */
+  viewerRole: "seller" | "buyer";
 }
 
 export interface ContractDto {
@@ -313,6 +315,52 @@ export interface FinanceDto {
   loans: LoanDto[];
   loanOffer: { maxAmount: Money; dailyInterestBp: number; termsDays: number[] };
   netWorth: Money;
+}
+
+export type AccountingPeriod = "today" | "7d" | "30d";
+
+/** GET /finance/accounting: Şirket Muhasebesi özeti (yalnızca oturumdaki şirket) */
+export interface AccountingDto {
+  period: AccountingPeriod;
+  /** dönem başı (dahil) ve hesaplama anı */
+  from: Iso; to: Iso;
+  /** oyun günü saat dilimi: UTC'ye göre dakika (İstanbul = 180) */
+  tzOffsetMin: number;
+  /** şu anki nakit */
+  cashNow: Money;
+  summary: {
+    revenue: Money; expense: Money; net: Money;
+    /** hesap kodu → tutar (pozitif; ters kayıtlar düşülmüş) */
+    revenueByAccount: Record<string, Money>;
+    expenseByAccount: Record<string, Money>;
+  };
+  /** dönemin her oyun günü için gelir ve gider (boş günler sıfırla) */
+  daily: Array<{ day: string; from: Iso; revenue: Money; expense: Money; net: Money }>;
+  /** açılış + faaliyet + yatırım + finansman = kapanış */
+  cashflow: { opening: Money; operating: Money; investing: Money; financing: Money; net: Money; closing: Money };
+  /** dönemdeki defter işlemi sayısı */
+  txCount: number;
+  /** şirketin bugüne dek hiç gelir veya gider kaydı oldu mu (yoksa "Henüz işlem yok") */
+  hasActivity: boolean;
+}
+
+/** GET /finance/accounting/transactions: dönem içi işlem geçmişi, yeniden eskiye, işlem başına bir satır */
+export interface AccountingTxDto {
+  id: string; at: Iso; kind: string; memo: string;
+  refType: string | null; refId: string | null;
+  /** nakit değişimi (+ giriş, − çıkış) */
+  cash: Money;
+  /** gelir (+) ve gider (+) etkisi; kâr etkisi = revenue − expense */
+  revenue: Money; expense: Money;
+  /** bu işlem bir satışa aitse satış kimliği (ayrıntı için /finance/sales/:id) */
+  saleId: string | null;
+  /** ters kayıtsa düzelttiği işlem */
+  reversesId: string | null;
+  lines: Array<{ account: string; amount: Money }>;
+}
+export interface AccountingTxPageDto {
+  items: AccountingTxDto[];
+  next: null | { before: Iso; beforeId: string };
 }
 
 /** GET /companies/:id, /companies/search */

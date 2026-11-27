@@ -11,3 +11,8 @@ let pendingShip: ShipIntent | null = null;
 export const setShipIntent = (i: ShipIntent | null): void => { pendingShip = i; };
 export function takeShipIntent(): ShipIntent | null { const p = pendingShip; pendingShip = null; return p; }
 export const peekShipIntent = (): ShipIntent | null => pendingShip;
+
+/** Depodan/panodan pazara "Sat": seçim URL'de de taşınır (yenilemede ve geri dönüşte korunur). */
+export function sellParams(h: { productId: string; cityId: string; quality: number; availableKg: number }): Record<string, string> {
+  return { side: "sell", product: h.productId, city: h.cityId, quality: String(h.quality), qty: String(h.availableKg) };
+}

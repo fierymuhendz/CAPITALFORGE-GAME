@@ -20,7 +20,7 @@ const DAY_MS = 86_400_000;
 
 /** Nakit akışı sınıflandırması: işlem türü → grup. Bilinmeyen türler faaliyet sayılır. */
 const INVESTING = /^(plot_|construction|facility_|upgrade|quality_|vehicle_|fleet_|dissolve)/;
-const FINANCING = /^(starting_capital|loan_disburse|loan_repay)/;
+const FINANCING = /^(starting_capital|loan_disburse|loan_repay|admin_balance_adjust)/;
 export function cashflowGroup(kind: string): "operating" | "investing" | "financing" {
   if (FINANCING.test(kind)) return "financing";
   if (INVESTING.test(kind)) return "investing";
@@ -143,7 +143,10 @@ async function saleDtos(db: DbOrTx, rows: SaleRow[], viewerId: string): Promise<
     // satıcıya özel kâr kalemleri alıcıya sızmaz
     cogs: r.sellerCompanyId === viewerId ? m(r.cogs) : "0", freight: r.sellerCompanyId === viewerId ? m(r.freight) : "0",
     fees: r.sellerCompanyId === viewerId ? m(r.fees) : "0", netProfit: r.sellerCompanyId === viewerId ? m(r.netProfit) : "0",
-    contractId: r.contractId, installmentId: r.installmentId, shipmentId: r.shipmentId, ledgerTransactionIds: r.transactionIds,
+    contractId: r.contractId, installmentId: r.installmentId, shipmentId: r.shipmentId,
+    // alıcı, satıcının defter işlem kimliklerini de görmez
+    ledgerTransactionIds: r.sellerCompanyId === viewerId ? r.transactionIds : [],
+    viewerRole: r.sellerCompanyId === viewerId ? "seller" : "buyer",
   }));
 }
 
@@ -182,7 +185,8 @@ export async function saleTrace(db: DbOrTx, companyId: string, saleId: string): 
     shipment: sh
       ? { id: sh.id, originCityId: sh.originCityId, destCityId: sh.destCityId, departedAt: sh.departedAt.toISOString(), arrivesAt: sh.arrivesAt.toISOString(), deliveredAt: sh.deliveredAt?.toISOString() ?? null, status: sh.status }
       : null,
-    transactions: txs.map((t) => ({
+    // yalnızca isteyen şirketin satırı olan işlemler (alıcı satıcının işlem kaydını, notunu görmez)
+    transactions: txs.filter((t) => lines.some((l) => l.txId === t.id)).map((t) => ({
       id: t.id, at: t.createdAt.toISOString(), kind: t.kind, memo: t.memo,
       lines: lines.filter((l) => l.txId === t.id).map((l) => ({ account: l.account, amount: m(l.amount) })),
     })),

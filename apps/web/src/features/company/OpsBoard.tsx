@@ -2,7 +2,7 @@
 import type { FacilityDto, FreightJobDto, HoldingDto, ShipmentDto } from "@capitalforge/shared";
 import { useCat } from "@/lib/catalog";
 import { useData, useList } from "@/lib/data";
-import { setMarketIntent } from "@/lib/intent";
+import { sellParams, setMarketIntent } from "@/lib/intent";
 import { useT } from "@/lib/i18n";
 import { Button, Countdown, Icon, SkeletonList, Status, type StatusKind } from "@/ui";
 import { usePlay } from "../play/context";
@@ -32,7 +32,7 @@ export function OpsBoard() {
   if (!c) return <SkeletonList n={4} />;
 
   const openFacility = (f: FacilityDto) => open("facilities", { params: { facility: f.id } });
-  const sell = (h: HoldingDto) => { setMarketIntent({ productId: h.productId, cityId: h.cityId, side: "sell", quality: h.quality, qtyKg: h.availableKg }); open("market"); };
+  const sell = (h: HoldingDto) => { setMarketIntent({ productId: h.productId, cityId: h.cityId, side: "sell", quality: h.quality, qtyKg: h.availableKg }); open("market", { params: sellParams(h) }); };
 
   // Tesislerimin ürettiği ürünler satılabilir stoktur; girdiler (ör. tohum) değildir.
   const myRecipes = new Set(c.facilities.flatMap((f) => f.recipes));
