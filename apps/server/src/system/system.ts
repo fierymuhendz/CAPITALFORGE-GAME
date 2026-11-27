@@ -10,7 +10,7 @@ import {
 } from "@capitalforge/economy";
 import { QUALITY_PRICE_BP, profileBidBp, SYSTEM_CARRIER, SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, SYSTEM_PROFILES, roadDistanceKm, type SystemProfile } from "@capitalforge/shared";
 import type { Tx } from "../db/client";
-import { companies, contracts, freightJobs, holdings, marketOrders, meta, shipments, trades, vehicles } from "../db/schema";
+import { companies, contracts, freightJobs, holdings, marketOrders, meta, priceRefs, shipments, systemDaily, trades, vehicles } from "../db/schema";
 import type { Deps } from "../deps";
 import { AppError } from "../errors";
 import { UnitOfWork } from "../events/bus";
@@ -108,27 +108,41 @@ async function consumeStock(tx: Tx, companyId: string, prof: SystemProfile | nul
  * Yıkama ticaretine karşı yalnızca bağımsız işlemler sayılır (market/stats.ts ile aynı dışlamalar): ters kayıtla
  * düzeltilmiş, aynı bağlantı grubundaki ve fiyat anomalisi uyarılı işlemler ile taban fiyatın yarısının altındaki
  * işlemler girmez. Tek bir alıcı>satıcı çiftinin katkısı nominal günlük hacmin üçte biriyle sınırlıdır, yani sistem
- * desteğini tabana indirmek en az üç bağımsız çift ister.
+ * desteğini tabana indirmek en az üç bağımsız çift ister. Bir şehirdeki birçok ürün tek sorguda hesaplanır.
  */
-async function playerShareBp(tx: Tx, cat: Deps["catalog"], productId: string, cityId: string, nominalKg: number, now: Date): Promise<number> {
-  const floor = BigInt(cat.product(productId).basePricePerKg) / 2n;
-  const pairCap = Math.max(1, Math.floor(nominalKg / 3));
+async function playerSharesBp(
+  tx: Tx, cat: Deps["catalog"], cityId: string, nominals: ReadonlyMap<string, number>, now: Date,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (nominals.size === 0) return out;
+  const floors = [...nominals.keys()].map((p) => sql`(${p}::text, ${(BigInt(cat.product(p).basePricePerKg) / 2n).toString()}::bigint)`);
   const since = new Date(now.getTime() - 24 * HOUR).toISOString();
   const rows = (await tx.execute(sql`
-    SELECT coalesce(sum(LEAST(p.kg, ${pairCap}::bigint)), 0)::text AS pp FROM (
-      SELECT t.buyer_company_id, t.seller_company_id, sum(t.qty_kg) AS kg
-      FROM cf.trades t
-      WHERE t.product_id = ${productId} AND t.city_id = ${cityId}
-        AND t.buyer_is_system = false AND t.seller_is_system = false
-        AND t.created_at >= ${since}::timestamptz
-        AND t.price_per_kg >= ${floor.toString()}::bigint
-        AND NOT ${sameGroupExpr("t.seller_company_id", "t.buyer_company_id")}
-        AND NOT EXISTS (SELECT 1 FROM cf.ledger_transactions r WHERE r.reverses_id = t.transaction_id)
-        AND NOT EXISTS (SELECT 1 FROM cf.alerts a WHERE a.kind = 'price_anomaly' AND a.details->>'tradeId' = t.id::text)
-      GROUP BY t.buyer_company_id, t.seller_company_id
-    ) p`)) as unknown as Array<{ pp: string }>;
-  const pp = Number(rows[0]?.pp ?? 0);
-  return pp + nominalKg > 0 ? Math.min(10000, Math.floor((pp * 10000) / (pp + nominalKg))) : 0;
+    SELECT t.product_id AS p, sum(t.qty_kg)::text AS kg
+    FROM cf.trades t
+    JOIN (VALUES ${sql.join(floors, sql`, `)}) AS f(pid, floor) ON f.pid = t.product_id AND t.price_per_kg >= f.floor
+    WHERE t.city_id = ${cityId}
+      AND t.buyer_is_system = false AND t.seller_is_system = false
+      AND t.created_at >= ${since}::timestamptz
+      AND NOT ${sameGroupExpr("t.seller_company_id", "t.buyer_company_id")}
+      AND NOT EXISTS (SELECT 1 FROM cf.ledger_transactions r WHERE r.reverses_id = t.transaction_id)
+      AND NOT EXISTS (SELECT 1 FROM cf.alerts a WHERE a.kind = 'price_anomaly' AND a.details->>'tradeId' = t.id::text)
+    GROUP BY t.product_id, t.buyer_company_id, t.seller_company_id`)) as unknown as Array<{ p: string; kg: string }>;
+  const pp = new Map<string, number>();
+  for (const r of rows) {
+    const nominal = nominals.get(r.p) ?? 0;
+    const pairCap = Math.max(1, Math.floor(nominal / 3));
+    pp.set(r.p, (pp.get(r.p) ?? 0) + Math.min(Number(r.kg), pairCap));
+  }
+  for (const [p, nominal] of nominals) {
+    const v = pp.get(p) ?? 0;
+    out.set(p, v + nominal > 0 ? Math.min(10000, Math.floor((v * 10000) / (v + nominal))) : 0);
+  }
+  return out;
+}
+
+async function playerShareBp(tx: Tx, cat: Deps["catalog"], productId: string, cityId: string, nominalKg: number, now: Date): Promise<number> {
+  return (await playerSharesBp(tx, cat, cityId, new Map([[productId, nominalKg]]), now)).get(productId) ?? 0;
 }
 
 async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, now: Date): Promise<void> {
@@ -140,23 +154,34 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
     await consumeStock(tx, comp.id, prof, now);
     const products = new Set([...Object.keys(prof.sells), ...Object.keys(prof.buys)]);
     // Bütçe ağırlıkları (alım)
-    const refsBy = new Map<string, Map<string, bigint>>();
-    for (const p of products) refsBy.set(p, await loadRefs(tx, p));
+    // Okumalar ürün başına değil, profil başına toplu (200+ ürünlü katalogda dakikalık döngü hafif kalsın)
+    const plist = [...products];
+    const refsBy = new Map<string, Map<string, bigint>>(plist.map((p) => [p, new Map()]));
+    for (const r of await tx.select().from(priceRefs).where(inArray(priceRefs.productId, plist))) refsBy.get(r.productId)?.set(r.cityId, r.refPricePerKg);
+    const dailyBy = new Map((await tx.select().from(systemDaily).where(and(eq(systemDaily.companyId, comp.id), eq(systemDaily.day, dayKey(now))))).map((r) => [r.productId, r]));
+    const dailyFor = (p: string) => {
+      const r = dailyBy.get(p);
+      return { boughtKg: r?.boughtKg ?? 0, soldKg: r?.soldKg ?? 0, spent: r?.spent ?? 0n };
+    };
+    const openBy = new Map<string, typeof marketOrders.$inferSelect>();
+    for (const o of await tx.select().from(marketOrders).where(and(eq(marketOrders.companyId, comp.id), eq(marketOrders.cityId, prof.cityId), eq(marketOrders.status, "open"))).orderBy(marketOrders.createdAt).for("update")) {
+      const k = `${o.side}:${o.productId}`;
+      if (!openBy.has(k)) openBy.set(k, o);
+    }
+    const heldBy = new Map((await tx.select().from(holdings).where(and(eq(holdings.companyId, comp.id), eq(holdings.cityId, prof.cityId), eq(holdings.quality, 2)))).map((h) => [h.productId, h.qtyKg - h.reservedKg]));
+    const shares = await playerSharesBp(tx, cat, prof.cityId, new Map(plist.map((p) => [p, (prof.sells[p] ?? 0) + (prof.buys[p] ?? 0)])), now);
     const refOf = (p: string) => refsBy.get(p)?.get(prof.cityId) ?? BigInt(cat.product(p).basePricePerKg);
     const weightSum = Object.entries(prof.buys).reduce((a, [p, kg]) => a + BigInt(kg) * refOf(p), 0n);
 
     for (const [p, S] of Object.entries(prof.sells)) {
-      const factor = systemShareFactorBp(await playerShareBp(tx, cat, p, prof.cityId, S + (prof.buys[p] ?? 0), now), sys.shareDampBp);
+      const factor = systemShareFactorBp(shares.get(p) ?? 0, sys.shareDampBp);
       const eff = Math.floor((S * factor) / 10000);
-      const d = await dailyOf(tx, comp.id, p, now);
+      const d = dailyFor(p);
       const target = Math.max(0, Math.min(S - d.soldKg, eff - d.soldKg));
       const price = systemAsk(refOf(p), sys.askBp, d.soldKg, S);
-      const ex = (await tx.select().from(marketOrders).where(and(eq(marketOrders.companyId, comp.id), eq(marketOrders.cityId, prof.cityId), eq(marketOrders.productId, p), eq(marketOrders.side, "sell"), eq(marketOrders.status, "open"))).for("update"))[0];
+      const ex = openBy.get(`sell:${p}`);
       const key = { companyId: comp.id, cityId: prof.cityId, productId: p, quality: 2 };
-      const avail = async () => {
-        const h = (await tx.select().from(holdings).where(and(eq(holdings.companyId, comp.id), eq(holdings.cityId, prof.cityId), eq(holdings.productId, p), eq(holdings.quality, 2))))[0];
-        return h ? h.qtyKg - h.reservedKg : 0;
-      };
+      const avail = async () => heldBy.get(p) ?? 0;
       if (!ex) {
         if (target <= 0) continue;
         const have = await avail();
@@ -175,15 +200,17 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
           
           await releaseStock(tx, key, ex.remainingKg - target);
         }
-        await tx.update(marketOrders).set({ qtyKg: target, remainingKg: target, pricePerKg: price }).where(eq(marketOrders.id, ex.id));
+        if (ex.qtyKg !== target || ex.remainingKg !== target || ex.pricePerKg !== price) {
+          await tx.update(marketOrders).set({ qtyKg: target, remainingKg: target, pricePerKg: price }).where(eq(marketOrders.id, ex.id));
+        }
       }
     }
 
     for (const [p, B] of Object.entries(prof.buys)) {
       const refs = refsBy.get(p)!;
-      const factor = systemShareFactorBp(await playerShareBp(tx, cat, p, prof.cityId, B + (prof.sells[p] ?? 0), now), sys.shareDampBp);
+      const factor = systemShareFactorBp(shares.get(p) ?? 0, sys.shareDampBp);
       const eff = Math.floor((B * factor) / 10000);
-      const d = await dailyOf(tx, comp.id, p, now);
+      const d = dailyFor(p);
       const bid = systemBid(refOf(p), profileBidBp(prof, p, sys.bidBp), d.boughtKg, B, bidCapFromRefs(refs, sys.askBp));
       const bidCap = bidCapFromRefs(refs, sys.askBp);
       const maxUnit = systemBidForQuality(bid, 5, bidCap, QUALITY_PRICE_BP);
@@ -191,14 +218,16 @@ async function syncProfile(deps: Deps, comp: CompanyRow, prof: SystemProfile, no
       const budget = applyBp(share, factor);
       const budgetLeft = budget > d.spent ? budget - d.spent : 0n;
       const target = Math.max(0, Math.min(eff - d.boughtKg, Number(budgetLeft / maxUnit)));
-      const ex = (await tx.select().from(marketOrders).where(and(eq(marketOrders.companyId, comp.id), eq(marketOrders.cityId, prof.cityId), eq(marketOrders.productId, p), eq(marketOrders.side, "buy"), eq(marketOrders.status, "open"))).for("update"))[0];
+      const ex = openBy.get(`buy:${p}`);
       if (!ex) {
         if (target <= 0) continue;
         await tx.insert(marketOrders).values({ side: "buy", companyId: comp.id, isSystem: true, cityId: prof.cityId, productId: p, quality: 1, qtyKg: target, remainingKg: target, pricePerKg: bid, createdAt: now });
       } else if (target <= 0) {
         await closeOrder(tx, uow, ex, now, "filled");
       } else {
-        await tx.update(marketOrders).set({ qtyKg: target, remainingKg: target, pricePerKg: bid }).where(eq(marketOrders.id, ex.id));
+        if (ex.qtyKg !== target || ex.remainingKg !== target || ex.pricePerKg !== bid) {
+          await tx.update(marketOrders).set({ qtyKg: target, remainingKg: target, pricePerKg: bid }).where(eq(marketOrders.id, ex.id));
+        }
       }
     }
   });
