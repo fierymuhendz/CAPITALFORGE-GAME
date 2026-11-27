@@ -9,9 +9,11 @@ import { useData } from "@/lib/data";
 import { useDebounced } from "@/lib/debounce";
 import { setShipIntent, takeMarketIntent } from "@/lib/intent";
 import { useT, type I18n } from "@/lib/i18n";
-import { Async, Button, EmptyState, KV, QtyInput, SelectField, Sheet, SystemBadge, Table, Tabs, Tag, Trend, type Col } from "@/ui";
+import { Async, Button, EmptyState, Icon, KV, QtyInput, SelectField, Sheet, SkeletonList, SystemBadge, Table, Tabs, Tag, Trend, type Col } from "@/ui";
 import { usePlay } from "../play/context";
 import { Board, CreateSheet, type View } from "./MarketBoard";
+
+import "./trade.css";
 
 type Tab = "buy" | "sell" | "board";
 
@@ -25,12 +27,22 @@ export function MarketPanel() {
   const [productId, setProductId] = useState(cat.world.products[0]!.id);
   const [toCity, setToCity] = useState(me?.company?.homeCityId ?? cat.world.cities[0]!.id);
   const [fromCity, setFromCity] = useState<string | null>(null);
+  const [sellQuality, setSellQuality] = useState<number | null>(null);
   const [qtyBuy, setQtyBuy] = useState<number | null>(1000);
   const [qtySell, setQtySell] = useState<number | null>(null);
   const [create, setCreate] = useState<"sell" | "buy" | null>(null);
   useEffect(() => {
     const it = takeMarketIntent();
-    if (it) { setProductId(it.productId); if (it.side === "sell") { setTab("sell"); setFromCity(it.cityId); } else setToCity(it.cityId); }
+    if (!it) return;
+    setProductId(it.productId);
+    if (it.side === "sell") {
+      setTab("sell");
+      setFromCity(it.cityId);
+      setSellQuality(it.quality ?? null);
+    } else {
+      setToCity(it.cityId);
+      if (it.qtyKg !== undefined && it.qtyKg > 0) setQtyBuy(it.qtyKg);
+    }
   }, []);
   const inv = useData<HoldingDto[]>("/inventory", undefined, ["inventory"]);
   const held = useMemo(() => {
@@ -46,40 +58,48 @@ export function MarketPanel() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [inv.data, prodId]);
   const from = fromCity && stockCities.some(([c]) => c === fromCity) ? fromCity : stockCities[0]?.[0] ?? null;
-  const stockKg = stockCities.find(([c]) => c === from)?.[1] ?? 0;
-  const pick = (id: string) => { setProductId(id); setQtySell(null); setFromCity(null); };
+  const lots = (inv.data ?? [])
+    .filter((h) => h.productId === prodId && h.cityId === from && h.availableKg > 0)
+    .sort((a, b) => b.quality - a.quality);
+  const lot = lots.find((h) => h.quality === sellQuality) ?? lots[0];
+  const stockKg = lot?.availableKg ?? 0;
+  const pick = (id: string) => { setProductId(id); setSellQuality(null); setQtySell(null); setFromCity(null); };
   const chips = tab === "sell" ? sellProducts : cat.world.products;
   const createView: View = { productId: prodId, cityId: tab === "sell" ? from ?? toCity : toCity };
 
   return (
-    <div className="col">
+    <div className="col trade-desk">
       <Tabs label={t("panels.market")} value={tab} onChange={(v) => setTab(v as Tab)} items={[{ id: "buy", label: t("offers.tabBuy") }, { id: "sell", label: t("offers.tabSell") }, { id: "board", label: t("offers.tabBoard") }]} />
       {tab === "board" ? <Board /> : (
         <>
           {chips.length ? (
-            <div className="pill-scroll" role="group" aria-label={t("inventory.product")}>
+            <div className="trade-products" role="group" aria-label={t("inventory.product")}>
               {chips.map((p) => (
-                <button key={p.id} type="button" className="chip" aria-pressed={prodId === p.id} onClick={() => pick(p.id)}>
-                  <span className="dot" style={{ background: p.color }} aria-hidden="true" />{cat.product(p.id)}{tab === "sell" ? <span className="muted xs num">{i.qty(held.get(p.id) ?? 0)}</span> : null}
+                <button key={p.id} type="button" className="trade-product" aria-pressed={prodId === p.id} onClick={() => pick(p.id)}>
+                  <span className="trade-swatch" style={{ backgroundColor: p.color }} aria-hidden="true" /><span className="trade-product-label">{cat.product(p.id)}{tab === "sell" ? <small className="num">{i.qty(held.get(p.id) ?? 0)}</small> : null}</span>{prodId === p.id ? <Icon name="check" size={14} /> : null}
                 </button>
               ))}
             </div>
           ) : null}
-          {tab === "sell" && !chips.length ? (
+          {tab === "sell" && !inv.data ? <Async res={inv}>{() => null}</Async> : tab === "sell" && !chips.length ? (
             <EmptyState icon="box" title={t("offers.noStockTitle")} text={t("offers.noStockText")} action={<div className="row wrap"><Button variant="primary" onClick={() => open("facilities")}>{t("inventory.goProduce")}</Button><Button onClick={() => setTab("buy")}>{t("offers.tabBuy")}</Button></div>} />
           ) : (
             <>
-              <div className="grid2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 210px), 1fr))" }}>
+              <div className="trade-parameters">
                 {tab === "buy" ? (
                   <SelectField label={t("offers.deliverTo")} value={toCity} onChange={setToCity} options={cat.world.cities.map((c) => ({ id: c.id, label: cat.city(c.id) }))} />
                 ) : (
-                  <SelectField label={t("offers.stockIn")} value={from ?? ""} onChange={(v) => { setFromCity(v); setQtySell(null); }} options={stockCities.map(([c, kg]) => ({ id: c, label: `${cat.city(c)} — ${i.qty(kg)}` }))} />
+                  <SelectField label={t("offers.stockIn")} value={from ?? ""} onChange={(v) => { setFromCity(v); setSellQuality(null); setQtySell(null); }} options={stockCities.map(([c, kg]) => ({ id: c, label: `${cat.city(c)} — ${i.qty(kg)}` }))} />
                 )}
+                {tab === "sell" && lots.length > 1 ? (
+                  <SelectField label={t("common.quality")} value={String(lot?.quality)} onChange={(v) => { setSellQuality(Number(v)); setQtySell(null); }}
+                    options={lots.map((h) => ({ id: String(h.quality), label: `★ ${h.quality} · ${i.qty(h.availableKg)}` }))} />
+                ) : null}
                 {tab === "buy"
                   ? <QtyInput label={t("market.qty")} value={qtyBuy} onChange={setQtyBuy} />
                   : <QtyInput label={t("market.qty")} value={qtySell ?? stockKg} onChange={setQtySell} max={stockKg} />}
               </div>
-              <Offers side={tab} productId={prodId} cityId={tab === "buy" ? toCity : from} fromCityId={tab === "sell" ? from : null} qtyKg={tab === "buy" ? qtyBuy : qtySell ?? stockKg} onCreate={setCreate} />
+              <Offers key={`${tab}-${prodId}-${tab === "sell" ? lot?.quality : ""}`} side={tab} quality={tab === "sell" ? lot?.quality : undefined} productId={prodId} cityId={tab === "buy" ? toCity : from} fromCityId={tab === "sell" ? from : null} qtyKg={tab === "buy" ? qtyBuy : qtySell ?? stockKg} onCreate={setCreate} />
             </>
           )}
         </>
@@ -101,14 +121,14 @@ function noteTag(i: I18n, n: OfferNote, r: OfferRowDto) {
   }
 }
 
-function Offers({ side, productId, cityId, fromCityId, qtyKg, onCreate }: { side: "buy" | "sell"; productId: string; cityId: string | null; fromCityId: string | null; qtyKg: number | null; onCreate: (s: "sell" | "buy") => void }) {
+function Offers({ side, productId, cityId, fromCityId, qtyKg, quality, onCreate }: { side: "buy" | "sell"; productId: string; cityId: string | null; fromCityId: string | null; quality?: number; qtyKg: number | null; onCreate: (s: "sell" | "buy") => void }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
   const { open } = usePlay();
   const q = useDebounced(qtyKg, 350);
   const valid = !!cityId && !!q && q > 0 && q <= 10_000_000;
-  const res = useData<OffersDto>(valid ? "/market/offers" : null, { side, productId, cityId, qtyKg: q, fromCityId }, ["market", "inventory"]);
+  const res = useData<OffersDto>(valid ? "/market/offers" : null, { side, productId, cityId, qtyKg: q, fromCityId, quality }, ["market", "inventory"]);
   const [buy, setBuy] = useState<OfferRowDto | null>(null);
   const [sell, setSell] = useState<OfferRowDto | null>(null);
   const ship = (d: OffersDto, r: OfferRowDto) => {
@@ -116,17 +136,20 @@ function Offers({ side, productId, cityId, fromCityId, qtyKg, onCreate }: { side
     setShipIntent({ fromCityId: d.fromCityId, destCityId: r.cityId, productId, quality: r.quality, qtyKg: r.fillKg });
     open("logistics");
   };
-  if (!valid) return <p className="muted small" role="status">{t("offers.enterQty")}</p>;
+  if (!qtyKg || qtyKg < 0 || qtyKg > 10_000_000) return <p className="muted small" role="status">{t("offers.enterQty")}</p>;
+  if (!valid || q !== qtyKg) return <SkeletonList n={2} />;
   return (
     <Async res={res}>
       {(d) => {
+        if (d.side !== side || d.productId !== productId || d.cityId !== cityId || d.qtyKg !== q) return <SkeletonList n={2} />;
         const same = (r: OfferRowDto) => r.notes.includes("SAME_CITY");
+        const best = d.rows.find((r) => r.orderId === d.bestOrderId && !r.notes.includes("NO_STOCK"));
         const cols: Col<OfferRowDto>[] = [
           { key: "w", head: side === "buy" ? t("offers.seller") : t("offers.buyer"), lead: true, cell: (r) => {
             const tags = [r.orderId === d.bestOrderId ? <Tag key="b" tone="forge" icon="star">{t("offers.best")}</Tag> : null, r.orderId === d.fastestOrderId ? <Tag key="f" tone="good" icon="bolt">{t("offers.fastest")}</Tag> : null, ...r.notes.filter((n) => n !== "SAME_CITY" || side === "sell").map((n) => noteTag(i, n, r))].filter(Boolean);
             return (
               <span className="col tight" style={{ gap: 4, minWidth: 0 }}>
-                <span className="row" style={{ minWidth: 0 }}><b className="nm" title={r.companyName}>{r.companyName}</b>{r.isSystem ? <SystemBadge /> : null}<span className="muted xs">★{r.quality}</span></span>
+                <span className="row" style={{ minWidth: 0 }}><b className="nm" title={r.companyName}>{r.companyName}</b>{r.isSystem ? <SystemBadge /> : null}<span className="trade-quality" aria-label={`${t("common.quality")} ${r.quality}`}>★ {r.quality}</span></span>
                 {tags.length ? <span className="tags">{tags}</span> : null}
               </span>
             );
@@ -134,7 +157,7 @@ function Offers({ side, productId, cityId, fromCityId, qtyKg, onCreate }: { side
           { key: "c", head: t("offers.city"), nowrap: true, cell: (r) => <span>{cat.city(r.cityId)}{same(r) ? "" : ` · ${r.km} km`}</span> },
           { key: "q", head: t("market.qty"), nowrap: true, cell: (r) => <span className="num">{i.qty(r.fillKg)}{r.fillKg < r.availableKg ? <span className="muted xs"> / {i.qty(r.availableKg)}</span> : null}</span> },
           side === "buy"
-            ? { key: "p", head: t("offers.deliveredPerT"), right: true, nowrap: true, cell: (r) => <span className="col tight" style={{ alignItems: "inherit", gap: 0 }}><b className="num">{i.price(r.perKg)}</b><span className="muted xs num">{i.money(r.total)}</span></span> }
+            ? { key: "p", head: t("offers.deliveredPerT"), right: true, nowrap: true, cell: (r) => <span className="col tight" style={{ alignItems: "inherit", gap: 0 }}><b className="num">{i.price(r.perKg)}</b><span className="muted xs num">{t("offers.total")} {i.money(r.total)}</span></span> }
             : { key: "p", head: t("offers.netPerT"), right: true, nowrap: true, cell: (r) => <span className="col tight" style={{ alignItems: "inherit", gap: 0 }}><b className="num">{i.price(r.perKg)}</b>{r.profit !== null ? <Trend value={r.profit} text={i.signed(r.profit)} /> : null}</span> },
           { key: "e", head: side === "buy" ? t("offers.arrives") : t("offers.paidIn"), nowrap: true, cell: (r) => <span className="num">{i.dur(r.etaMinutes)}</span> },
           { key: "a", head: "", bare: true, act: true, cell: (r) => side === "buy"
@@ -145,6 +168,19 @@ function Offers({ side, productId, cityId, fromCityId, qtyKg, onCreate }: { side
         ];
         return (
           <div className="col">
+            {best ? (
+              <section className="trade-quote" aria-label={`${t("offers.best")} · ${best.companyName}`}>
+                <div className="trade-quote-title">
+                  <span className="trade-quote-icon"><Icon name={side === "buy" ? "down" : "up"} size={20} /></span>
+                  <div><span className="trade-label">{t("offers.best")} · {t(side === "buy" ? "offers.seller" : "offers.buyer")}</span><strong>{best.companyName}</strong><small>{cat.city(best.cityId)} · {t("common.quality")} {best.quality}</small></div>
+                </div>
+                <dl className="trade-quote-numbers">
+                  <div><dt>{t(side === "buy" ? "offers.deliveredPerT" : "offers.netPerT")}</dt><dd>{i.price(best.perKg)}</dd></div>
+                  <div><dt>{t("market.qty")}</dt><dd>{i.qty(best.fillKg)}</dd></div>
+                  <div><dt>{t(side === "buy" ? "offers.total" : "offers.youReceive")}</dt><dd>{i.money(best.total)}</dd></div>
+                </dl>
+              </section>
+            ) : null}
             {side === "sell" && d.avgCostPerKg ? <span className="muted small">{t("offers.avgCost", { p: i.price(d.avgCostPerKg) })}</span> : null}
             {d.rows.length ? (
               <Table cols={cols} rows={d.rows} rowKey={(r) => r.orderId} rowClass={(r) => (r.orderId === d.bestOrderId ? "best" : "")}

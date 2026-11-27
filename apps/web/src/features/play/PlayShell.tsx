@@ -10,9 +10,10 @@ import { useT } from "@/lib/i18n";
 import { serverOffsetMs } from "@/lib/clock";
 import { Badge, Button, Icon, Sheet } from "@/ui";
 import type { CitySelection } from "../../scene";
-import { Brand } from "../common/Chrome";
+import { CompanyPanel } from "../company/CompanyPanel";
+import "./workspace.css";
 import { CityStage, resolveQuality } from "./CityStage";
-import { PANEL_IDS, PlayProvider, WIDE_PANELS, type PanelId } from "./context";
+import { PANEL_IDS, PlayProvider, type PanelId } from "./context";
 import { PANELS } from "./panels";
 import { SelectionPanel } from "./Selection";
 
@@ -49,12 +50,7 @@ export function PlayShell() {
   const [selection, setSelection] = useState<CitySelection | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [expandedMap, setExpandedMap] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    const m: Record<string, boolean> = {};
-    try { for (const id of PANEL_IDS) if (localStorage.getItem(`cf-panel-wide:${id}`) === "1") m[id] = true; } catch { /* özel mod */ }
-    setExpandedMap(m);
-  }, []);
+  const [mapOnly, setMapOnly] = useState(false);
 
   const ALIAS: Record<string, PanelId> = { freight: "logistics", shipments: "logistics", sales: "finance" };
   const pRaw = sp.get("tab") ?? sp.get("p");
@@ -67,29 +63,48 @@ export function PlayShell() {
   const open = useCallback((p: PanelId | null, opts?: { focusCity?: string }) => {
     if (opts?.focusCity) setFocus(opts.focusCity);
     setSelection(null);
+    setMapOnly(false);
     router.replace(p ? `/play?tab=${p}` : "/play", { scroll: false });
   }, [router]);
 
   const select = useCallback((s: CitySelection | null) => setSelection(s), []);
   const ctx = useMemo(() => ({ company, map, selection, select, open, panel, focusCityId, setFocusCity: setFocus }), [company, map, selection, select, open, panel, focusCityId]);
 
+  const graphics = me?.account?.graphics;
+  const quality = useMemo(() => resolveQuality(graphics), [graphics, mobile]);
   if (!ok || !me?.company || !world) return null;
-  const c = me.company;
-  const quality = resolveQuality(me.account?.graphics);
+  const c = company.data ?? me.company;
   const Active = PANELS.find((x) => x.id === (panel ?? "company"))!;
   const activeTab: string = selection ? "city" : panel === "facilities" || panel === "market" || panel === "logistics" ? panel : panel ? "more" : "city";
   const xpPct = c.nextLevelXp ? Math.min(100, Math.round((c.xp / c.nextLevelXp) * 100)) : 100;
 
-  const activeId = (panel ?? "company") as PanelId;
-  const wide = WIDE_PANELS.includes(activeId) && !selection;
-  const expanded = !!expandedMap[activeId] && !selection;
   const title = selection ? t("play.selection") : t(`panels.${Active.id}`);
-  const toggleExpand = () => setExpandedMap((m) => { const v = { ...m, [activeId]: !m[activeId] }; try { localStorage.setItem(`cf-panel-wide:${activeId}`, v[activeId] ? "1" : "0"); } catch { /* özel mod */ } return v; });
-  const paneBody = selection ? <SelectionPanel onClose={() => setSelection(null)} /> : <Active.Comp />;
-
+  const home = !panel;
+  const figures = [
+    { label: "finance.cash", value: i.money(c.cash), target: "finance" },
+    { label: "panels.facilities", value: company.data ? i.num(company.data.facilities.length) : "…", target: "facilities" },
+    { label: "logistics.fleet", value: company.data ? i.num(company.data.vehicles.length) : "…", target: "logistics" },
+    { label: "company.profit7d", value: company.data ? i.money(company.data.stats.profit7d) : "…", target: "finance" },
+  ] as const;
+  const renderMap = () => (
+    <section className="cf-map-card">
+      <div className="cf-map-head"><h2>{t("workspace.map")}</h2>
+        <div className="row">
+          <select className="input" value={focusCityId ?? ""} onChange={(e) => setFocus(e.target.value)} aria-label={t("play.cities")}>
+            {world.cities.map((city) => <option value={city.id} key={city.id}>{i.name(city.name)}</option>)}
+          </select>
+          <Button size="sm" icon variant="ghost" aria-label={mapOnly ? t("play.collapse") : t("play.expand")} aria-pressed={mapOnly} onClick={() => setMapOnly(!mapOnly)}><Icon name={mapOnly ? "shrink" : "expand"} /></Button>
+        </div>
+      </div>
+      <div className="stage cf-map-stage">
+        <CityStage myLevel={c.level} world={world} map={map.data} serverOffsetMs={serverOffsetMs()} quality={quality} myCompanyId={c.id} focusCityId={focusCityId} selected={selection} onSelect={select} locale={i.locale} />
+        {map.error && !map.data ? <div className="notice bad cf-map-error">{i.err(map.error)} <Button size="sm" onClick={map.reload}>{t("common.retry")}</Button></div> : null}
+      </div>
+    </section>
+  );
   return (
     <PlayProvider value={ctx}>
-      <div className="play">
+      <div className="play cf-workspace">
         <a className="skip" href="#panel">{t("common.skipToPanel")}</a>
         {conn === "closed" || conn === "connecting" ? <div className="conn" role="status"><span className="spin btn" style={{ minHeight: 0, border: 0, padding: 0, background: "none" }} aria-hidden="true" />{t("conn.lost")}</div> : null}
         <header className="play-top">
@@ -109,49 +124,49 @@ export function PlayShell() {
           </div>
         </header>
 
-        <div className="play-main">
-          <section className="stage" aria-label={t("play.city")}>
-            <div className="pill-scroll" style={{ position: "absolute", top: 8, left: 8, right: 8, zIndex: 5 }} role="group" aria-label={t("play.cities")}>
-              {world.cities.map((x) => (
-                <button key={x.id} type="button" className="chip" aria-pressed={focusCityId === x.id} onClick={() => setFocus(x.id)}>
-                  <span className="dot" style={{ background: x.color }} aria-hidden="true" />{i.name(x.name)}
+        <div className="play-main cf-frame">
+          {!mobile ? (
+            <nav className="side-rail cf-nav" aria-label={t("play.panels")}>
+              <button type="button" className="rail-btn" aria-current={home ? "page" : undefined} onClick={() => open(null)}><Icon name="city" /><span>{t("workspace.home")}</span></button>
+              {PANELS.map((p) => (
+                <button key={p.id} type="button" className="rail-btn" aria-current={panel === p.id ? "page" : undefined} onClick={() => open(p.id)}>
+                  <Icon name={p.icon} /><span>{t(`panels.${p.id}`)}</span>
+                  {p.id === "notifications" && c.unreadNotifications ? <span className="badge forge">{c.unreadNotifications}</span> : null}
                 </button>
               ))}
-            </div>
-            <div style={{ position: "absolute", inset: 0, paddingTop: 52 }}>
-              <CityStage myLevel={c.level} world={world} map={map.data} serverOffsetMs={serverOffsetMs()} quality={quality} myCompanyId={c.id} focusCityId={focusCityId} selected={selection} onSelect={select} locale={i.locale} />
-            </div>
-            {map.error && !map.data ? <div className="notice bad" style={{ position: "absolute", left: 8, right: 8, bottom: 8 }}>{i.err(map.error)} <Button size="sm" onClick={map.reload}>{t("common.retry")}</Button></div> : null}
-          </section>
-          {!mobile ? (
-            <aside className={`side${expanded ? " expanded" : ""}`} data-wide={wide ? "1" : undefined} id="panel" aria-label={t("play.panel")}>
-              <nav className="side-rail" aria-label={t("play.panels")}>
-                {PANELS.map((p) => (
-                  <button key={p.id} type="button" className="rail-btn" aria-current={!selection && activeId === p.id ? "page" : undefined} onClick={() => open(p.id)} title={t(`panels.${p.id}`)} aria-label={t(`panels.${p.id}`)}>
-                    <Icon name={p.icon} size={20} /><span className="lbl">{t(`panels.${p.id}`)}</span>
-                    {p.id === "notifications" && c.unreadNotifications ? <span className="badge forge">{c.unreadNotifications}</span> : null}
-                  </button>
-                ))}
-              </nav>
-              <div className="pane side-main">
-                <div className="pane-head">
-                  {selection ? <Button variant="ghost" size="sm" icon onClick={() => setSelection(null)} aria-label={t("common.back")}><Icon name="back" /></Button> : null}
-                  <h2>{title}</h2>
-                  {!selection ? <Button variant="ghost" size="sm" icon onClick={toggleExpand} aria-pressed={expanded} title={expanded ? t("play.collapse") : t("play.expand")} aria-label={expanded ? t("play.collapse") : t("play.expand")}><Icon name={expanded ? "shrink" : "expand"} /></Button> : null}
+              {me.account?.role === "admin" ? <Link className="rail-btn" href="/admin"><Icon name="shield" />{t("admin.title")}</Link> : null}
+            </nav>
+          ) : null}
+          <main className="cf-main" id="panel" key={panel ?? "home"}>
+            {home && !(mobile && selection) ? (
+              <div className={mapOnly && !selection ? "cf-home cf-map-only" : "cf-home"}>
+                <div className="cf-title">
+                  <div><p>{t(`sector.${c.sector}`)} · {i.name(world.cities.find((city) => city.id === c.homeCityId)?.name ?? { tr: "", en: "" })}</p><h1>{c.name}</h1></div>
+                  <Button size="sm" onClick={() => open("market")}><Icon name="chart" size={16} />{t("workspace.exchange")}</Button>
                 </div>
-                <div className="pane-body">{paneBody}</div>
+                <div className="cf-ledger">
+                  {figures.map((f) => <button type="button" key={f.label} onClick={() => open(f.target)}><span>{t(f.label)}</span><strong>{f.value}</strong></button>)}
+                </div>
+                <div className="cf-city-grid">
+                  {renderMap()}
+                  <aside className="cf-decisions" aria-label={selection ? title : t("company.nextSteps")}>
+                    {selection ? <>
+                      <div className="cf-selection-head"><h2>{title}</h2><Button size="sm" icon variant="ghost" aria-label={t("common.close")} onClick={() => setSelection(null)}><Icon name="x" /></Button></div>
+                      <SelectionPanel onClose={() => setSelection(null)} />
+                    </> : <CompanyPanel compact />}
+                  </aside>
+                </div>
               </div>
-            </aside>
-          ) : null}
-          {mobile && (panel || selection) && !moreOpen ? (
-            <div className="m-panel pane" id="panel" role="region" aria-label={title}>
-              <div className="pane-head">
-                <h2>{title}</h2>
-                <button type="button" className="btn ghost icon sm" aria-label={t("common.close")} onClick={() => (selection ? setSelection(null) : open(null))}><Icon name="x" /></button>
-              </div>
-              <div className="pane-body">{paneBody}</div>
-            </div>
-          ) : null}
+            ) : (
+              <section className="cf-data pane" aria-label={title}>
+                <div className="pane-head cf-page-head">
+                  <div><p>{c.name}</p><h1>{title}</h1></div>
+                  <Button variant="ghost" size="sm" aria-label={selection ? t("common.back") : t("workspace.home")} onClick={() => selection ? setSelection(null) : open(null)}><Icon name="back" size={16}/><span>{selection ? t("common.back") : t("workspace.home")}</span></Button>
+                </div>
+                <div className="pane-body">{selection ? <SelectionPanel onClose={() => setSelection(null)} /> : <Active.Comp />}</div>
+              </section>
+            )}
+          </main>
         </div>
 
         {mobile ? (

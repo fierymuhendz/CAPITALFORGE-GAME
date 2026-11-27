@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { peekShipIntent, takeShipIntent, type ShipIntent } from "@/lib/intent";
 import { BuyVehicleReq, FreightJobReq, ShipmentReq, type FreightJobDto, type FreightQuoteDto, type PublicCompanyDto, type ShipmentDto, type VehicleDto } from "@capitalforge/shared";
 import { api } from "@/lib/api";
@@ -8,26 +8,28 @@ import { useApp } from "@/lib/app";
 import { useCat } from "@/lib/catalog";
 import { useData, useList } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { ActionBar, Async, Badge, Button, Card, Countdown, EmptyState, IntInput, KV, MoneyInput, Notice, SelectField, SystemBadge, TextField, TimeProgress, Table, Tabs, Tag, Trend, type Col } from "@/ui";
+import { ActionBar, Async, Badge, Button, Card, Countdown, Disclosure, EmptyState, Icon, IntInput, KV, MoneyInput, Notice, SelectField, Stat, SystemBadge, TextField, TimeProgress, Table, Tabs, Tag, Trend, type Col } from "@/ui";
 import { usePlay } from "../play/context";
+import "../facilities/operations.css";
 import { CargoPicker, cargoBody, cargoTotal, type CargoLine } from "./CargoPicker";
 
 export function LogisticsPanel() {
   const { t } = useT();
-  const [intent] = useState<ShipIntent | null>(() => peekShipIntent());
+  const [intent, setIntent] = useState<ShipIntent | null>(() => peekShipIntent());
   useEffect(() => { takeShipIntent(); }, []);
+  const [vehicleId, setVehicleId] = useState("");
   const [tab, setTab] = useState(intent ? "send" : "fleet");
   return (
-    <div className="col">
+    <div className="col ops-panel">
       <Tabs label={t("panels.logistics")} value={tab} onChange={setTab} items={[{ id: "fleet", label: t("logistics.fleet") }, { id: "send", label: t("logistics.send") }, { id: "board", label: t("logistics.board") }, { id: "post", label: t("logistics.postJob") }, { id: "ships", label: t("logistics.shipments") }]} />
-      {tab === "fleet" ? <Fleet go={setTab} /> : tab === "send" ? <Send intent={intent} /> : tab === "board" ? <Board /> : tab === "post" ? <PostJob /> : <Shipments />}
+      {tab === "fleet" ? <Fleet onSend={(id) => { setIntent(null); setVehicleId(id); setTab("send"); }} /> : tab === "send" ? <Send intent={intent} initialVehicleId={vehicleId} onDepart={() => { setIntent(null); setVehicleId(""); setTab("ships"); }} /> : tab === "board" ? <Board /> : tab === "post" ? <PostJob /> : <Shipments />}
     </div>
   );
 }
 
 const useFleet = () => useList<VehicleDto>("/fleet", undefined, ["shipments", "company"]);
 
-function Fleet({ go }: { go: (t: string) => void }) {
+function Fleet({ onSend }: { onSend: (id: string) => void }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
@@ -45,13 +47,25 @@ function Fleet({ go }: { go: (t: string) => void }) {
   return (
     <div className="col">
       <Async res={res}>
-        {(vs) => vs.length ? <div className="col">{vs.map((v) => (
-          <Card key={v.id} tight><div className="col tight">
-            <div className="row between"><b>{cat.vehicle(v.modelId)}</b>{v.status === "in_transit" ? <Badge tone="forge">→ {cat.city(v.destCityId)}</Badge> : <Badge tone="good">{t("logistics.idle")}</Badge>}</div>
-            <span className="small muted2">{cat.city(v.cityId)}</span>
-            {v.status === "in_transit" && v.arrivesAt ? <span className="small">{t("logistics.eta")}: <Countdown until={v.arrivesAt} doneText={t("logistics.arrived")} /></span> : <Button size="sm" onClick={() => go("send")}>{t("logistics.sendNow")}</Button>}
-          </div></Card>
-        ))}</div> : <EmptyState icon="truck" title={t("logistics.noFleet")} text={t("logistics.noFleetText")} />}
+        {(vs) => vs.length ? <div className="col">
+          <div className="ops-metrics ops-pair">
+            <Stat label={t("logistics.idle")} value={i.num(vs.filter((x) => x.status === "idle").length)} />
+            <Stat label={t("logistics.shipStatus.in_transit")} value={i.num(vs.filter((x) => x.status === "in_transit").length)} />
+          </div>
+          {vs.map((v) => {
+            const model = cat.world.vehicleModels.find((m) => m.id === v.modelId);
+            const inTransit = v.status === "in_transit";
+            return <Card key={v.id} className="ops-site">
+              <div className="ops-identity"><span className="ops-symbol"><Icon name="truck" /></span>
+                <div><h3>{cat.vehicle(v.modelId)}</h3><span className="small muted2">{t(inTransit ? "logistics.destination" : "logistics.location")} · {cat.city(inTransit ? v.destCityId : v.cityId)}</span></div>
+                <Badge tone={inTransit ? "forge" : "good"}>{t(inTransit ? "logistics.shipStatus.in_transit" : "logistics.idle")}</Badge>
+              </div>
+              <div className="ops-fleet-facts">{model ? <span><Icon name="box" size={15} />{t("logistics.capacity")} · {i.qty(model.capacityKg)}</span> : null}
+                {inTransit && v.arrivesAt ? <span><Icon name="clock" size={15} />{t("logistics.eta")} · <Countdown until={v.arrivesAt} doneText={t("logistics.arrived")} /></span> : null}
+              </div>
+              {!inTransit ? <Button size="sm" className="ops-site-action" onClick={() => onSend(v.id)}>{t("logistics.sendNow")} <span aria-hidden="true">→</span></Button> : null}
+            </Card>;
+          })}</div> : <EmptyState icon="truck" title={t("logistics.noFleet")} text={t("logistics.noFleetText")} />}
       </Async>
       <Card><div className="col">
         <h4>{t("logistics.buyVehicle")}</h4>
@@ -69,42 +83,68 @@ function Fleet({ go }: { go: (t: string) => void }) {
   );
 }
 
-function Send({ intent }: { intent: ShipIntent | null }) {
+function RouteLine({ origin, destination }: { origin: string; destination: string }) {
+  const { t } = useT();
+  const cat = useCat();
+  return <div className="ops-route">
+    <div><span>{t("logistics.origin")}</span><b>{cat.city(origin)}</b></div>
+    <span className="ops-route-link" aria-hidden="true"><Icon name="truck" size={19} /></span>
+    <div><span>{t("logistics.destination")}</span><b>{cat.city(destination)}</b></div>
+  </div>;
+}
+
+function Send({ intent, initialVehicleId, onDepart }: { intent: ShipIntent | null; initialVehicleId: string; onDepart: () => void }) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
   const { run, busy } = useAction();
   const fleet = useFleet();
   const idle = (fleet.data ?? []).filter((v) => v.status === "idle" && v.cityId);
-  const [vid, setVid] = useState("");
+  const [vid, setVid] = useState(initialVehicleId);
   const [dest, setDest] = useState(intent?.destCityId ?? "");
-  const [lines, setLines] = useState<CargoLine[]>(intent ? [{ productId: intent.productId, quality: intent.quality, qtyKg: intent.qtyKg }] : []);
+  const [cargo, setCargo] = useState<{ origin: string | null; lines: CargoLine[] }>({
+    origin: intent?.fromCityId ?? null,
+    lines: intent ? [{ productId: intent.productId, quality: intent.quality, qtyKg: intent.qtyKg }] : [],
+  });
   const intentVeh = intent ? idle.find((x) => x.cityId === intent.fromCityId) : undefined;
   const v = idle.find((x) => x.id === vid) ?? intentVeh ?? idle[0];
-  const keepLines = useRef(!!intent);
+  const lines = v?.cityId === cargo.origin ? cargo.lines : [];
+  const setLines = (lines: CargoLine[]) => setCargo({ origin: v?.cityId ?? null, lines });
   const dst = dest && dest !== v?.cityId ? dest : cat.world.cities.find((c) => c.id !== v?.cityId)?.id ?? "";
   const kg = cargoTotal(lines);
   const model = cat.world.vehicleModels.find((m) => m.id === v?.modelId);
   const quote = useData<FreightQuoteDto>(v?.cityId && dst && kg > 0 ? "/freight/quote" : null, { originCityId: v?.cityId ?? "", destCityId: dst, kg, modelId: v?.modelId }, []);
-  const mine = quote.data?.own.find((o) => o.modelId === v?.modelId);
-  useEffect(() => { if (keepLines.current && v?.cityId === intent?.fromCityId) { keepLines.current = false; return; } setLines([]); }, [v?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rate = quote.data?.originCityId === v?.cityId && quote.data?.destCityId === dst && quote.data?.kg === kg ? quote.data : null;
+  const mine = rate?.own.find((o) => o.modelId === v?.modelId);
   const body = { vehicleId: v?.id, destCityId: dst, cargo: cargoBody(lines) };
-  const ok = !!v && ShipmentReq.omit({ idempotencyKey: true }).safeParse(body).success && (!model || kg <= model.capacityKg);
+  const ok = !!v && lines.every((l) => l.qtyKg !== null && l.qtyKg > 0) && ShipmentReq.omit({ idempotencyKey: true }).safeParse(body).success && (!model || kg <= model.capacityKg);
   if (fleet.data && !idle.length) return <EmptyState icon="truck" title={t("logistics.noIdle")} text={t("logistics.noIdleText")} />;
   return (
     <Async res={fleet}>
       {() => (
         <div className="col">
-          <SelectField label={t("logistics.vehicle")} value={v?.id ?? ""} onChange={setVid} options={idle.map((x) => ({ id: x.id, label: `${cat.vehicle(x.modelId)} — ${cat.city(x.cityId)}` }))} />
-          <SelectField label={t("logistics.destination")} value={dst} onChange={setDest} options={cat.world.cities.filter((c) => c.id !== v?.cityId).map((c) => ({ id: c.id, label: i.name(c.name) }))} />
-          {v?.cityId ? <CargoPicker cityId={v.cityId} lines={lines} onChange={setLines} allowEmpty /> : null}
+          {intent && !intentVeh ? <Notice tone="warn">{t("operations.unavailableOrigin", { city: cat.city(intent.fromCityId) })}</Notice> : null}
+          <div className="ops-fields">
+            <SelectField label={t("logistics.vehicle")} value={v?.id ?? ""} onChange={setVid} options={idle.map((x) => ({ id: x.id, label: `${cat.vehicle(x.modelId)} — ${cat.city(x.cityId)}` }))} />
+            <SelectField label={t("logistics.destination")} value={dst} onChange={setDest} options={cat.world.cities.filter((c) => c.id !== v?.cityId).map((c) => ({ id: c.id, label: i.name(c.name) }))} />
+          </div>
+          {v?.cityId && dst ? <RouteLine origin={v.cityId} destination={dst} /> : null}
+          <Card className="ops-site">
+            <h4 className="ops-section-title"><Icon name="box" size={18} />{t("logistics.cargo")}</h4>
+            {v?.cityId ? <CargoPicker cityId={v.cityId} lines={lines} onChange={setLines} allowEmpty /> : null}
+            {model ? <div className="ops-load"><span>{t("operations.cargoLoad")}</span><b>{i.qty(kg)} / {i.qty(model.capacityKg)}</b><progress value={Math.min(kg, model.capacityKg)} max={model.capacityKg} aria-label={t("operations.cargoLoad")} /></div> : null}
+          </Card>
           {model && kg > model.capacityKg ? <Notice tone="bad">{t("errors.VEHICLE_CAPACITY")} ({i.qty(model.capacityKg)})</Notice> : null}
-          {mine ? <Card flat tight><div className="col tight" aria-live="polite">
-            <KV k={t("logistics.estCost")} v={<b>{i.money(mine.total)}</b>} /><KV k={t("logistics.fuelCost")} v={i.money(mine.fuel)} /><KV k={t("logistics.driverCost")} v={i.money(mine.driver)} />
-            <KV k={t("logistics.eta")} v={`${i.dur(mine.minutes)} (${i.date(mine.arrivesAt)})`} />
-            <KV k={t("logistics.systemQuote")} v={i.money(quote.data!.systemQuote)} />
-          </div></Card> : null}
-          <ActionBar><Button variant="primary" loading={busy} disabled={!ok} onClick={() => void run(() => api.post("/shipments", body), { ok: "logistics.shipped" }).then((r) => { if (r) setLines([]); })}>{lines.length ? t("logistics.shipBtn") : t("logistics.moveEmpty")}</Button></ActionBar>
+          {kg > 0 && quote.error ? <Notice tone="warn">{i.err(quote.error)}</Notice> : null}
+          {kg > 0 && quote.loading && !mine ? <div className="ops-info" role="status"><span className="spin" />{t("operations.routeEstimate")}</div> : null}
+          {mine && rate ? <div className="col" aria-live="polite">
+            <div className="ops-metrics"><Stat label={t("operations.distance")} value={`${i.num(rate.distanceKm)} km`} /><Stat label={t("logistics.truckTime")} value={i.dur(mine.minutes)} /><Stat label={t("logistics.estCost")} value={i.money(mine.total)} /></div>
+            <Disclosure summary={t("facility.breakdown")}>
+              <KV k={t("logistics.fuelCost")} v={i.money(mine.fuel)} /><KV k={t("logistics.driverCost")} v={i.money(mine.driver)} />
+              <KV k={t("logistics.eta")} v={i.date(mine.arrivesAt)} /><KV k={t("logistics.systemQuote")} v={i.money(rate.systemQuote)} />
+            </Disclosure>
+          </div> : null}
+          <ActionBar><Button variant="primary" loading={busy} disabled={!ok} onClick={() => void run(() => api.post("/shipments", body), { ok: "logistics.shipped" }).then((r) => { if (r) onDepart(); })}>{lines.length ? t("logistics.shipBtn") : t("logistics.moveEmpty")}</Button></ActionBar>
         </div>
       )}
     </Async>
@@ -194,19 +234,19 @@ function Shipments() {
     <Async res={res}>
       {() => !sorted.length ? <EmptyState icon="truck" title={t("logistics.noShipments")} text={t("logistics.noShipmentsText")} /> : (
         <div className="col">{sorted.map((s) => (
-          <Card key={s.id}><div className="col tight">
-            <div className="row between wrap"><b>{cat.city(s.originCityId)} → {cat.city(s.destCityId)} · {s.distanceKm} km</b><Badge tone={s.status === "delivered" ? "good" : "forge"}>{s.status === "delivered" ? "✓ " : "▶ "}{t(`logistics.shipStatus.${s.status}`)}</Badge></div>
-            <span className="small muted2">{cat.vehicle(s.modelId)} · {t(`logistics.purpose.${s.purpose}`)} · {s.carrierName}</span>
+          <Card key={s.id} className="ops-shipment"><div className="col">
+            <div className="row between wrap"><span className="ops-info"><Icon name="truck" size={17} />{t(`logistics.purpose.${s.purpose}`)} · {i.num(s.distanceKm)} km</span><Badge tone={s.status === "delivered" ? "good" : "forge"}>{t(`logistics.shipStatus.${s.status}`)}</Badge></div>
+            <RouteLine origin={s.originCityId} destination={s.destCityId} />
+            <span className="small muted2">{cat.vehicle(s.modelId)} · {s.carrierName}</span>
             <span className="small">{s.cargo.length ? s.cargo.map((c) => `${cat.product(c.productId)} ★${c.quality} ${i.qty(c.qtyKg)}`).join(", ") : t("logistics.emptyLoad")}</span>
             {s.status === "in_transit" ? <><TimeProgress from={s.departedAt} to={s.arrivesAt} steel /><span className="small">{t("logistics.eta")}: <Countdown until={s.arrivesAt} doneText={t("logistics.arrived")} /></span></> : null}
             {s.cost ? <KV k={t("logistics.estCost")} v={`${i.money(s.cost.total)} (${t("logistics.fuelCost")} ${i.money(s.cost.fuel)} + ${t("logistics.driverCost")} ${i.money(s.cost.driver)})`} /> : null}
             {s.proof ? (
-              <div className="notice good col tight">
-                <b>✓ {t("logistics.proof")}</b>
+              <Disclosure summary={t("logistics.proof")}>
                 <span className="small">{t("logistics.receivedBy")}: {s.proof.receivedBy} · {i.date(s.proof.deliveredAt)}</span>
                 <span className="small">{s.proof.lines.map((l) => `${cat.product(l.productId)} ${i.qty(l.qtyKg)}`).join(", ")}</span>
                 <code className="xs" style={{ wordBreak: "break-all" }}>sha256: {s.proof.hash}</code>
-              </div>
+              </Disclosure>
             ) : null}
           </div></Card>
         ))}</div>

@@ -2,11 +2,14 @@ import type { Dict } from "./index";
 import { enGame } from "./en.game";
 import { enAdmin } from "./en.admin";
 import { enCity } from "./en.city";
+import { enOperations } from "./operations-design";
 
 export const en: Dict = {
   ...enGame,
   ...enAdmin,
   ...enCity,
+  ...enOperations,
+  workspace: { home: "Overview", map: "City map", exchange: "Open market" },
   errors: {
     BAD_REQUEST: "Invalid request.",
     UNAUTHENTICATED: "Please sign in.",

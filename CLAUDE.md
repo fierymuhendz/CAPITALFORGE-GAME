@@ -67,3 +67,7 @@ pnpm db:migrate          # migration + katalog tohumlama
 - Tek dosyalık düzeltme, metin değişikliği gibi küçük işlerde ajan çağırma.
 - Bağımsız işler paralel; her ajan kendi dosya sahipliğinde çalışır, bilgi aktarımı `docs/plans/` üzerinden.
 - Ajan raporu: `DEĞİŞEN DOSYALAR` ve `AÇIK KONULAR`, başka açıklama yok.
+
+## Tasarım stüdyosu
+
+Claude Code oturumunda `/cf-tasarim` veya `/cf-tasarim pazar ve üretim ekranlarını iyileştir` ile oyun ve web tasarım çalışmasını başlat. Dört stüdyo ajanı, iki web tasarım becerisi ve sabitlenen sürümleri [tasarım araçları kaydında](.claude/sources/design-tools.md) bulunur.

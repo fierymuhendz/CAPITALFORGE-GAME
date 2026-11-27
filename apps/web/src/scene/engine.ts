@@ -65,7 +65,7 @@ interface Chip { el: HTMLButtonElement; plotId: string; facilityId: string; x: n
 const CHIP_CSS = "position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;min-height:30px;min-width:30px;justify-content:center;padding:2px 8px;border-radius:15px;font:700 12px/1 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;will-change:transform;visibility:hidden;touch-action:manipulation;border:2px solid;";
 const CHIP_STYLE: Record<string, { bg: string; fg: string; bd: string; icon: string }> = {
   working: { bg: "rgba(16,48,31,.92)", fg: "#b9f6ca", bd: "#4ade80", icon: "\u25B6" },
-  idle: { bg: "rgba(255,106,26,.95)", fg: "#1a0f08", bd: "#ffd2b0", icon: "II" },
+  idle: { bg: "rgba(240,192,122,.97)", fg: "#2e281d", bd: "#805d37", icon: "II" },
   stalled: { bg: "rgba(255,212,0,.96)", fg: "#1a1400", bd: "#7a5f00", icon: "!" },
   constructing: { bg: "rgba(58,46,16,.92)", fg: "#f5d98a", bd: "#d8a93a", icon: "#" },
   upgrading: { bg: "rgba(16,36,58,.92)", fg: "#bfdcff", bd: "#60a5fa", icon: "^" },
@@ -263,7 +263,7 @@ export class SceneEngine {
 
   private track<T extends { dispose(): void }>(x: T): T { this.disposables.push(x); return x; }
 
-  private dirVec(az = 0): Vector3 {
+  private dirVec(az = Math.PI / 5): Vector3 {
     return new Vector3(Math.sin(this.polar) * Math.sin(az), Math.cos(this.polar), Math.sin(this.polar) * Math.cos(az));
   }
 
@@ -279,11 +279,11 @@ export class SceneEngine {
     const b = this.bounds;
     // perspektifte yakın kenar büyür: hedefi biraz güneye kaydır, payı artır
     this.overview.target.set((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2 + 2.2);
-    this.overview.dist = this.fit(b.maxX - b.minX + 3, b.maxZ - b.minZ + 4) * 1.1;
+    this.overview.dist = this.fit(b.maxX - b.minX + 3, b.maxZ - b.minZ + 4) * 1.35;
   }
 
   private setupLights(): void {
-    this.scene.add(new HemisphereLight("#9fb6d0", "#1a2330", this.high ? 1.35 : 1.7));
+    this.scene.add(new HemisphereLight("#fff4df", "#829278", this.high ? 1.35 : 1.7));
     this.scene.add(new AmbientLight("#ffffff", 0.35));
     const sun = new DirectionalLight("#ffe9cf", this.high ? 2.2 : 1.6);
     const b = this.bounds;
@@ -315,7 +315,7 @@ export class SceneEngine {
     const grid = new GridHelper(160, 80, PAL.grid, PAL.grid);
     grid.position.set(Math.round(cx), 0.004, Math.round(cz));
     const gm = grid.material as Material;
-    gm.transparent = true; gm.opacity = 0.35;
+    gm.transparent = true; gm.opacity = 0.14;
     this.track(grid.geometry); this.track(gm);
     this.scene.add(grid);
 
@@ -504,7 +504,7 @@ export class SceneEngine {
 
   private tileColorFor(p: PlotDto, mine: boolean, locked: boolean): Color {
     let c: string = PAL.tile;
-    if (mine) c = "#6a4e38";
+    if (mine) c = "#c99662";
     else if (p.owner?.isSystem) c = PAL.tileSystem;
     else if (p.owner) c = PAL.tileOther;
     else if (locked || p.minLevel >= 3) c = PAL.tileLockedHigh;
@@ -724,12 +724,12 @@ export class SceneEngine {
     let target: Vector3, dist: number;
     const c = cityId ? this.centers.get(cityId) : undefined;
     if (c) {
-      target = new Vector3(c.x, 0, c.z + 0.6); dist = this.fit(PAD_HALF * 2 + 2, PAD_HALF * 2 + 3);
+      target = new Vector3(c.x, 0, c.z + 0.4); dist = this.fit(PAD_HALF * 2 + 4, PAD_HALF * 2 + 5);
       const own = this.ownBox(cityId as string);
       if (own) {
         const w = Math.max(9, own.maxX - own.minX + 4), d = Math.max(8, own.maxZ - own.minZ + 4);
-        target = new Vector3((own.minX + own.maxX) / 2, 0, (own.minZ + own.maxZ) / 2 + 0.3);
-        dist = Math.min(dist, this.fit(w, d));
+        target.lerp(new Vector3((own.minX + own.maxX) / 2, 0, (own.minZ + own.maxZ) / 2), 0.25);
+        dist = Math.max(dist, this.fit(w, d));
       }
     }
     else { target = this.overview.target.clone(); dist = this.overview.dist; }

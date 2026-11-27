@@ -9,9 +9,11 @@ import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
 import { useGate } from "@/lib/gate";
 import { useT, type I18n } from "@/lib/i18n";
-import { Async, Badge, Button, Card, EmptyState, KV, Notice, ProgressBar, Seg, TextField } from "@/ui";
+import { Async, Badge, Button, Card, EmptyState, KV, Notice, Seg, TextField } from "@/ui";
 import { Brand, LangSwitch, ThemeToggle } from "../common/Chrome";
 import { PlotGrid } from "./PlotGrid";
+import "../auth/entry.css";
+import "./found.css";
 
 const STEPS = ["name", "city", "sector", "plot", "preview"] as const;
 type Step = (typeof STEPS)[number];
@@ -31,11 +33,25 @@ export function FoundWizard() {
   const [sector, setSector] = useState<Sector | null>(null);
   const [starter, setStarter] = useState<"food_plant" | "steel_mill">("food_plant");
   const [plotId, setPlot] = useState<string | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
+  const goToStep = (next: Step) => {
+    setStep(next);
+    requestAnimationFrame(() => {
+      const heading = headingRef.current;
+      if (!heading) return;
+      heading.focus({ preventScroll: true });
+      const top = heading.getBoundingClientRect().top;
+      if (top < 0 || top > window.innerHeight) heading.scrollIntoView({ block: "start" });
+    });
+  };
   const pickPlot = (id: string) => {
     setPlot(id);
     // seçilen arsanın fiyat, konum ve uzaklık kartını görünür alana getir
-    requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+    requestAnimationFrame(() => detailRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+      block: "end",
+    }));
   };
   const [view, setView] = useState<"map" | "list">("map");
 
@@ -58,131 +74,146 @@ export function FoundWizard() {
 
   if (!ok || !world) return null;
   return (
-    <main className="page">
-      <div className="topbar"><Brand /><span className="grow" /><ThemeToggle /><LangSwitch /></div>
-      <div className="page-inner">
-        <div className="col tight">
-          <p className="muted small" aria-live="polite">{t("found.step", { n: idx + 1, total: STEPS.length })}</p>
-          <ProgressBar value={((idx + 1) / STEPS.length) * 100} label={t("found.title")} />
-          <h1>{t(`found.s_${step}`)}</h1>
-          <p className="muted2">{t(`found.s_${step}_hint`)}</p>
-        </div>
-
-        {step === "name" ? (
-          <Card><div className="col">
-            <TextField label={t("found.companyName")} value={cname} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="organization" hint={t("found.nameHint")} error={cname && !nameCheck.success ? t("found.nameBad") : null} />
-          </div></Card>
-        ) : null}
-
-        {step === "city" ? (
-          <div className="cards">
-            {world.cities.map((c) => {
-              const profs = SYSTEM_PROFILES.filter((p) => p.cityId === c.id);
-              const sells = [...new Set(profs.flatMap((p) => Object.keys(p.sells)))].filter((x) => x !== "seed");
-              const buys = [...new Set(profs.flatMap((p) => Object.keys(p.buys)))];
-              return (
-                <Card key={c.id} onClick={() => setCity(c.id)} selected={cityId === c.id}>
-                  <div className="col tight">
-                    <div className="row"><span className="dot" style={{ background: c.color }} aria-hidden="true" /><h3>{name(c.name)}</h3></div>
-                    <p className="muted2 small">{name(c.blurb)}</p>
-                    <hr className="sep" />
-                    <KV k={t("found.resources")} v={sells.map((p) => cat.product(p)).join(", ") || "—"} />
-                    <KV k={t("found.localDemand")} v={buys.map((p) => cat.product(p)).join(", ") || "—"} />
-                    <KV k={t("found.energy")} v={`${money(c.energyPrice)}/kWh`} />
-                    <KV k={t("found.water")} v={`${money(c.waterPrice)}/m³`} />
-                    <KV k={t("found.wage")} v={`${money(c.wage)}/${t("found.hour")}`} />
-                    <KV k={t("found.labor")} v={`${name(c.laborNote)} (${pct(c.laborAvailability)})`} />
-                  </div>
-                </Card>
-              );
-            })}
+    <main className="entry-screen found-screen">
+      <header className="found-header">
+        <Brand />
+        <div className="entry-settings"><ThemeToggle /><LangSwitch /></div>
+      </header>
+      <div className="found-layout">
+        <aside className="found-journey" aria-label={t("found.title")}>
+          <h2 className="found-cover">{t("found.title")}</h2>
+          <ol>
+            {STEPS.map((item, index) => (
+              <li key={item} className={index < idx ? "complete" : undefined} aria-current={item === step ? "step" : undefined}>
+                <span className="found-step-number" aria-hidden="true">{index < idx ? "✓" : index + 1}</span>
+                <span className="found-step-label">{t(`found.s_${item}`)}</span>
+              </li>
+            ))}
+          </ol>
+        </aside>
+        <section className="found-workspace" aria-labelledby="found-heading">
+          <div className="found-heading">
+            <p aria-live="polite">{t("found.step", { n: idx + 1, total: STEPS.length })}</p>
+            <h1 id="found-heading" tabIndex={-1} ref={headingRef}>{t(`found.s_${step}`)}</h1>
+            <p className="muted2">{t(`found.s_${step}_hint`)}</p>
           </div>
-        ) : null}
 
-        {step === "sector" ? (
-          <div className="col">
-            <div className="cards">
-              {SECTORS.map((s) => {
-                const b = world.buildingTypes.find((x) => x.sector === s && s !== "manufacturing");
-                const yieldBp = cityId ? world.cities.find((c) => c.id === cityId)?.sectorYieldBp[s] : undefined;
+          {step === "name" ? (
+            <Card><div className="col">
+              <TextField label={t("found.companyName")} value={cname} onChange={(e) => setName(e.target.value)} maxLength={40} autoComplete="organization" hint={t("found.nameHint")} error={cname && !nameCheck.success ? t("found.nameBad") : null} />
+            </div></Card>
+          ) : null}
+
+          {step === "city" ? (
+            <div className="cards found-choices city-choices">
+              {world.cities.map((c) => {
+                const profs = SYSTEM_PROFILES.filter((p) => p.cityId === c.id);
+                const sells = [...new Set(profs.flatMap((p) => Object.keys(p.sells)))].filter((x) => x !== "seed");
+                const buys = [...new Set(profs.flatMap((p) => Object.keys(p.buys)))];
                 return (
-                  <Card key={s} onClick={() => setSector(s)} selected={sector === s}>
+                  <Card key={c.id} onClick={() => { if (cityId !== c.id) setPlot(null); setCity(c.id); }} selected={cityId === c.id}>
                     <div className="col tight">
-                      <h3>{t(`sector.${s}`)}</h3>
-                      <p className="muted2 small">{t(`sector.${s}Desc`)}</p>
-                      <KV k={t("found.startBuilding")} v={s === "manufacturing" ? `${cat.building("food_plant")} / ${cat.building("steel_mill")}` : b ? name(b.name) : "—"} />
-                      {yieldBp ? <KV k={t("found.cityYield")} v={pct(yieldBp)} /> : null}
+                      <div className="row"><span className="dot" style={{ background: c.color }} aria-hidden="true" /><h3>{name(c.name)}</h3></div>
+                      <p className="muted2 small">{name(c.blurb)}</p>
+                      <hr className="sep" />
+                      <KV k={t("found.resources")} v={sells.map((p) => cat.product(p)).join(", ") || "—"} />
+                      <KV k={t("found.localDemand")} v={buys.map((p) => cat.product(p)).join(", ") || "—"} />
+                      <KV k={t("found.energy")} v={`${money(c.energyPrice)}/kWh`} />
+                      <KV k={t("found.water")} v={`${money(c.waterPrice)}/m³`} />
+                      <KV k={t("found.wage")} v={`${money(c.wage)}/${t("found.hour")}`} />
+                      <KV k={t("found.labor")} v={`${name(c.laborNote)} (${pct(c.laborAvailability)})`} />
                     </div>
                   </Card>
                 );
               })}
             </div>
-            {sector === "manufacturing" ? (
-              <Card><div className="col tight">
-                <span className="card-title">{t("found.starterChoice")}</span>
-                <Seg label={t("found.starterChoice")} value={starter} onChange={setStarter} items={[{ id: "food_plant", label: cat.building("food_plant") }, { id: "steel_mill", label: cat.building("steel_mill") }]} />
-                <p className="muted small">{t(starter === "food_plant" ? "found.foodHint" : "found.steelHint")}</p>
-              </div></Card>
-            ) : null}
-          </div>
-        ) : null}
+          ) : null}
 
-        {step === "plot" ? (
-          <Async res={onb}>
-            {(d) => (
-              <div className="col">
-                <div className="row between wrap">
-                  <span className="muted2 small">{t("found.cash")}: <b className="num">{money(d.startingCash)}</b></span>
-                  <Seg label={t("found.view")} value={view} onChange={setView} items={[{ id: "map", label: t("found.viewMap") }, { id: "list", label: t("found.viewList") }]} />
-                </div>
-                {!d.plots.some((p) => p.eligible) ? <EmptyState title={t("found.noEligible")} text={t("found.noEligibleText")} action={<Button onClick={() => setStep("city")}>{t("found.changeCity")}</Button>} /> : null}
-                {view === "map" ? <PlotGrid plots={d.plots} selected={plotId} onSelect={pickPlot} /> : (
-                  <div className="cards">{d.plots.map((p) => <PlotCard key={p.id} p={p} sector={sector!} selected={plotId === p.id} onClick={() => pickPlot(p.id)} />)}</div>
-                )}
-                <div ref={detailRef} style={{ scrollMarginBottom: 96 }}>
-                  {plot ? <PlotDetail p={plot} sector={sector!} /> : <Notice tone="steel">{t("found.pickPlot")}</Notice>}
-                </div>
+          {step === "sector" ? (
+            <div className="col">
+              <div className="cards found-choices sector-choices">
+                {SECTORS.map((s) => {
+                  const b = world.buildingTypes.find((x) => x.sector === s && s !== "manufacturing");
+                  const yieldBp = cityId ? world.cities.find((c) => c.id === cityId)?.sectorYieldBp[s] : undefined;
+                  return (
+                    <Card key={s} onClick={() => { if (sector !== s) setPlot(null); setSector(s); }} selected={sector === s}>
+                      <div className="col tight">
+                        <h3>{t(`sector.${s}`)}</h3>
+                        <p className="muted2 small">{t(`sector.${s}Desc`)}</p>
+                        <KV k={t("found.startBuilding")} v={s === "manufacturing" ? `${cat.building("food_plant")} / ${cat.building("steel_mill")}` : b ? name(b.name) : "—"} />
+                        {yieldBp ? <KV k={t("found.cityYield")} v={pct(yieldBp)} /> : null}
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
-            )}
-          </Async>
-        ) : null}
+              {sector === "manufacturing" ? (
+                <Card><div className="col tight">
+                  <span className="card-title">{t("found.starterChoice")}</span>
+                  <Seg label={t("found.starterChoice")} value={starter} onChange={setStarter} items={[{ id: "food_plant", label: cat.building("food_plant") }, { id: "steel_mill", label: cat.building("steel_mill") }]} />
+                  <p className="muted small">{t(starter === "food_plant" ? "found.foodHint" : "found.steelHint")}</p>
+                </div></Card>
+              ) : null}
+            </div>
+          ) : null}
 
-        {step === "preview" ? (
-          <Async res={onb}>
-            {(d) => (
-              <Card><div className="col">
-                <h3>{cname}</h3>
-                <KV k={t("found.city")} v={cat.city(cityId)} />
-                <KV k={t("found.sector")} v={sector ? t(`sector.${sector}`) : ""} />
-                <KV k={t("found.startBuilding")} v={cat.building(d.starter.building)} />
-                {d.starter.vehicle ? <KV k={t("found.startVehicle")} v={cat.vehicle(d.starter.vehicle)} /> : null}
-                {plot ? <KV k={t("found.plot")} v={`${cat.city(plot.cityId)} ${plot.gx + 1}·${plot.gz + 1} — ${money(plot.price)}`} /> : null}
-                <KV k={t("found.cash")} v={money(d.startingCash)} />
-                {d.starter.inputs.length ? <KV k={t("found.gift")} v={d.starter.inputs.map((x) => `${cat.product(x.productId)} ${i.qty(x.kg)}`).join(", ")} /> : null}
-                <hr className="sep" />
-                <h4>{t("found.firstJob")}</h4>
-                <p className="muted2 small">{name(d.starter.firstJob.hint)}</p>
-                {d.starter.firstJob.recipeId ? (
-                  <div className="grid3">
-                    <div className="stat"><span className="k">{t("found.estCost")}</span><span className="v">{money(d.starter.firstJob.estCost)}</span></div>
-                    <div className="stat"><span className="k">{t("found.estRevenue")}</span><span className="v">{money(d.starter.firstJob.estRevenue)}</span></div>
-                    <div className="stat"><span className="k">{t("found.duration")}</span><span className="v">{i.dur(d.starter.firstJob.minutes)}</span></div>
+          {step === "plot" ? (
+            <Async res={onb}>
+              {(d) => (
+                <div className="col">
+                  <div className="row between wrap">
+                    <span className="muted2 small">{t("found.cash")}: <b className="num">{money(d.startingCash)}</b></span>
+                    <Seg label={t("found.view")} value={view} onChange={setView} items={[{ id: "map", label: t("found.viewMap") }, { id: "list", label: t("found.viewList") }]} />
                   </div>
-                ) : null}
-                <Notice tone="steel">{t("found.estNote")}</Notice>
-              </div></Card>
-            )}
-          </Async>
-        ) : null}
+                  {!d.plots.some((p) => p.eligible) ? <EmptyState title={t("found.noEligible")} text={t("found.noEligibleText")} action={<Button onClick={() => goToStep("city")}>{t("found.changeCity")}</Button>} /> : null}
+                  {view === "map" ? <PlotGrid plots={d.plots} selected={plotId} onSelect={pickPlot} /> : (
+                    <div className="cards">{d.plots.map((p) => <PlotCard key={p.id} p={p} sector={sector!} selected={plotId === p.id} onClick={() => pickPlot(p.id)} />)}</div>
+                  )}
+                  <div ref={detailRef} style={{ scrollMarginBottom: 96 }}>
+                    {plot ? <PlotDetail p={plot} sector={sector!} /> : <Notice tone="steel">{t("found.pickPlot")}</Notice>}
+                  </div>
+                </div>
+              )}
+            </Async>
+          ) : null}
 
-        <div className="row between" style={{ position: "sticky", bottom: 0, padding: "var(--sp-3) 0", background: "linear-gradient(transparent, var(--bg) 35%)" }}>
-          <Button variant="ghost" disabled={idx === 0} onClick={() => setStep(STEPS[idx - 1]!)}>{t("common.back")}</Button>
           {step === "preview" ? (
-            <Button variant="primary" size="lg" loading={busy} onClick={() => void found()} className="grow">{t("found.create")}</Button>
-          ) : (
-            <Button variant="primary" disabled={!canNext} onClick={() => setStep(STEPS[idx + 1]!)}>{t("common.next")}</Button>
-          )}
-        </div>
+            <Async res={onb}>
+              {(d) => (
+                <Card><div className="col">
+                  <h3>{cname}</h3>
+                  <KV k={t("found.city")} v={cat.city(cityId)} />
+                  <KV k={t("found.sector")} v={sector ? t(`sector.${sector}`) : ""} />
+                  <KV k={t("found.startBuilding")} v={cat.building(d.starter.building)} />
+                  {d.starter.vehicle ? <KV k={t("found.startVehicle")} v={cat.vehicle(d.starter.vehicle)} /> : null}
+                  {plot ? <KV k={t("found.plot")} v={`${cat.city(plot.cityId)} ${plot.gx + 1}·${plot.gz + 1} — ${money(plot.price)}`} /> : null}
+                  <KV k={t("found.cash")} v={money(d.startingCash)} />
+                  {d.starter.inputs.length ? <KV k={t("found.gift")} v={d.starter.inputs.map((x) => `${cat.product(x.productId)} ${i.qty(x.kg)}`).join(", ")} /> : null}
+                  <hr className="sep" />
+                  <h4>{t("found.firstJob")}</h4>
+                  <p className="muted2 small">{name(d.starter.firstJob.hint)}</p>
+                  {d.starter.firstJob.recipeId ? (
+                    <div className="grid3">
+                      <div className="stat"><span className="k">{t("found.estCost")}</span><span className="v">{money(d.starter.firstJob.estCost)}</span></div>
+                      <div className="stat"><span className="k">{t("found.estRevenue")}</span><span className="v">{money(d.starter.firstJob.estRevenue)}</span></div>
+                      <div className="stat"><span className="k">{t("found.duration")}</span><span className="v">{i.dur(d.starter.firstJob.minutes)}</span></div>
+                    </div>
+                  ) : null}
+                  <Notice tone="steel">{t("found.estNote")}</Notice>
+                </div></Card>
+              )}
+            </Async>
+          ) : null}
+
+          <div className="row between found-actions">
+            <Button variant="ghost" disabled={idx === 0} onClick={() => goToStep(STEPS[idx - 1]!)}>{t("common.back")}</Button>
+            {step === "preview" ? (
+              <Button variant="primary" size="lg" loading={busy} onClick={() => void found()} className="grow">{t("found.create")}</Button>
+            ) : (
+              <Button variant="primary" disabled={!canNext} onClick={() => goToStep(STEPS[idx + 1]!)}>{t("common.next")}</Button>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );

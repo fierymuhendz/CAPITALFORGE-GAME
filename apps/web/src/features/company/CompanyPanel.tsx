@@ -9,7 +9,7 @@ const STEP_TARGET: Record<string, PanelId> = {
   first_freight: "logistics", take_loan: "finance", upgrade_facility: "facilities", start_research: "research",
 };
 
-export function CompanyPanel() {
+export function CompanyPanel({ compact = false }: { compact?: boolean } = {}) {
   const i = useT();
   const { t } = i;
   const cat = useCat();
@@ -29,7 +29,7 @@ export function CompanyPanel() {
         };
         return (
           <div className="col">
-            <Card><div className="col">
+            {!compact ? <Card><div className="col">
               <div className="row between"><h3 className="nm" title={d.name}>{d.name}</h3><Badge tone="forge">{t("common.level")} {d.level}</Badge></div>
               <span className="muted small">{t(`sector.${d.sector}`)} · {cat.city(d.homeCityId)}</span>
               <div className="col tight">
@@ -43,10 +43,10 @@ export function CompanyPanel() {
                 <Stat label={t("company.profit7d")} value={<Trend value={d.stats.profit7d} text={i.signed(d.stats.profit7d)} />} />
               </div>
               {d.arrears !== "0" ? <div className="notice bad" role="alert">⚠ {t("finance.arrears")}: <b>{i.money(d.arrears)}</b> <Button size="sm" onClick={() => open("finance")}>{t("finance.payArrears")}</Button></div> : null}
-            </div></Card>
+            </div></Card> : null}
 
             <h4>{t("company.nextSteps")}</h4>
-            {d.nextSteps.length ? d.nextSteps.map((s) => {
+            {d.nextSteps.length ? (compact ? d.nextSteps.slice(0, 3) : d.nextSteps).map((s) => {
               const target = STEP_TARGET[s.key] ?? "company";
               const key = `nextSteps.${s.key}`;
               return (
@@ -58,10 +58,10 @@ export function CompanyPanel() {
               );
             }) : <p className="muted small">{t("company.allDone")}</p>}
 
-            <Disclosure summary={`${t("panels.facilities")} (${d.facilities.length}) · ${t("logistics.fleet")} (${d.vehicles.length})`}>
+            {!compact ? <Disclosure summary={`${t("panels.facilities")} (${d.facilities.length}) · ${t("logistics.fleet")} (${d.vehicles.length})`}>
               {d.facilities.map((f) => <KV key={f.id} k={<span className="nm">{cat.building(f.type)} · {cat.city(f.cityId)}</span>} v={t(`facility.status.${f.status}`)} />)}
               {d.vehicles.map((v) => <KV key={v.id} k={cat.vehicle(v.modelId)} v={v.status === "in_transit" ? `→ ${cat.city(v.destCityId)}` : cat.city(v.cityId)} />)}
-            </Disclosure>
+            </Disclosure> : <Button variant="ghost" onClick={() => open("company")}>{t("panels.company")} →</Button>}
           </div>
         );
       }}

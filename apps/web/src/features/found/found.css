@@ -1,0 +1,146 @@
+.found-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 0 clamp(18px, 4vw, 64px) 32px;
+}
+.found-header, .found-layout { width: min(100%, 1330px); margin-inline: auto; }
+.found-header {
+  min-height: 78px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--entry-line);
+}
+.found-header .brand { font-size: 1.12rem; }
+.found-header .mark { background: var(--entry-accent); color: var(--entry-on-accent); }
+.found-layout {
+  display: grid;
+  grid-template-columns: clamp(210px, 23%, 300px) minmax(0, 1fr);
+  gap: clamp(28px, 4.7vw, 82px);
+  align-items: start;
+  padding-top: clamp(28px, 5vw, 66px);
+}
+.found-journey {
+  position: sticky;
+  top: 20px;
+  border: 1px solid var(--entry-line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--entry-panel);
+}
+.found-cover {
+  display: flex;
+  align-items: flex-end;
+  min-height: clamp(140px, 15.5vw, 218px);
+  padding: 18px 20px;
+  color: #fff2d8;
+  font-size: clamp(1.5rem, 2vw, 2.15rem);
+  letter-spacing: -.055em;
+  background: linear-gradient(0deg, rgba(9, 30, 27, .94), transparent 70%), #294139 url("/art/forge-valley.webp") 57% center / cover no-repeat;
+}
+.found-journey ol {
+  list-style: none;
+  padding: 18px 20px;
+  margin: 0;
+}
+.found-journey li {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 11px;
+  min-height: 44px;
+  font-weight: 550;
+  color: var(--entry-secondary);
+}
+.found-journey li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 12px;
+  top: 50%;
+  height: 100%;
+  border-inline-start: 1px solid var(--entry-line);
+}
+.found-step-number {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  flex: 0 0 25px;
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--entry-line);
+  border-radius: 50%;
+  background: var(--entry-panel);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: .76rem;
+}
+.found-journey [aria-current="step"] { color: var(--entry-ink); }
+.found-journey [aria-current="step"] .found-step-number { background: var(--entry-accent); color: var(--entry-on-accent); border-color: var(--entry-accent); }
+.found-journey .complete .found-step-number { color: var(--entry-accent); border-color: var(--entry-accent); }
+.found-workspace { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+.found-heading { display: grid; gap: 10px; }
+.found-heading h1 { scroll-margin-top: 12px; }
+.found-heading h1:focus { outline: none; box-shadow: none; }
+.found-heading > p:first-child {
+  color: var(--entry-accent);
+  font-size: .74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+}
+.found-screen .card { border-radius: 10px; padding: clamp(16px, 2vw, 26px); box-shadow: none; }
+.found-screen .cards { grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); }
+.found-choices .card.click { align-self: stretch; display: flex; align-items: flex-start; }
+.found-choices .card.click > div { width: 100%; }
+.found-choices .card.sel { border-color: var(--entry-accent); background: color-mix(in srgb, var(--entry-accent) 6%, var(--entry-panel)); box-shadow: inset 0 2px var(--entry-accent); }
+.found-choices h3 { letter-spacing: -.035em; font-size: 1.15rem; }
+.found-screen .kv { align-items: baseline; }
+.found-screen .kv .v { overflow-wrap: anywhere; }
+.found-screen .card .badge { align-self: start; }
+.found-screen .found-actions {
+  position: sticky;
+  z-index: 1;
+  bottom: 0;
+  gap: 16px;
+  padding: 13px 0 max(13px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--entry-line);
+  background: var(--entry-bg);
+}
+.found-actions .btn.primary { flex: 0 1 auto; width: auto; min-width: min(145px, 52%); min-height: 46px; font-size: 1rem; }
+.found-plotmap {
+  width: 100%;
+  padding: clamp(7px, 1.4vw, 14px);
+  border: 1px solid var(--entry-line);
+  border-radius: 10px;
+  background: var(--entry-panel);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.found-plotmap .plot {
+  aspect-ratio: auto;
+  min-width: 0;
+  min-height: clamp(72px, 7.5vw, 105px);
+  padding: clamp(6px, 1vw, 13px);
+  border-radius: 5px;
+  border-color: var(--entry-line);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--good) 8%, var(--entry-panel-alt)), var(--entry-panel-alt));
+}
+.found-plotmap .plot.bad { opacity: 1; background: var(--entry-bg); }
+.found-plotmap .plot[aria-pressed="true"] { border: 2px solid var(--entry-accent); box-shadow: inset 0 0 0 1px var(--entry-accent); }
+@media (max-width: 840px) {
+  .found-layout { grid-template-columns: minmax(0, 1fr); padding-top: 20px; gap: 22px; }
+  .found-header { min-height: 64px; }
+  .found-journey { position: static; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 12px; }
+  .found-cover { min-height: 0; padding: 0; background: none; color: var(--entry-ink); font-size: 1.08rem; letter-spacing: -.03em; }
+  .found-journey ol { display: flex; padding: 0; gap: 2px; }
+  .found-journey li { min-height: 36px; }
+  .found-journey li:not(:last-child)::before { display: none; }
+  .found-step-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@media (max-width: 480px) {
+  .found-screen { padding-inline: 14px; }
+  .found-workspace { gap: 16px; }
+  .found-screen .found-actions { padding-inline: 2px; }
+  .found-step-number { width: 22px; height: 22px; flex-basis: 22px; }
+  .found-plotmap { gap: 4px; }
+}
