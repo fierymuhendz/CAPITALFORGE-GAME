@@ -91,10 +91,11 @@ for (const [cfgIndex, cfg] of CONFIGS.entries()) {
       const url = new URL(page.url());
       qty = Number(url.searchParams.get("qty"));
       if (url.searchParams.get("product") !== "fodder" || url.searchParams.get("side") !== "sell" || !(qty > 0)) throw new Error(`url ${url.search}`);
-      await page.locator(".trade-product[aria-pressed=true]", { hasText: (await (await fetch(`${WEB}/api/world`)).json()).products.find((p) => p.id === "fodder").name[L] }).waitFor();
+      const fodderName = (await (await fetch(`${WEB}/api/world`)).json()).products.find((p) => p.id === "fodder").name[L];
+      await page.waitForFunction((n) => [...document.querySelectorAll("input[role=combobox]")].some((i) => i.value === n), fodderName);
       // sayfa yenilemesi seçimi korur
       await page.reload();
-      await page.locator(".trade-product[aria-pressed=true]").waitFor();
+      await page.waitForFunction((n) => [...document.querySelectorAll("input[role=combobox]")].some((i) => i.value === n), fodderName);
       await page.locator(".trade-quote").waitFor({ timeout: 20000 });
       shots.push(await shot(page, tag("06-market")));
       return { qty };
