@@ -6,7 +6,7 @@ import { useAction } from "@/lib/action";
 import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { Async, Badge, Button, EmptyState, KV, Notice, PriceInput, QtyInput, SelectField, Seg, Sheet, SystemBadge, Table, type Col } from "@/ui";
+import { Async, Badge, Button, EmptyState, KV, Notice, PriceInput, ProductPicker, QtyInput, SelectField, Seg, Sheet, SystemBadge, Table, type Col } from "@/ui";
 import { usePlay } from "../play/context";
 
 export type View = { productId: string; cityId: string } | null;
@@ -43,10 +43,11 @@ function Overview({ onPick }: { onPick: (productId: string, cityId: string) => v
         return (
           <div className="col">
             <Seg label={t("market.groupBy")} value={by} onChange={setBy} items={[{ id: "city", label: t("market.byCity") }, { id: "product", label: t("market.byProduct") }]} />
-            <div className="pill-scroll" role="group">
-              {by === "city" ? w.cities.map((c) => <button key={c.id} type="button" className="chip" aria-pressed={city === c.id} onClick={() => setCity(c.id)}>{i.name(c.name)}</button>)
-                : w.products.map((p) => <button key={p.id} type="button" className="chip" aria-pressed={product === p.id} onClick={() => setProduct(p.id)}><span className="dot" style={{ background: p.color }} aria-hidden="true" />{i.name(p.name)}</button>)}
-            </div>
+            {by === "city" ? (
+              <div className="pill-scroll" role="group" aria-label={t("offers.city")}>
+                {w.cities.map((c) => <button key={c.id} type="button" className="chip" aria-pressed={city === c.id} onClick={() => setCity(c.id)}>{i.name(c.name)}</button>)}
+              </div>
+            ) : <ProductPicker label={t("inventory.product")} value={product} onChange={setProduct} products={w.products} />}
             {rows.length ? <Table cols={cols} rows={rows} rowKey={(r) => `${r.productId}-${r.cityId}`} onRow={(r) => onPick(r.productId, r.cityId)} rowLabel={(r) => `${cat.product(r.productId)} ${cat.city(r.cityId)}`} /> : <EmptyState icon="chart" title={t("market.noRows")} />}
           </div>
         );
@@ -121,9 +122,9 @@ function ProductPage({ view, setView, createSide, setCreateSide }: { view: NonNu
             <div className="row wrap"><Button variant="primary" onClick={() => setCreateSide("sell")}>{t("market.newListing")}</Button><Button onClick={() => setCreateSide("buy")}>{t("market.newOrder")}</Button></div>
 
             <h4>{t("market.asks")}</h4>
-            {m.listings.length ? <Table cols={lcols("sell")} rows={m.listings} rowKey={(l) => l.id} /> : <EmptyState icon="chart" title={t("market.noAsks")} text={t("market.noAsksText")} action={<Button onClick={() => setCreateSide("buy")}>{t("market.newOrder")}</Button>} />}
+            {m.listings.length ? <Table cols={lcols("sell")} rows={m.listings} rowKey={(l) => l.id} rowClass={(l) => (l.isSystem ? "sys" : l.mine ? "mine" : "")} /> : <EmptyState icon="chart" title={t("market.noAsks")} text={t("market.noAsksText")} action={<Button onClick={() => setCreateSide("buy")}>{t("market.newOrder")}</Button>} />}
             <h4>{t("market.bids")}</h4>
-            {m.orders.length ? <Table cols={lcols("buy")} rows={m.orders} rowKey={(l) => l.id} /> : <EmptyState icon="chart" title={t("market.noBids")} text={t("market.noBidsText")} action={<Button onClick={() => setCreateSide("sell")}>{t("market.newListing")}</Button>} />}
+            {m.orders.length ? <Table cols={lcols("buy")} rows={m.orders} rowKey={(l) => l.id} rowClass={(l) => (l.isSystem ? "sys" : l.mine ? "mine" : "")} /> : <EmptyState icon="chart" title={t("market.noBids")} text={t("market.noBidsText")} action={<Button onClick={() => setCreateSide("sell")}>{t("market.newListing")}</Button>} />}
 
             <h4>{t("market.whoBuys")}</h4>
             <Async res={overview}>

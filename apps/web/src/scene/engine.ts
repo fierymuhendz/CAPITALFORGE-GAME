@@ -10,14 +10,14 @@ import {
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { translate, type PlotDto, type VehicleMapDto, type WorldDto, type WorldMapDto } from "@capitalforge/shared";
+import { INDUSTRY_COLORS, translate, type PlotDto, type VehicleMapDto, type WorldDto, type WorldMapDto } from "@capitalforge/shared";
 import type { CitySelection } from "./types";
-import { PAL } from "./palette";
+import { DEPOSIT_COLOR, PAL } from "./palette";
 import { PartBuilder } from "./geo";
-import { buildDef, buildFrame, buildScaffold, buildSign, buildWarning, type BuildingDef } from "./buildings";
+import { buildDef, buildDepositMark, buildFrame, buildScaffold, buildSign, buildWarning, type BuildingDef } from "./buildings";
 import { buildVehicle, vehicleLength, NEUTRAL_CARGO } from "./vehicles";
 import {
-  CELL, HIGHWAY_WIDTH, PAD_HALF, cityCenters, hashStr, mulberry, parkIndexes, plotOffset, roadEndpoints,
+  CELL, GRID_MAX, GRID_MIN, GRID_N, HIGHWAY_WIDTH, PAD_HALF, cityCenters, gridIndex, inGrid, hashStr, mulberry, parkIndexes, plotOffset, roadEndpoints,
   vehiclePose, worldBounds, type CityCenters,
 } from "./layout";
 
@@ -41,6 +41,8 @@ const TILE_Y = 0.08;
 const CONTENT_Y = TILE_Y + 0.06;
 const PAD_H = 0.08;
 const MAX_SMOKE = 480;
+/** şehir başına arsa hücresi */
+const CELLS = GRID_N * GRID_N;
 /** araç ölçeği: ülke görünümünde silüet okunsun */
 const VEH_SCALE = 1.7;
 
@@ -108,6 +110,8 @@ export class SceneEngine {
   private readonly vehicles = new Map<string, VehNode>();
   private readonly plotInfo = new Map<string, { x: number; z: number; cityId: string; facilityId: string | null; hasBuilding: boolean }>();
   private readonly productColor = new Map<string, string>();
+  /** bina türü -> silüet arketipi ve iş kolu rengi (WorldDto.buildingTypes) */
+  private readonly typeStyle = new Map<string, { archetype: string | null; band: string | undefined }>();
   private decorMesh: Mesh | null = null;
   private glowMesh: Mesh | null = null;
   private lampMesh: Mesh | null = null;
@@ -149,6 +153,7 @@ export class SceneEngine {
     this.cityIds = opts.world.cities.map((c) => c.id);
     this.bounds = worldBounds(this.centers);
     for (const p of opts.world.products) this.productColor.set(p.id, p.color);
+    for (const t of opts.world.buildingTypes) this.typeStyle.set(t.id, { archetype: t.archetype, band: t.industry ? INDUSTRY_COLORS[t.industry] : undefined });
 
     this.renderer = new WebGLRenderer({
       antialias: this.high,
@@ -206,17 +211,17 @@ export class SceneEngine {
     // arsa zeminleri
     const tileGeo = this.track(new BoxGeometry(CELL - 0.2, 0.06, CELL - 0.2));
     const tileMat = this.track(new MeshLambertMaterial({ color: "#ffffff" }));
-    this.tiles = new InstancedMesh(tileGeo, tileMat, Math.max(1, this.cityIds.length * 16));
+    this.tiles = new InstancedMesh(tileGeo, tileMat, Math.max(1, this.cityIds.length * CELLS));
     this.tiles.receiveShadow = this.high;
-    this.tileIds = new Array<string | undefined>(this.cityIds.length * 16).fill(undefined);
+    this.tileIds = new Array<string | undefined>(this.cityIds.length * CELLS).fill(undefined);
     this.tileColor.set(PAL.tile);
     for (let ci = 0; ci < this.cityIds.length; ci++) {
       const c = this.centers.get(this.cityIds[ci] as string);
       if (!c) continue;
-      for (let gz = 0; gz < 4; gz++) for (let gx = 0; gx < 4; gx++) {
+      for (let gz = GRID_MIN; gz <= GRID_MAX; gz++) for (let gx = GRID_MIN; gx <= GRID_MAX; gx++) {
         const off = plotOffset(gx, gz);
         this.tmpM.makeTranslation(c.x + off.x, TILE_Y + 0.03, c.z + off.z);
-        const idx = ci * 16 + gz * 4 + gx;
+        const idx = ci * CELLS + gridIndex(gx, gz);
         this.tiles.setMatrixAt(idx, this.tmpM);
         this.tiles.setColorAt(idx, this.tileColor);
       }
@@ -279,7 +284,7 @@ export class SceneEngine {
     const b = this.bounds;
     // perspektifte yakın kenar büyür: hedefi biraz güneye kaydır, payı artır
     this.overview.target.set((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2 + 2.2);
-    this.overview.dist = this.fit(b.maxX - b.minX + 3, b.maxZ - b.minZ + 4) * 1.35;
+    this.overview.dist = this.fit(b.maxX - b.minX + 3, b.maxZ - b.minZ + 4) * 1.12;
   }
 
   private setupLights(): void {
@@ -332,13 +337,13 @@ export class SceneEngine {
         city.box(e, 0.05, half * 2 + e, p.x + s * half, PAD_H, p.z, c.color);
       }
       // yol işaretleri (şehir içi sokaklar)
-      for (let i = 1; i < 4; i++) {
-        const o = (i - 2) * CELL;
+      for (let i = 1; i < GRID_N; i++) {
+        const o = (i - GRID_N / 2) * CELL;
         city.box(0.03, 0.005, half * 2 - 0.3, p.x + o, PAD_H, p.z, "#1c242d");
         city.box(half * 2 - 0.3, 0.005, 0.03, p.x, PAD_H, p.z + o, "#1c242d");
       }
       // simge direği (ülke görünümünde okunur)
-      const px = p.x + half - 0.15, pz = p.z - half + 0.15;
+      const px = p.x + half - 0.1, pz = p.z - half + 0.1;
       city.cyl(0.07, 0.1, 2.0, px, PAD_H, pz, "#39434f");
       city.box(0.3, 0.3, 0.3, px, PAD_H + 2.0, pz, c.color);
       city.cone(0.2, 0.3, px, PAD_H + 2.3, pz, c.color, 4);
@@ -462,9 +467,10 @@ export class SceneEngine {
   }
 
   private def(type: string, level: number, crop: string): BuildingDef {
-    const key = `${type}:${level}:${crop}`;
+    const st = this.typeStyle.get(type);
+    const key = `${st?.archetype ?? type}:${st?.band ?? "-"}:${type === "field" || type === "barn" || type === "mine" || type === "food_plant" || type === "steel_mill" || type === "garage" ? type : ""}:${level}:${crop}`;
     let d = this.defCache.get(key);
-    if (!d) { d = buildDef(type, level, crop); this.defCache.set(key, d); this.track(d.geometry); }
+    if (!d) { d = buildDef(type, level, crop, st?.archetype, st?.band); this.defCache.set(key, d); this.track(d.geometry); }
     return d;
   }
 
@@ -479,7 +485,7 @@ export class SceneEngine {
     for (const p of map.plots) {
       const ci = this.cityIds.indexOf(p.cityId);
       const c = this.centers.get(p.cityId);
-      if (ci < 0 || !c || p.gx < 0 || p.gx > 3 || p.gz < 0 || p.gz > 3) continue;
+      if (ci < 0 || !c || !inGrid(p.gx, p.gz)) continue;
       seen.add(p.id);
       const off = plotOffset(p.gx, p.gz);
       const x = c.x + off.x, z = c.z + off.z;
@@ -487,7 +493,7 @@ export class SceneEngine {
       const mine = !!myCompanyId && p.owner?.companyId === myCompanyId;
       const locked = !p.owner && myLevel !== undefined && p.minLevel > myLevel;
       const sig = [p.owner?.companyId ?? "-", p.owner?.isSystem ? 1 : 0, p.building?.id ?? "-", p.building?.type ?? "", p.building?.level ?? 0, p.building?.status ?? "", mine ? 1 : 0, locked ? 1 : 0, p.minLevel, p.building?.outputProductId ?? "", p.deposit?.kind ?? ""].join("|");
-      const idx = ci * 16 + p.gz * 4 + p.gx;
+      const idx = ci * CELLS + gridIndex(p.gx, p.gz);
       this.tileIds[idx] = p.id;
       this.tiles.setColorAt(idx, this.tileColorFor(p, mine, locked));
       const old = this.nodes.get(p.id);
@@ -523,8 +529,15 @@ export class SceneEngine {
     if (b) {
       const outCol = b.outputProductId ? this.productColor.get(b.outputProductId) : undefined;
       let accent = "-";
+      const st = this.typeStyle.get(b.type);
+      const arch = st?.archetype ?? b.type;
       if (b.type === "field") accent = outCol ?? (hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder);
       else if (b.type === "mine") accent = outCol ?? (p.deposit?.kind === "coal" ? PAL.oreCoal : PAL.oreIron);
+      else if (st && b.type !== "barn" && b.type !== "food_plant" && b.type !== "steel_mill" && b.type !== "garage") {
+        // yeni türler: yatak rengi > ürün rengi > iş kolu rengi (yatak rengi hepsinde kullanılabilir)
+        const dep = p.deposit ? DEPOSIT_COLOR[p.deposit.kind] : undefined;
+        accent = arch === "mine" || arch === "quarry" ? (dep ?? outCol ?? st.band ?? PAL.concrete) : (outCol ?? st.band ?? PAL.concrete);
+      }
       const def = this.def(b.type, b.level, accent);
       node.height = def.height;
       const m = new Mesh(def.geometry, this.matVC);
@@ -573,6 +586,10 @@ export class SceneEngine {
     } else if (!p.owner) {
       const col = locked ? "#c0392b" : p.minLevel >= 3 ? "#e0b84f" : p.minLevel === 2 ? "#3a7bd5" : "#3fa34d";
       deco(this.geo(`sign:${col}`, () => buildSign(col)), 0, 0, 0, 1, 1, 1);
+    }
+    if (!b && p.deposit) {
+      const k = p.deposit.kind;
+      deco(this.geo(`dep:${k}`, () => buildDepositMark(k)), 0.12, 0, -0.1);
     }
     if (mine) {
       deco(this.geo("frame-mine", () => buildFrame(0.58, 0.05, PAL.forge)), 0, 0.005, 0);
@@ -724,7 +741,7 @@ export class SceneEngine {
     let target: Vector3, dist: number;
     const c = cityId ? this.centers.get(cityId) : undefined;
     if (c) {
-      target = new Vector3(c.x, 0, c.z + 0.4); dist = this.fit(PAD_HALF * 2 + 4, PAD_HALF * 2 + 5);
+      target = new Vector3(c.x, 0, c.z + 0.4); dist = this.fit(PAD_HALF * 2 * 1.3 + 2, PAD_HALF * 2 + 5);
       const own = this.ownBox(cityId as string);
       if (own) {
         const w = Math.max(9, own.maxX - own.minX + 4), d = Math.max(8, own.maxZ - own.minZ + 4);

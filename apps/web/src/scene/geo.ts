@@ -59,6 +59,20 @@ export class PartBuilder {
     g.computeVertexNormals();
     return this.add(g, color, x, y, z, 0, ry, 0);
   }
+  /** testere dişi çatı: eğim -x'ten +x'e yükselir, +x yüzü dik (ry ile döndürülür) */
+  wedge(w: number, h: number, d: number, x: number, y: number, z: number, color: string | number, ry = 0): this {
+    const hw = w / 2, hd = d / 2;
+    const p = [
+      -hw, 0, hd, hw, 0, hd, hw, h, hd,
+      hw, 0, -hd, -hw, 0, -hd, hw, h, -hd,
+      -hw, 0, -hd, -hw, 0, hd, hw, h, hd, -hw, 0, -hd, hw, h, hd, hw, h, -hd,
+      hw, 0, hd, hw, 0, -hd, hw, h, -hd, hw, 0, hd, hw, h, -hd, hw, h, hd,
+    ];
+    const g = new BufferGeometry();
+    g.setAttribute("position", new Float32BufferAttribute(p, 3));
+    g.computeVertexNormals();
+    return this.add(g, color, x, y, z, 0, ry, 0);
+  }
   sphere(r: number, x: number, y: number, z: number, color: string | number): this {
     return this.add(new SphereGeometry(r, 8, 6), color, x, y, z);
   }

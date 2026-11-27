@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  CITIES, PLOTS, PRODUCTS, ROAD_LIST,
+  BUILDING_TYPES, CITIES, PLOTS, PRODUCTS, ROAD_LIST,
   type PlotDto, type VehicleMapDto, type WorldDto, type WorldMapDto,
 } from "@capitalforge/shared";
 import { CityMap2D, CityViewLazy, detectQuality, type CitySelection, type GraphicsPref, type GraphicsQuality } from "@/scene";
@@ -20,14 +20,22 @@ function makeWorld(): WorldDto {
     })),
     roads: ROAD_LIST.map(([a, b, km]) => ({ a, b, km })),
     products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, category: p.category, color: p.color, basePricePerKg: String(p.basePricePerKg), industry: p.industry ?? null, stage: p.stage ?? null })),
-    buildingTypes: [], recipes: [], research: [], systemDemand: [], industries: [], vehicleModels: [], levelXp: [], marketFeeBp: 0, qualityPriceBp: [],
+    buildingTypes: BUILDING_TYPES.map((t) => ({
+      id: t.id, sector: t.sector, name: t.name, buildCost: String(t.buildCost), buildSteelKg: t.buildSteelKg, buildMinutes: t.buildMinutes,
+      levels: t.levels.map((l) => ({ ...l, upkeepPerDay: String(l.upkeepPerDay), upgradeCost: String(l.upgradeCost) })),
+      qualityUpgradeCosts: t.qualityUpgradeCosts.map(String), ...(t.vehicleSlots ? { vehicleSlots: t.vehicleSlots } : {}),
+      ...(t.requiresDeposit ? { requiresDeposit: true } : {}),
+      deposits: t.deposits ?? null, industry: t.industry ?? null, archetype: t.archetype ?? null, tier: t.tier ?? 1,
+      minCompanyLevel: t.minCompanyLevel ?? 1, description: t.description ?? null,
+    })), recipes: [], research: [], systemDemand: [], industries: [], vehicleModels: [], levelXp: [], marketFeeBp: 0, qualityPriceBp: [],
     freight: { systemBaseFee: "0", systemPerKm: "0", driverHoursPerTrip: 1 },
     startingCash: "0", pace: { maxMinutes: 0, travelScaleBp: 10000, playtestSeconds: 0 },
   };
 }
 
 const STATUSES = ["working", "working", "working", "working", "idle", "idle", "stalled", "constructing", "upgrading", "working"] as const;
-const TYPES = ["field", "barn", "food_plant", "steel_mill", "garage", "field", "barn"] as const;
+const ALL_TYPES = BUILDING_TYPES.filter((t) => !t.requiresDeposit).map((t) => t.id);
+const MINE_TYPES = BUILDING_TYPES.filter((t) => t.requiresDeposit).map((t) => ({ id: t.id, deposits: t.deposits }));
 
 function makeMap(): WorldMapDto {
   const rnd = mulberry(42);
@@ -37,7 +45,9 @@ function makeMap(): WorldMapDto {
     const owned = r < 0.55;
     const mine = owned && rnd() < 0.3;
     const companyId = mine ? ME : `company-${Math.floor(rnd() * 6)}`;
-    const type = p.deposit ? "mine" : (TYPES[Math.floor(rnd() * TYPES.length)] as string);
+    const dep = p.deposit?.kind;
+    const mineFit = dep ? MINE_TYPES.filter((m) => !m.deposits || m.deposits.includes(dep)) : [];
+    const type = mineFit.length > 0 ? (mineFit[Math.floor(rnd() * mineFit.length)] as { id: string }).id : (ALL_TYPES[Math.floor(rnd() * ALL_TYPES.length)] as string);
     return {
       id: p.id, cityId: p.cityId, gx: p.gx, gz: p.gz, price: String(p.price), minLevel: p.minLevel, sizeHa: p.sizeHa,
       fertilityBp: p.fertilityBp, pastureBp: p.pastureBp, deposit: p.deposit, distanceToCenterKm: p.distanceToCenterKm,

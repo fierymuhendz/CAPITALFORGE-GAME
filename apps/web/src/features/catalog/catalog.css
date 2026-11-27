@@ -1,0 +1,73 @@
+/* Katalog, ürün sayfası, pazar istatistiği */
+.cat-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+@media (min-width: 981px) { .cat-layout { grid-template-columns: minmax(0, 1fr) minmax(360px, 460px); } }
+.cat-main { min-width: 0; }
+.cat-detail { position: sticky; top: 0; align-self: start; max-height: calc(var(--app-h, 100dvh) - 150px); overflow-y: auto; padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.cat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cat-row { appearance: none; width: 100%; display: flex; align-items: center; gap: 10px; min-height: var(--tap); padding: 6px 12px; text-align: start; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); color: var(--text); font: inherit; cursor: pointer; content-visibility: auto; contain-intrinsic-size: auto 48px; flex-wrap: wrap; }
+.cat-row:hover { background: var(--surface-2); border-color: var(--line-strong); }
+.cat-row[aria-pressed="true"] { border-color: var(--forge); background: var(--forge-soft); }
+.cat-row:focus-visible { box-shadow: var(--glow); }
+.cat-name { font-weight: 600; flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.cat-meta { margin-inline-start: auto; font-size: var(--fs-xs); color: var(--text-2); }
+.cat-action { position: sticky; bottom: calc(-1 * var(--sp-4)); margin: 0 calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)); padding: var(--sp-3) var(--sp-4); background: var(--surface); border-top: 1px solid var(--line); }
+.pd-h { display: flex; align-items: center; gap: 10px; font-size: var(--fs-xl); overflow-wrap: anywhere; }
+.pd-title { display: inline-flex; align-items: center; gap: 10px; }
+.pd-sec { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+.pd-sub { font-size: var(--fs-sm); color: var(--text-2); margin-top: var(--sp-2); font-weight: 600; }
+.pd-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.pd-item { display: flex; flex-direction: column; gap: 4px; padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
+.pd-list.tight { gap: 2px; }
+.pd-sys { min-height: 32px; color: var(--text-2); }
+.pd-avail { align-items: flex-start; }
+.trade-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); align-items: end; }
+@media (max-width: 520px) { .trade-pick { grid-template-columns: minmax(0, 1fr); } }
+
+/* pazar istatistiği */
+.ms-block, .ms-route { display: flex; flex-direction: column; gap: var(--sp-3); }
+.ms-quote { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.ms-nums { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); }
+@container (max-width: 560px) { .ms-nums { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .ms-nums { grid-template-columns: minmax(0, 1fr); } }
+.ms-num { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-inline-start: var(--sp-3); border-inline-start: 3px solid var(--line-strong); }
+.ms-num dt { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.ms-num dd { margin: 0; }
+.ms-num dd.num { font: 650 var(--fs-xl)/1.2 var(--font-head); }
+.ms-sub { font-size: var(--fs-xs); color: var(--text-2); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.ms-hint { font-size: var(--fs-xs); color: var(--text-3); }
+.ms-ref, .ms-low { margin: 0; }
+.ms-depth { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.ms-rows { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.ms-rows > div { display: flex; justify-content: space-between; gap: var(--sp-3); align-items: center; }
+.ms-rows dt { color: var(--text-2); font-size: var(--fs-sm); }
+.ms-rows dd { margin: 0; }
+.ms-rows .ms-bar { display: block; }
+.ms-sysrow { padding-top: 6px; border-top: 1px dashed var(--line-strong); }
+.ms-q { margin: 0; }
+
+/* araştırma */
+.rs-groups { display: flex; flex-direction: column; gap: var(--sp-5); }
+.rs-group > summary { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); cursor: pointer; font: 650 var(--fs-lg) var(--font-head); list-style: none; }
+.rs-group > summary::-webkit-details-marker { display: none; }
+.rs-group > summary::before { content: "▸"; color: var(--text-2); }
+.rs-group[open] > summary::before { content: "▾"; }
+.rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--sp-3); margin-top: var(--sp-2); }
+.rs-card { display: flex; flex-direction: column; gap: var(--sp-2); scroll-margin-top: 80px; }
+.rs-card:target, .rs-card.flash { border-color: var(--forge); box-shadow: var(--glow); }
+.rs-fx { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); }
+.rs-fx b { color: var(--text); }
+.rs-prereq { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
+.rs-prereq li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rs-prereq ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+
+/* bina seçimi */
+.bp { display: flex; flex-direction: column; gap: var(--sp-3); }
+.bp-card { display: flex; flex-direction: column; gap: 4px; text-align: start; }
+.bp-card[aria-disabled="true"] { opacity: 1; background: var(--surface-2); cursor: default; }
+.bp-reasons { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* tarif gezgini */
+.rb-lock { display: flex; flex-direction: column; gap: 2px; }
+.rb-fix { margin-top: 4px; }
+tr.rb-locked td { color: var(--text-2); }
+.rb-filters { display: flex; flex-wrap: wrap; gap: 6px; }

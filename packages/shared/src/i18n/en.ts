@@ -2,6 +2,7 @@ import type { Dict } from "./index";
 import { enGame } from "./en.game";
 import { enAdmin } from "./en.admin";
 import { enCity } from "./en.city";
+import { enCatalog } from "./catalog-design";
 import { enOperations } from "./operations-design";
 import { enDecisions } from "./decisions-design";
 import { enAccounting, enTxKinds } from "./accounting-design";
@@ -11,6 +12,9 @@ export const en: Dict = {
   ...enAdmin,
   ...enCity,
   ...enOperations,
+  ...enCatalog,
+  deposit: { ...(enGame.deposit as Dict), ...(enCatalog.deposit as Dict) },
+  panels: { ...(enGame.panels as Dict), catalog: "Catalog" },
   ...enAccounting,
   txKind: { ...(enGame.txKind as Dict), ...enTxKinds },
   decide: enDecisions.decide,

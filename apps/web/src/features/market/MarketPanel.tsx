@@ -10,8 +10,10 @@ import { useData, useList } from "@/lib/data";
 import { useDebounced } from "@/lib/debounce";
 import { setShipIntent, takeMarketIntent, type MarketIntent } from "@/lib/intent";
 import { useT, type I18n } from "@/lib/i18n";
-import { Async, Button, EmptyState, Icon, KV, QtyInput, SelectField, Sheet, SkeletonList, SystemBadge, Table, Tabs, Tag, Trend, type Col } from "@/ui";
+import { Async, Button, Disclosure, EmptyState, Icon, KV, ProductPicker, QtyInput, SelectField, Sheet, SkeletonList, SystemBadge, Table, Tabs, Tag, Trend, type Col } from "@/ui";
+import { useProductSheet } from "../catalog/ProductSheet";
 import { usePlay } from "../play/context";
+import { MarketStatsBlock, RouteNetTable } from "./MarketStats";
 import { Board, CreateSheet, type View } from "./MarketBoard";
 
 import "./trade.css";
@@ -24,6 +26,7 @@ export function MarketPanel() {
   const cat = useCat();
   const { me } = useApp();
   const { open } = usePlay();
+  const { openProduct } = useProductSheet();
   const [tab, setTab] = useState<Tab>("buy");
   const [productId, setProductId] = useState(cat.world.products[0]!.id);
   const [toCity, setToCity] = useState(me?.company?.homeCityId ?? cat.world.cities[0]!.id);
@@ -55,7 +58,7 @@ export function MarketPanel() {
       setToCity(it.cityId);
       if (it.qtyKg !== undefined && it.qtyKg > 0) setQtyBuy(it.qtyKg);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sp.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   const inv = useData<HoldingDto[]>("/inventory", undefined, ["inventory"]);
   const held = useMemo(() => {
     const m = new Map<string, number>();
@@ -87,12 +90,9 @@ export function MarketPanel() {
       {tab === "board" ? <Board /> : (
         <>
           {chips.length ? (
-            <div className="trade-products" role="group" aria-label={t("inventory.product")}>
-              {chips.map((p) => (
-                <button key={p.id} type="button" className="trade-product" aria-pressed={prodId === p.id} onClick={() => pick(p.id)}>
-                  <span className="trade-swatch" style={{ backgroundColor: p.color }} aria-hidden="true" /><span className="trade-product-label">{cat.product(p.id)}{tab === "sell" ? <small className="num">{i.qty(held.get(p.id) ?? 0)}</small> : null}</span>{prodId === p.id ? <Icon name="check" size={14} /> : null}
-                </button>
-              ))}
+            <div className="trade-pick">
+              <ProductPicker label={t("inventory.product")} value={prodId} onChange={pick} products={chips} extra={tab === "sell" ? (p) => i.qty(held.get(p.id) ?? 0) : undefined} />
+              <Button onClick={() => openProduct(prodId)}><Icon name="doc" size={16} />{t("psheet.info")}</Button>
             </div>
           ) : null}
           {tab === "sell" && !inv.data ? <Async res={inv}>{() => null}</Async> : tab === "sell" && !chips.length ? (
@@ -114,6 +114,12 @@ export function MarketPanel() {
                   : <QtyInput label={t("market.qty")} value={sellQty} onChange={setQtySell} max={stockKg} />}
               </div>
               <Offers key={`${tab}-${prodId}-${tab === "sell" ? lot?.quality : ""}`} side={tab} quality={tab === "sell" ? lot?.quality : undefined} productId={prodId} cityId={tab === "buy" ? toCity : from} fromCityId={tab === "sell" ? from : null} qtyKg={tab === "buy" ? qtyBuy : sellQty} onCreate={setCreate} onSold={setSold} />
+              <Disclosure summary={t("mstat.title")} open>
+                <div className="col">
+                  {tab === "sell" && from && sellQty > 0 ? <RouteNetTable key={`${prodId}-${from}-${lot?.quality}`} productId={prodId} qtyKg={sellQty} quality={lot?.quality} fromCityId={from} /> : null}
+                  <MarketStatsBlock key={`${prodId}-${tab}`} productId={prodId} cityId={tab === "buy" ? toCity : from ?? toCity} />
+                </div>
+              </Disclosure>
             </>
           )}
         </>
@@ -202,7 +208,7 @@ function Offers({ side, productId, cityId, fromCityId, qtyKg, quality, onCreate,
             ) : null}
             {side === "sell" && d.avgCostPerKg ? <span className="muted small">{t("decide.sell.profitHint", { c: i.price(d.avgCostPerKg) })}</span> : null}
             {d.rows.length ? (
-              <Table cols={cols} rows={d.rows} rowKey={(r) => r.orderId} rowClass={(r) => (r.orderId === d.bestOrderId ? "best" : "")}
+              <Table cols={cols} rows={d.rows} rowKey={(r) => r.orderId} rowClass={(r) => `${r.orderId === d.bestOrderId ? "best" : ""} ${r.isSystem ? "sys" : ""}`}
                 onTap={(r) => { if (side === "buy") setBuy(r); else if (r.notes.includes("NO_STOCK")) return; else if (same(r)) setSell(r); else setHaul(r); }} />
             ) : (
               <EmptyState icon="chart" title={t(side === "buy" ? "offers.noSellers" : "offers.noBuyers", { p: cat.product(productId) })}

@@ -1,12 +1,12 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { translate, type PlotDto, type VehicleMapDto } from "@capitalforge/shared";
+import { INDUSTRY_COLORS, translate, type DepositKind, type PlotDto, type VehicleMapDto } from "@capitalforge/shared";
 import type { CitySelection, CityViewProps } from "../scene/types";
 import {
-  CELL, PAD_HALF, cityCenters, hashStr, parkIndexes, plotOffset, roadEndpoints, vehiclePose, worldBounds, type CityCenters,
+  CELL, GRID_N, PAD_HALF, cityCenters, hashStr, parkIndexes, plotOffset, roadEndpoints, vehiclePose, worldBounds, type CityCenters,
 } from "../scene/layout";
-import { PAL } from "../scene/palette";
+import { DEPOSIT_COLOR, PAL } from "../scene/palette";
 
 export interface CityMap2DProps extends CityViewProps {
   /** oyuncunun şirket seviyesi (verilirse seviyesi yetmeyen arsalar kilitli görünür) */
@@ -22,6 +22,8 @@ const T = {
     field: "Tarla", barn: "Ahır", mine_: "Maden ocağı", food_plant: "Gıda fabrikası", steel_mill: "Çelikhane", garage: "Garaj",
     constructing: "inşaatta", working: "çalışıyor", stalled: "durdu", idle: "boşta", upgrading: "yükseltiliyor",
     van: "Kamyonet", truck: "Kamyon", semi: "Tır", vehicle: "Araç",
+    legend: "Yataklar", deposit: "yatak",
+    iron: "Demir", coal: "Kömür", copper: "Bakır", limestone: "Kireçtaşı", clay: "Kil", sand: "Kum", salt: "Tuz",
   },
   en: {
     map: "City map", city: "City", plot: "Plot", freePlot: "Empty plot, for sale", level: "level", mine: "mine",
@@ -31,9 +33,28 @@ const T = {
     field: "Field", barn: "Dairy barn", mine_: "Mine", food_plant: "Food plant", steel_mill: "Steel mill", garage: "Garage",
     constructing: "under construction", working: "working", stalled: "stalled", idle: "idle", upgrading: "upgrading",
     van: "Van", truck: "Truck", semi: "Semi-trailer", vehicle: "Vehicle",
+    legend: "Deposits", deposit: "deposit",
+    iron: "Iron", coal: "Coal", copper: "Copper", limestone: "Limestone", clay: "Clay", sand: "Sand", salt: "Salt",
   },
 } as const;
 type Dict = (typeof T)["tr"] | (typeof T)["en"];
+
+const DEPOSIT_ORDER: DepositKind[] = ["iron", "coal", "copper", "limestone", "clay", "sand", "salt"];
+function depositName(d: Dict, k: string): string { return (d as unknown as Record<string, string>)[k] ?? k; }
+
+/** Yatak simgesi: renk + şekil (3D işaretle aynı dil) */
+function DepositGlyph({ kind, size = 1 }: { kind: string; size?: number }): ReactNode {
+  const c = DEPOSIT_COLOR[kind] ?? PAL.rock;
+  const st = "#0b121b";
+  const g = (children: ReactNode) => <g transform={`scale(${size})`} stroke={st} strokeWidth={0.04}>{children}</g>;
+  switch (kind) {
+    case "salt": return g(<><rect x={-0.2} y={-0.1} width={0.18} height={0.18} fill={c} transform="rotate(20)" /><rect x={0.04} y={-0.16} width={0.22} height={0.22} fill={c} transform="rotate(-15)" /></>);
+    case "sand": return g(<><ellipse cx={0} cy={0.05} rx={0.34} ry={0.16} fill={c} /><ellipse cx={0.12} cy={-0.05} rx={0.16} ry={0.09} fill={c} /></>);
+    case "clay": return g(<><rect x={-0.3} y={-0.02} width={0.6} height={0.22} rx={0.1} fill={c} /><rect x={-0.18} y={-0.16} width={0.4} height={0.18} rx={0.08} fill={c} /></>);
+    case "limestone": return g(<><polygon points="-0.32,0.2 -0.2,-0.08 0.02,-0.04 0.06,0.2" fill={c} /><polygon points="0.02,0.2 0.1,-0.2 0.3,-0.1 0.34,0.2" fill={c} /></>);
+    default: return g(<><polygon points="-0.34,0.2 -0.14,-0.2 0.06,0.2" fill={c} /><polygon points="-0.04,0.2 0.12,-0.08 0.3,0.2" fill={c} opacity={0.85} /></>);
+  }
+}
 
 function typeName(d: Dict, type: string): string {
   switch (type) {
@@ -74,10 +95,89 @@ function activate(e: KeyboardEvent, fn: () => void): void {
 
 /* ---------------------------------------------------------------- bina simgeleri */
 
-function Glyph({ type, level, crop }: { type: string; level: number; crop: string }): ReactNode {
+function Glyph({ type, level, crop, arch, band }: { type: string; level: number; crop: string; arch?: string | null; band?: string }): ReactNode {
   const ore = crop;
   const L = Math.max(1, Math.min(3, level));
-  switch (type) {
+  const bc = band ?? PAL.concrete;
+  const legacy = type === "field" || type === "barn" || type === "mine" || type === "food_plant" || type === "steel_mill" || type === "garage";
+  switch (legacy ? type : (arch ?? type)) {
+    case "quarry":
+      return (
+        <g>
+          <rect x={-0.48} y={-0.46} width={0.7} height={0.8} fill="#a39b8a" />
+          <rect x={-0.38} y={-0.36} width={0.5} height={0.6} fill="#8c8577" />
+          <rect x={-0.28} y={-0.26} width={0.3} height={0.4} fill="#4a463e" />
+          <rect x={0.28} y={-0.1} width={0.22} height={0.4} fill={PAL.steel} />
+          <rect x={0.28} y={-0.22} width={0.22} height={0.1} fill={bc} />
+          <polygon points="-0.46,0.46 -0.3,0.2 -0.14,0.46" fill={crop} />
+        </g>
+      );
+    case "mill":
+      return (
+        <g>
+          <rect x={-0.46} y={-0.1} width={0.5} height={0.46} fill="#d6d9d2" />
+          <rect x={-0.46} y={-0.1} width={0.5} height={0.1} fill={bc} />
+          {[0, 1, 2].slice(0, L >= 2 ? 3 : 2).map((i) => <circle key={i} cx={0.28} cy={-0.28 + i * 0.28} r={0.12} fill={PAL.white} stroke={bc} strokeWidth={0.05} />)}
+        </g>
+      );
+    case "kiln":
+      return (
+        <g>
+          <rect x={-0.46} y={-0.02} width={0.74} height={0.42} fill="#8a7a6a" />
+          <rect x={-0.46} y={-0.02} width={0.74} height={0.07} fill={bc} />
+          <path d="M-0.3 -0.02 Q-0.1 -0.3 0.1 -0.02 Z" fill="#5b4b40" />
+          <rect x={0.34} y={-0.44} width={0.12} height={0.84} fill="#7a6d62" />
+          <rect x={0.34} y={-0.44} width={0.12} height={0.08} fill={bc} />
+          <rect x={-0.06} y={0.18} width={0.16} height={0.14} fill={PAL.forge} />
+        </g>
+      );
+    case "warehouse":
+      return (
+        <g>
+          <rect x={-0.5} y={-0.18} width={1} height={0.5} fill="#c9d0d4" />
+          <rect x={-0.52} y={-0.26} width={1.04} height={0.1} fill={bc} />
+          {[0, 1, 2].map((i) => <rect key={i} x={-0.36 + i * 0.28} y={0.08} width={0.2} height={0.24} fill={PAL.dark} />)}
+          <rect x={-0.5} y={0.34} width={1} height={0.08} fill="#9aa3aa" />
+        </g>
+      );
+    case "greenhouse":
+      return (
+        <g>
+          {Array.from({ length: L >= 2 ? 3 : 2 }, (_, i) => {
+            const w = 0.84 / (L >= 2 ? 3 : 2), x = -0.42 + i * w;
+            return <path key={i} d={`M${x} 0.36 L${x} -0.04 Q${x + w / 2} -0.4 ${x + w} -0.04 L${x + w} 0.36 Z`} fill="#cfeee9" stroke={PAL.white} strokeWidth={0.04} />;
+          })}
+          <rect x={-0.42} y={0.34} width={0.84} height={0.08} fill={bc} />
+        </g>
+      );
+    case "orchard":
+      return (
+        <g>
+          <rect x={-0.5} y={-0.5} width={1} height={1} fill="#5a6a3a" />
+          {[0, 1, 2].flatMap((i) => [0, 1, 2].map((j) => (
+            <g key={`${i}${j}`}><circle cx={-0.3 + i * 0.3} cy={-0.3 + j * 0.3} r={0.12} fill={(i + j) % 2 ? PAL.tree : PAL.treeDark} />{(i + j) % 2 === 0 && <circle cx={-0.26 + i * 0.3} cy={-0.34 + j * 0.3} r={0.04} fill={bc} />}</g>
+          )))}
+        </g>
+      );
+    case "forest":
+      return (
+        <g>
+          <rect x={-0.5} y={-0.5} width={1} height={1} fill="#4f6a3e" />
+          {[[-0.28, -0.14], [0.02, -0.3], [0.3, -0.08], [-0.1, 0.18], [0.24, 0.3], [-0.34, 0.32]].map(([x, y], i) => (
+            <polygon key={i} points={`${(x ?? 0) - 0.15},${(y ?? 0) + 0.14} ${x},${(y ?? 0) - 0.2} ${(x ?? 0) + 0.15},${(y ?? 0) + 0.14}`} fill={i % 2 ? PAL.tree : PAL.treeDark} />
+          ))}
+          <rect x={0.34} y={0.38} width={0.14} height={0.08} fill={bc} />
+        </g>
+      );
+    case "workshop":
+      return (
+        <g>
+          <rect x={-0.46} y={-0.1} width={0.92} height={0.5} fill="#aeb6bc" />
+          <polygon points="-0.46,-0.1 -0.46,-0.36 -0.16,-0.1 -0.16,-0.36 0.14,-0.1 0.14,-0.36 0.44,-0.1" fill={PAL.roofDark} />
+          {[-0.16, 0.14, 0.44].map((x) => <rect key={x} x={x - 0.03} y={-0.36} width={0.05} height={0.26} fill={bc} />)}
+          <rect x={0.1} y={0.18} width={0.2} height={0.22} fill={PAL.dark} />
+        </g>
+      );
     case "field": {
       const n = 3 + L;
       return (
@@ -176,24 +276,30 @@ interface PlotCellProps {
   selectedPlot: boolean;
   selectedFacility: boolean;
   cityName: string;
+  arch: string | null;
+  band: string | undefined;
+  tname: string | undefined;
   colorOf: (id: string | null | undefined) => string | undefined;
   d: Dict;
   suppress: React.MutableRefObject<boolean>;
   onSelect: (s: CitySelection) => void;
 }
 
-const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot, selectedFacility, cityName, colorOf, d, suppress, onSelect }: PlotCellProps) {
+const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot, selectedFacility, cityName, arch, band, tname, colorOf, d, suppress, onSelect }: PlotCellProps) {
   const b = plot.building;
   const fill = mine ? "#6a4e38" : plot.owner?.isSystem ? PAL.tileSystem : plot.owner ? PAL.tileOther : locked || plot.minLevel >= 3 ? PAL.tileLockedHigh : plot.minLevel === 2 ? PAL.tileLockedMid : PAL.tile;
   const pos = `${plot.gx + 1}-${plot.gz + 1}`;
   const ownerTxt = plot.owner ? `${plot.owner.isSystem ? d.system : plot.owner.companyName}${mine ? `, ${d.mine}` : ""}` : null;
+  const depTxt = plot.deposit ? `, ${depositName(d, plot.deposit.kind)} ${d.deposit}` : "";
   const plotLabel = plot.owner
-    ? `${d.plot} ${cityName} ${pos}, ${d.owner}: ${ownerTxt}`
-    : `${d.freePlot}, ${cityName} ${pos}${plot.minLevel > 1 ? `, ${d.needsLevel} ${plot.minLevel}` : ""}${locked ? `, ${d.locked}` : ""}`;
+    ? `${d.plot} ${cityName} ${pos}${depTxt}, ${d.owner}: ${ownerTxt}`
+    : `${d.freePlot}, ${cityName} ${pos}${depTxt}${plot.minLevel > 1 ? `, ${d.needsLevel} ${plot.minLevel}` : ""}${locked ? `, ${d.locked}` : ""}`;
   const outCol = colorOf(b?.outputProductId);
+  const depCol = plot.deposit ? DEPOSIT_COLOR[plot.deposit.kind] : undefined;
   const crop = b?.type === "mine"
     ? (outCol ?? (plot.deposit?.kind === "coal" ? PAL.oreCoal : PAL.oreIron))
-    : (outCol ?? (b && hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder));
+    : arch === "quarry" ? (depCol ?? outCol ?? band ?? PAL.concrete)
+    : (outCol ?? (b && (b.type === "field" || b.type === "barn") ? (hashStr(b.id) % 2 === 0 ? PAL.grain : PAL.fodder) : band ?? PAL.concrete));
   const sz = CELL - 0.2;
   const pick = (s: CitySelection) => () => { if (!suppress.current) onSelect(s); };
   const selP = { type: "plot", plotId: plot.id } as const;
@@ -204,6 +310,12 @@ const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot
         onClick={pick(selP)} onKeyDown={(e) => activate(e, pick(selP))}
       >
         <rect x={-sz / 2} y={-sz / 2} width={sz} height={sz} rx={0.06} fill={fill} stroke={mine ? PAL.forge : "none"} strokeWidth={mine ? 0.1 : 0} />
+        {!b && plot.deposit && (
+          <g transform="translate(0.26 0.24)" style={{ pointerEvents: "none" }}>
+            <title>{`${depositName(d, plot.deposit.kind)} ${d.deposit}`}</title>
+            <DepositGlyph kind={plot.deposit.kind} size={1.1} />
+          </g>
+        )}
         {!plot.owner && (
           <g opacity={0.6}>
             <rect x={-sz / 2 + 0.05} y={-sz / 2 + 0.05} width={sz - 0.1} height={sz - 0.1} rx={0.04} fill="none" stroke={locked ? "#e5604f" : "#7d8c9c"} strokeWidth={0.04} strokeDasharray="0.14 0.1" />
@@ -220,13 +332,13 @@ const PlotCell = memo(function PlotCell({ plot, x, z, mine, locked, selectedPlot
       {b && (
         <g
           className="cf2d-btn" role="button" tabIndex={0} aria-pressed={selectedFacility}
-          aria-label={`${typeName(d, b.type)}, ${d.level} ${b.level}, ${statusName(d, b.status)}${mine ? `, ${d.mine}` : ownerTxt ? `, ${ownerTxt}` : ""}, ${cityName} ${pos}`}
+          aria-label={`${tname ?? typeName(d, b.type)}, ${d.level} ${b.level}, ${statusName(d, b.status)}${mine ? `, ${d.mine}` : ownerTxt ? `, ${ownerTxt}` : ""}, ${cityName} ${pos}`}
           transform="scale(0.9)"
           onClick={pick({ type: "facility", facilityId: b.id, plotId: plot.id })}
           onKeyDown={(e) => activate(e, pick({ type: "facility", facilityId: b.id, plotId: plot.id }))}
         >
           <rect x={-0.5} y={-0.5} width={1} height={1} fill="transparent" />
-          <Glyph type={b.type} level={b.level} crop={crop} />
+          <Glyph type={b.type} level={b.level} crop={crop} arch={arch} band={band} />
           {b.status === "constructing" && <rect x={-0.5} y={-0.5} width={1} height={1} fill="#000" opacity={0.35} />}
           {b.status === "constructing" && <rect x={-0.5} y={-0.5} width={1} height={1} fill="none" stroke={PAL.scaffold} strokeWidth={0.06} strokeDasharray="0.12 0.08" />}
           {b.status === "stalled" && <rect x={-0.52} y={-0.52} width={1.04} height={1.04} fill="none" stroke={PAL.warn} strokeWidth={0.07} />}
@@ -334,6 +446,9 @@ export default function CityMap2D(props: CityMap2DProps) {
 
   const prodColor = useMemo(() => new Map(world.products.map((p) => [p.id, p.color])), [world.products]);
   const colorOf = useCallback((id: string | null | undefined) => (id ? prodColor.get(id) : undefined), [prodColor]);
+  const typeInfo = useMemo(() => new Map(world.buildingTypes.map((t) => [t.id, {
+    arch: t.archetype, band: t.industry ? INDUSTRY_COLORS[t.industry] : undefined, name: t.name,
+  }])), [world.buildingTypes]);
   const cityNames = useMemo(() => new Map(world.cities.map((c) => [c.id, c.name[locale]])), [world.cities, locale]);
 
   const overview = useCallback((): View => {
@@ -542,7 +657,10 @@ export default function CityMap2D(props: CityMap2DProps) {
                   <PlotCell
                     key={pl.id} plot={pl} x={p.x + off.x} z={p.z + off.z} mine={mine} locked={locked}
                     selectedPlot={selPlotId === pl.id} selectedFacility={selFacilityPlot === pl.id}
-                    cityName={name} colorOf={colorOf} d={d} suppress={suppress} onSelect={onSelect}
+                    cityName={name} colorOf={colorOf}
+                    arch={pl.building ? typeInfo.get(pl.building.type)?.arch ?? null : null}
+                    band={pl.building ? typeInfo.get(pl.building.type)?.band : undefined}
+                    tname={pl.building ? typeInfo.get(pl.building.type)?.name[locale] : undefined} d={d} suppress={suppress} onSelect={onSelect}
                   />
                 );
               })}
@@ -563,6 +681,17 @@ export default function CityMap2D(props: CityMap2DProps) {
           cityNames={cityNames} suppress={suppress} onSelect={onSelect} myCompanyId={myCompanyId} colorOf={colorOf}
         />
       </svg>
+      <div
+        role="group" aria-label={d.legend} data-testid="map-legend"
+        style={{ position: "absolute", left: 8, bottom: 8, display: "flex", flexWrap: "wrap", gap: "2px 8px", maxWidth: "calc(100% - 76px)", padding: "4px 8px", borderRadius: 6, background: "rgba(11,18,27,.82)", color: "#eef3f8", font: "600 11px/1.3 system-ui, sans-serif", pointerEvents: "none" }}
+      >
+        {DEPOSIT_ORDER.map((k) => (
+          <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+            <svg width={16} height={14} viewBox="-0.5 -0.35 1 0.7" aria-hidden="true"><DepositGlyph kind={k} /></svg>
+            {depositName(d, k)}
+          </span>
+        ))}
+      </div>
       <div style={{ position: "absolute", right: 10, bottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>
         {btn(d.zoomIn, () => zoomAt(0.75, size.w / 2, size.h / 2), "+")}
         {btn(d.zoomOut, () => zoomAt(1.33, size.w / 2, size.h / 2), "−")}

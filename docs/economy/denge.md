@@ -5,75 +5,33 @@ Varsayılanlar: N = 2 oyuncu aynı pazarı paylaşır, sistem alış fiyatı kal
 
 ## 1. İlk iş (tempo tavanı 60 dk, seviye 1, tek parti, girdiler sistemden satın alınsa bile, N = 1)
 
+Kapsam: girdisi hediye edilen ya da sistem toptancısında satılan (ya da girdisiz), araştırma kilidi olmayan ve çıktısını sistem alıcılarının günlük talebi tek partide karşılayabilen tarifler. Kapsam dışı tarifler (girdisi oyuncudan gelen, araştırma kilitli, çıktısı yalnızca oyunculara satılan ara mallar) bölüm 10'daki zincir kârlılığında denenir.
+
 | Sektör | Şehir | Tarif | Süre | Maliyet | Çıktı | Gelir (navlun, komisyon sonrası) | Kâr |
 |---|---|---|---|---|---|---|---|
 | crop | Yeşilova | Yem bitkisi ekimi | 60 dk | ₺3.024 | 2400 kg | ₺6.277 | ₺3.253 |
 | crop | Yeşilova | Tahıl ekimi | 60 dk | ₺4.710 | 2000 kg | ₺10.354 | ₺5.644 |
-| crop | Yeşilova | Arpa ekimi | 60 dk | ₺4.670 | 2200 kg | ₺1.758 | ₺-2.912 |
-| crop | Yeşilova | Mısır ekimi | 60 dk | ₺4.455 | 2600 kg | ₺1.898 | ₺-2.558 |
-| crop | Yeşilova | Soya ekimi | 60 dk | ₺4.745 | 1200 kg | ₺1.893 | ₺-2.852 |
-| crop | Yeşilova | Ayçiçeği ekimi | 60 dk | ₺3.539 | 1000 kg | ₺2.313 | ₺-1.227 |
-| crop | Yeşilova | Şeker pancarı ekimi | 60 dk | ₺4.008 | 6000 kg | ₺1.973 | ₺-2.036 |
 | crop | Yeşilova | Patates ekimi | 60 dk | ₺8.075 | 4000 kg | ₺12.355 | ₺4.281 |
 | crop | Yeşilova | Soğan ekimi | 60 dk | ₺3.097 | 3000 kg | ₺11.030 | ₺7.933 |
-| crop | Yeşilova | Tohumluk ayırma | 60 dk | ₺6.290 | 800 kg | ₺0 | ₺-6.290 |
-| crop | Yeşilova | Saman balyalama | 60 dk | ₺1.412 | 2500 kg | ₺470 | ₺-942 |
-| crop | Yeşilova | Gübreli tahıl ekimi | 60 dk | ₺5.968 | 2900 kg | ₺14.868 | ₺8.900 |
-| crop | Yeşilova | Gübreli mısır ekimi | 60 dk | ₺5.713 | 3600 kg | ₺1.898 | ₺-3.816 |
-| crop | Yeşilova | Gübreli arpa ekimi | 60 dk | ₺5.928 | 3100 kg | ₺1.758 | ₺-4.170 |
-| crop | Yeşilova | Gübreli patates ekimi | 60 dk | ₺9.615 | 5600 kg | ₺16.709 | ₺7.094 |
 | crop | Kavşak | Yem bitkisi ekimi | 60 dk | ₺3.430 | 2400 kg | ₺5.107 | ₺1.677 |
 | crop | Kavşak | Tahıl ekimi | 60 dk | ₺5.378 | 2000 kg | ₺8.606 | ₺3.228 |
-| crop | Kavşak | Arpa ekimi | 60 dk | ₺5.303 | 2200 kg | ₺1.653 | ₺-3.651 |
-| crop | Kavşak | Mısır ekimi | 60 dk | ₺5.230 | 2600 kg | ₺1.795 | ₺-3.435 |
-| crop | Kavşak | Soya ekimi | 60 dk | ₺5.488 | 1200 kg | ₺1.840 | ₺-3.648 |
-| crop | Kavşak | Ayçiçeği ekimi | 60 dk | ₺4.070 | 1000 kg | ₺2.260 | ₺-1.810 |
-| crop | Kavşak | Şeker pancarı ekimi | 60 dk | ₺4.910 | 6000 kg | ₺1.660 | ₺-3.250 |
 | crop | Kavşak | Patates ekimi | 60 dk | ₺9.071 | 4000 kg | ₺10.532 | ₺1.461 |
 | crop | Kavşak | Soğan ekimi | 60 dk | ₺3.710 | 3000 kg | ₺9.286 | ₺5.576 |
-| crop | Kavşak | Tohumluk ayırma | 60 dk | ₺7.055 | 800 kg | ₺0 | ₺-7.055 |
-| crop | Kavşak | Saman balyalama | 60 dk | ₺1.596 | 2500 kg | ₺368 | ₺-1.229 |
-| crop | Kavşak | Gübreli tahıl ekimi | 60 dk | ₺6.656 | 2900 kg | ₺12.379 | ₺5.723 |
-| crop | Kavşak | Gübreli mısır ekimi | 60 dk | ₺6.508 | 3600 kg | ₺1.795 | ₺-4.713 |
-| crop | Kavşak | Gübreli arpa ekimi | 60 dk | ₺6.581 | 3100 kg | ₺1.653 | ₺-4.929 |
-| crop | Kavşak | Gübreli patates ekimi | 60 dk | ₺10.631 | 5600 kg | ₺14.371 | ₺3.740 |
 | livestock | Akyayla | Süt sağımı | 60 dk | ₺4.961 | 1000 kg | ₺8.920 | ₺3.959 |
-| livestock | Akyayla | Karma yemle süt | 60 dk | ₺7.768 | 1300 kg | ₺11.571 | ₺3.803 |
-| livestock | Akyayla | Silaj ve kuru otla süt | 60 dk | ₺12.421 | 1150 kg | ₺10.247 | ₺-2.174 |
-| livestock | Akyayla | Altlıktan gübre | 60 dk | ₺1.513 | 3000 kg | ₺450 | ₺-1.063 |
-| livestock | Akyayla | Makineli sağım | 60 dk | ₺8.601 | 1650 kg | ₺14.654 | ₺6.053 |
 | livestock | Yeşilova | Süt sağımı | 60 dk | ₺4.281 | 1000 kg | ₺7.625 | ₺3.344 |
-| livestock | Yeşilova | Karma yemle süt | 60 dk | ₺7.529 | 1300 kg | ₺9.899 | ₺2.370 |
-| livestock | Yeşilova | Silaj ve kuru otla süt | 60 dk | ₺12.157 | 1150 kg | ₺8.764 | ₺-3.394 |
-| livestock | Yeşilova | Altlıktan gübre | 60 dk | ₺1.368 | 3000 kg | ₺330 | ₺-1.038 |
-| livestock | Yeşilova | Makineli sağım | 60 dk | ₺8.373 | 1650 kg | ₺12.555 | ₺4.182 |
 | mining | Demirdağ | Demir cevheri çıkarma | 60 dk | ₺3.300 | 4000 kg | ₺8.809 | ₺5.509 |
 | mining | Demirdağ | Kömür çıkarma | 60 dk | ₺3.100 | 3000 kg | ₺8.214 | ₺5.114 |
-| mining | Demirdağ | Bakır cevheri çıkarma | 60 dk | ₺3.475 | 3000 kg | ₺3.403 | ₺-73 |
-| mining | Demirdağ | Mekanize demir | 60 dk | ₺4.308 | 6000 kg | ₺13.131 | ₺8.824 |
-| mining | Demirdağ | Mekanize kömür | 60 dk | ₺4.083 | 4500 kg | ₺12.302 | ₺8.220 |
-| mining | Demirdağ | Mekanize bakır | 60 dk | ₺4.483 | 4500 kg | ₺3.403 | ₺-1.080 |
 | mining | Kavşak | Kömür çıkarma | 60 dk | ₺2.425 | 3000 kg | ₺7.371 | ₺4.946 |
-| mining | Kavşak | Mekanize kömür | 60 dk | ₺3.572 | 4500 kg | ₺11.057 | ₺7.485 |
 | manufacturing | Körfezkent | Un öğütme | 60 dk | ₺14.748 | 1500 kg | ₺19.134 | ₺4.387 |
 | manufacturing | Körfezkent | Süt paketleme | 60 dk | ₺11.918 | 950 kg | ₺14.801 | ₺2.883 |
 | manufacturing | Körfezkent | Peynir yapımı | 60 dk | ₺24.628 | 200 kg | ₺26.609 | ₺1.982 |
-| manufacturing | Körfezkent | Kepekli öğütme | 60 dk | ₺7.483 | 950 kg | ₺0 | ₺-7.483 |
 | manufacturing | Körfezkent | Bulgur kaynatma | 60 dk | ₺8.263 | 850 kg | ₺9.578 | ₺1.315 |
-| manufacturing | Körfezkent | Makarna üretimi | 60 dk | ₺21.861 | 1000 kg | ₺23.812 | ₺1.951 |
-| manufacturing | Körfezkent | Nişasta çekimi | 60 dk | ₺11.430 | 900 kg | ₺0 | ₺-11.430 |
-| manufacturing | Körfezkent | Kutulu süt dolumu | 60 dk | ₺19.928 | 1000 kg | ₺15.565 | ₺-4.363 |
-| manufacturing | Körfezkent | Cips üretimi | 60 dk | ₺21.124 | 600 kg | ₺19.740 | ₺-1.384 |
-| manufacturing | Körfezkent | Fındık kavurma | 60 dk | ₺35.555 | 450 kg | ₺0 | ₺-35.555 |
-| manufacturing | Körfezkent | Maya üretimi | 60 dk | ₺15.265 | 300 kg | ₺0 | ₺-15.265 |
-| manufacturing | Körfezkent | Turşu kurma | 60 dk | ₺8.373 | 900 kg | ₺10.275 | ₺1.902 |
-| manufacturing | Körfezkent | Hazır yemek hattı | 60 dk | ₺89.774 | 600 kg | ₺0 | ₺-89.774 |
-| manufacturing | Körfezkent | Çuvallı un | 60 dk | ₺17.284 | 1600 kg | ₺20.383 | ₺3.099 |
 | manufacturing | Demirdağ | Çelik dökümü | 60 dk | ₺12.370 | 1000 kg | ₺15.900 | ₺3.530 |
-| manufacturing | Demirdağ | Konvertör çeliği | 60 dk | ₺28.339 | 1000 kg | ₺15.900 | ₺-12.439 |
-| manufacturing | Demirdağ | Koklu çelik dökümü | 60 dk | ₺16.389 | 1150 kg | ₺18.246 | ₺1.857 |
 
-Bağış girdileri (tohum 400 kg, yem 3000 kg, tahıl 2000 kg, cevher 2000 + kömür 1000 kg) her sektörde en az bir tam partiyi karşılar.
+Kapsam dışı (31 tarif): sistem günlük talebi tek partiden küçük (oyunculara satılan ara mal): grow_barley, grow_corn, grow_soybean, grow_sunflower, grow_sugar_beet, save_seed, bale_straw, collect_manure, mine_copper, sift_bran, make_corn_starch; araştırma kilitli: grow_grain_fert, grow_corn_fert, grow_barley_fert, grow_potato_fert, milk_cows_machine, mine_iron_mech, mine_coal_mech, mine_copper_mech, smelt_steel_coke; girdisi sistemde satılmıyor (oyuncudan gelir): milk_cows_compound, milk_cows_silage, make_pasta, pack_milk_carton, make_chips, roast_hazelnut, make_yeast, make_pickles, make_ready_meal, mill_flour_sacked, convert_steel.
+
+Bağış girdileri (tohum 400 kg, yem 3000 kg, tahıl 2000 kg, cevher 2000 + kömür 1000 kg) her sektörde en az bir tam partiyi karşılar. Maden arsası seçimi `depositFits` ile binanın kabul ettiği yatağa bakar.
+
 
 ## 2. Sektör kârı (günlük işletme kârı ve 21 gün, N = 2, kalite ölçekli üst sınır, yatırımlar açgözlü)
 
@@ -242,53 +200,140 @@ Un fabrikası seviye 1, günlük kâr: yalnızca sistem girdisi ₺26.390, oyunc
 | Ulusal İnşaat Kavşak | ₺140.000 | ₺99.840 | ₺124.800 |
 | Kavşak Termik Santrali | ₺115.000 | ₺82.800 | ₺103.500 |
 | Demirdağ Santrali | ₺55.000 | ₺36.750 | ₺45.900 |
-| Körfezkent Perakende Zinciri | ₺1.181.000 | ₺912.660 | ₺1.140.658 |
-| Körfezkent Sanayi Alım Ofisi | ₺626.000 | ₺483.908 | ₺604.789 |
+| Körfezkent Perakende Zinciri | ₺1.785.000 | ₺1.379.596 | ₺1.724.321 |
+| Körfezkent Sanayi Alım Ofisi | ₺755.000 | ₺583.445 | ₺729.204 |
 | Körfezkent Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
 | Yeşilova Sanayi Alım Ofisi | ₺43.000 | ₺32.885 | ₺41.088 |
 | Yeşilova Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
 | Akyayla Sanayi Alım Ofisi | ₺73.000 | ₺56.187 | ₺70.227 |
 | Akyayla Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
-| Demirdağ Perakende Zinciri | ₺256.000 | ₺198.130 | ₺247.560 |
-| Demirdağ Sanayi Alım Ofisi | ₺645.000 | ₺498.020 | ₺622.384 |
+| Demirdağ Perakende Zinciri | ₺269.000 | ₺207.793 | ₺259.639 |
+| Demirdağ Sanayi Alım Ofisi | ₺729.000 | ₺562.969 | ₺703.565 |
 | Demirdağ Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
-| Kavşak Perakende Zinciri | ₺925.000 | ₺714.531 | ₺893.098 |
-| Kavşak Sanayi Alım Ofisi | ₺554.000 | ₺428.273 | ₺535.314 |
+| Kavşak Perakende Zinciri | ₺1.517.000 | ₺1.171.803 | ₺1.464.682 |
+| Kavşak Sanayi Alım Ofisi | ₺730.000 | ₺564.405 | ₺705.472 |
 | Kavşak Hammadde Deposu | ₺20.000 | ₺0 | ₺0 |
 
-Toplam günlük bütçe tavanı ₺7.153.000; nominal alım değeri ₺5.305.998. Beklenen gerçek harcama (5 sektörden 2'şer oyuncu, seviye 2, + taşıma işleri): yaklaşık ₺962.337 (tavanın %13'i). Sistem parayı yalnızca oyuncu üretimine karşılık basar; bütçe tavandır, hedef değil.
+Toplam günlük bütçe tavanı ₺8.751.000; nominal alım değeri ₺6.540.487. Beklenen gerçek harcama (5 sektörden 2'şer oyuncu, seviye 2, + taşıma işleri): yaklaşık ₺962.337 (tavanın %10'i). Sistem parayı yalnızca oyuncu üretimine karşılık basar; bütçe tavandır, hedef değil.
 
-## SORUNLAR
+## 10. Zincir kârlılığı (her tarif, her şehir; en kötü şehir)
 
-- ilk iş zararda: crop/yesilova/grow_barley (₺-2.912)
-- ilk iş zararda: crop/yesilova/grow_corn (₺-2.558)
-- ilk iş zararda: crop/yesilova/grow_soybean (₺-2.852)
-- ilk iş zararda: crop/yesilova/grow_sunflower (₺-1.227)
-- ilk iş zararda: crop/yesilova/grow_sugar_beet (₺-2.036)
-- ilk iş zararda: crop/yesilova/save_seed (₺-6.290)
-- ilk iş zararda: crop/yesilova/bale_straw (₺-942)
-- ilk iş zararda: crop/yesilova/grow_corn_fert (₺-3.816)
-- ilk iş zararda: crop/yesilova/grow_barley_fert (₺-4.170)
-- ilk iş zararda: crop/kavsak/grow_barley (₺-3.651)
-- ilk iş zararda: crop/kavsak/grow_corn (₺-3.435)
-- ilk iş zararda: crop/kavsak/grow_soybean (₺-3.648)
-- ilk iş zararda: crop/kavsak/grow_sunflower (₺-1.810)
-- ilk iş zararda: crop/kavsak/grow_sugar_beet (₺-3.250)
-- ilk iş zararda: crop/kavsak/save_seed (₺-7.055)
-- ilk iş zararda: crop/kavsak/bale_straw (₺-1.229)
-- ilk iş zararda: crop/kavsak/grow_corn_fert (₺-4.713)
-- ilk iş zararda: crop/kavsak/grow_barley_fert (₺-4.929)
-- ilk iş zararda: livestock/akyayla/milk_cows_silage (₺-2.174)
-- ilk iş zararda: livestock/akyayla/collect_manure (₺-1.063)
-- ilk iş zararda: livestock/yesilova/milk_cows_silage (₺-3.394)
-- ilk iş zararda: livestock/yesilova/collect_manure (₺-1.038)
-- ilk iş zararda: mining/demirdag/mine_copper (₺-73)
-- ilk iş zararda: mining/demirdag/mine_copper_mech (₺-1.080)
-- ilk iş zararda: manufacturing/korfezkent/sift_bran (₺-7.483)
-- ilk iş zararda: manufacturing/korfezkent/make_corn_starch (₺-11.430)
-- ilk iş zararda: manufacturing/korfezkent/pack_milk_carton (₺-4.363)
-- ilk iş zararda: manufacturing/korfezkent/make_chips (₺-1.384)
-- ilk iş zararda: manufacturing/korfezkent/roast_hazelnut (₺-35.555)
-- ilk iş zararda: manufacturing/korfezkent/make_yeast (₺-15.265)
-- ilk iş zararda: manufacturing/korfezkent/make_ready_meal (₺-89.774)
-- ilk iş zararda: manufacturing/demirdag/convert_steel (₺-12.439)
+Her tarifin bir partisi: girdiler referans fiyatla (oyuncudan) alınır; çıktı (a) sisteme bid fiyatından (nihai mal %85, sanayi ofisinin ara mal teklifi %75, üst sınır dahil) ya da (b) oyuncuya referans fiyattan, %1 komisyonla satılır. Maliyet = girdi + enerji + su + işçilik + günlük bakımın 1/12'si. Navlun yok (pazar simülasyonu ayrıca hesaplar).
+
+| Düzeltilen tarif | Eski (girdi → çıktı kg) | Yeni | Oyuncuya satış marjı eski → yeni | Sisteme satış kârı eski → yeni (₺/parti) | En kötü şehir |
+|---|---|---|---|---|---|
+| milk_cows_silage | silage 900 + hay 300 → 1150 | silage 550 + hay 200 → 1150 | %-19.7 → %21.3 | ₺-3.450 → ₺220 | Akyayla |
+| mix_compound_feed_cotton | barley 600 + cottonseed 400 + bran 200 → 1150 | barley 700 + cottonseed 50 + bran 80 → 1150 | %-50.6 → %47.1 | ₺-13.948 → ₺767 | Körfezkent |
+| mix_compound_feed_beet | barley 700 + molasses 150 + beet_pulp 350 → 1150 | barley 480 + molasses 100 + beet_pulp 300 → 1150 | %2.5 → %34.2 | ₺-2.468 → ₺52 | Körfezkent |
+| pack_milk_carton | raw_milk 1000 + milk_carton 40 → 1000 | raw_milk 1000 + milk_carton 15 → 1000 | %-5.8 → %28.1 | ₺-3.252 → ₺1.063 | Kavşak |
+| make_yogurt_sheep | sheep_milk 800 → 950 | sheep_milk 540 → 950 | %-12.3 → %25.9 | ₺-4.240 → ₺804 | Körfezkent |
+| make_cheese_sheep | sheep_milk 1200 + salt 20 → 220 | sheep_milk 1000 + salt 20 → 230 | %3.4 → %27.9 | ₺-3.034 → ₺1.845 | Akyayla |
+| make_pickles_cannery | pepper 700 + salt 50 + glass_jar 100 → 850 | pepper 650 + salt 50 + glass_jar 90 → 900 | %11.9 → %26.3 | ₺-467 → ₺665 | Demirdağ |
+| build_pallet_beam | timber_beam 220 + fasteners 3 → 200 | timber_beam 210 + fasteners 3 → 210 | %33.2 → %44.8 | ₺-3 → ₺369 | Demirdağ |
+| build_crate_ply | plywood 140 + fasteners 2 → 150 | plywood 90 + fasteners 2 → 160 | %-7.5 → %40.8 | ₺-1.588 → ₺202 | Demirdağ |
+| convert_steel | pig_iron 1100 + limestone 100 → 1000 | pig_iron 480 + limestone 100 → 1000 | %-31.9 → %35.8 | ₺-10.485 → ₺1.915 | Demirdağ |
+| machine_parts_cast | castings 350 + lubricant 5 → 300 | castings 200 + lubricant 4 → 300 | %-13.6 → %38.4 | ₺-6.562 → ₺446 | Körfezkent |
+| cut_gears_cast | castings 260 + lubricant 3 → 220 | castings 140 + lubricant 2 → 220 | %-12.8 → %45.1 | ₺-4.889 → ₺748 | Körfezkent |
+| blend_biodiesel_tallow | tallow 800 + methanol 100 + caustic_soda 10 → 820 | tallow 450 + methanol 80 + caustic_soda 10 → 820 | %-28.7 → %20.7 | ₺-38.352 → ₺1.511 | Körfezkent |
+| cook_glue_hide | hide 100 → 150 | hide 12 → 150 | %-70.7 → %36.3 | ₺-11.940 → ₺72 | Demirdağ |
+| refine_lubricant_tallow | tallow 300 + caustic_soda 10 → 220 | tallow 200 + caustic_soda 10 → 220 | %-3.5 → %41.5 | ₺-9.513 → ₺1.437 | Körfezkent |
+| fire_brick_charcoal | clay 2000 + charcoal 120 → 1800 | clay 2000 + charcoal 120 → 1950 | %10.6 → %19.8 | ₺-582 → ₺176 | Körfezkent |
+
+262 tarifin 261'i oyuncuya referans fiyattan satışta, 260/261'i sistem teklifiyle kârlı. Oyuncuya satış marjı en düşük %-72.9, ortanca %50.7. Bilinçli istisna: recycle_pulp (kütle korunumu: çıktı ≤ girdi; karton fiyatı hamurun ~2,9 katı, kâr yapınca karton-kraft-hamur döngüsü kütle üretirdi).
+
+## 11. Pazar simülasyonu (ajan tabanlı, 7 gün, saatlik adım, sabit tohum)
+
+Model: `packages/economy/sim/market.ts`. Sistem şirketleri (sınırlı günlük arz, bütçeli talep, oyuncular arası 24 sa hacme göre `systemShareFactorBp` ile küçülme, saatlik referans kayması) ve N oyuncu; 18 üretim hattı (arpa, mısır, karma yem, süt, paketli süt, tahıl, un, demir, kömür, çelik, inşaat demiri, patates, yem bitkili süt, pamuk çırçırı, iplik, havlu, fındık hasadı, fındık kavurma), tek kopya (1 ve 4 oyuncu) ya da iki kopya (16 oyuncu). Hatlar oyunculara sırayla dağıtılır; tek oyuncuda hepsi aynı kişidedir ve aralarındaki alışveriş "iç aktarım" sayılır (sistem payını azaltmaz, sunucudaki bağlantı grubu kuralı). Alıcı ve satıcı emirleri yaşlandıkça birbirine yaklaşır (alış %85'ten saatte %3 yükselir; satış sistemin net alışına +%20'den 8 saatte iner), eşleşmede fiyat ortadadır, alıcı navlunu (kendi kamyonu), satıcı %1 komisyonu öder; satıcı sistemin net alışına ulaşınca ya da alıcı sistem satışının teslim maliyetine ulaşınca sistemle işlem yapılır. Saat 0-24 ısınma; A = saat 24-72 normal, B = saat 72-120 olay, C = 120-168 toparlanma.
+
+Olaylar. Kıtlık: arpa ve mısır hatları B boyunca kapalı, bu hatların satılmamış stoğu yok olur, sistem depolarının arpa/mısır arzı %70 kesilir. Fazla üretim: demir, kömür, çelik ve inşaat demiri hatlarının kapasitesi B boyunca 3 katına çıkar.
+
+### 11.1 Senaryo ölçüleri (katalog değerleriyle)
+
+Fiyat endeksi = gerçekleşen satış fiyatı / aynı şehirde taban referans (kayma 10000, %100 = referans); ort = pencere ağırlıklı ortalama, son = pencerenin son satışı. Satış süresi = çıktının üretimden satışa kg ağırlıklı saati. Dolan emir oranı = doldurulan kg / verilen emir kg (alış + satış). p2p payı = oyuncular arası kg / tüm işlem kg. Sistemin bastığı para = sistemin oyunculara ödediği − oyunculardan aldığı, ₺/gün.
+
+| Senaryo | Odak ürün | Fiyat ort (A → B → C) | Fiyat son (B) | Satış süresi sa (A → B → C) | Dolan emir A → B | p2p payı | En kârlı iş kolu ₺/hat-gün | En zayıf iş kolu | Sistem net para ₺/gün |
+|---|---|---|---|---|---|---|---|---|---|
+| tek oyuncu (1) / kıtlık | Karma yem | %59.9 → %61 → %61.4 | %50.5 | 8.9 → 12.6 → 5.7 | 0.97 → 1.00 | %0 | maden-metal ₺26.516 | yem ₺3.384 | ₺382.489 |
+| tek oyuncu (1) / fazla üretim | Çelik | %79.7 → %79 → %73.2 | %55.4 | 7.9 → 6.3 → 8.9 | 1.00 → 0.99 | %0 | maden-metal ₺40.116 | süt-gıda ₺4.919 | ₺467.767 |
+| az oyuncu (4) / kıtlık | Karma yem | %63.1 → %64.1 → %61.6 | %50.2 | 6.6 → 12.1 → 6.4 | 0.97 → 1.00 | %29 | maden-metal ₺27.920 | yem ₺4.105 | ₺378.424 |
+| az oyuncu (4) / fazla üretim | Çelik | %79.1 → %77.4 → %72.4 | %55.8 | 7.0 → 6.2 → 8.4 | 1.00 → 0.99 | %34 | maden-metal ₺41.510 | süt-gıda ₺4.107 | ₺486.777 |
+| yoğun (16) / kıtlık | Karma yem | %57.3 → %57 → %55.7 | %51.6 | 6.9 → 24.7 → 15.4 | 0.96 → 0.99 | %30 | maden-metal ₺15.736 | süt-gıda ₺1.117 | ₺538.093 |
+| yoğun (16) / fazla üretim | Çelik | %70.8 → %76.8 → %69 | %56.4 | 7.4 → 6.6 → 16.5 | 0.98 → 0.98 | %32 | maden-metal ₺21.504 | yem ₺402 | ₺568.067 |
+
+### 11.2 Olay etkisi (zincir ürünleri)
+
+Üretim kg/gün (A / B / C), fiyat endeksi ort (A / B / C), satış süresi sa (A / B / C).
+
+| Senaryo | Ürün | Üretim kg/gün | Fiyat ort | Satış süresi sa |
+|---|---|---|---|---|
+| tek oyuncu (1) / kıtlık | Arpa | 4400 / 0 / 6600 | %61.4 / — / %78.4 | 20.3 / — / 5.7 |
+| tek oyuncu (1) / kıtlık | Mısır | 3900 / 0 / 7800 | %61.5 / — / %70.3 | 22.3 / — / 10.1 |
+| tek oyuncu (1) / kıtlık | Karma yem | 5175 / 2875 / 6325 | %59.9 / %61 / %61.4 | 8.9 / 12.6 / 5.7 |
+| tek oyuncu (1) / kıtlık | Çiğ süt | 16050 / 13450 / 16050 | %73.2 / %72.7 / %75.3 | 7.4 / 6.9 / 7.5 |
+| tek oyuncu (1) / fazla üretim | Demir cevheri | 34500 / 117300 / 34500 | %80.5 / %75.4 / %72.2 | 7.7 / 7.4 / 8.0 |
+| tek oyuncu (1) / fazla üretim | Çelik | 8500 / 23500 / 8000 | %79.7 / %79 / %73.2 | 7.9 / 6.3 / 8.9 |
+| tek oyuncu (1) / fazla üretim | İnşaat demiri | 970 / 3880 / 0 | %71.4 / %70.8 / %70.9 | 24.5 / 50.8 / 59.2 |
+| tek oyuncu (1) / fazla üretim | Kömür | 27600 / 89700 / 25875 | %78.6 / %73.6 / %75.7 | 7.9 / 7.7 / 7.7 |
+| az oyuncu (4) / kıtlık | Arpa | 5500 / 0 / 6600 | %67.7 / — / %80.1 | 17.3 / — / 7.2 |
+| az oyuncu (4) / kıtlık | Mısır | 5200 / 0 / 7800 | %67.6 / — / %75.2 | 19.9 / — / 12.8 |
+| az oyuncu (4) / kıtlık | Karma yem | 5175 / 2875 / 7475 | %63.1 / %64.1 / %61.6 | 6.6 / 12.1 / 6.4 |
+| az oyuncu (4) / kıtlık | Çiğ süt | 17350 / 13950 / 16850 | %73.1 / %72.7 / %73.7 | 7.1 / 6.7 / 7.1 |
+| az oyuncu (4) / fazla üretim | Demir cevheri | 39100 / 108100 / 39100 | %82.4 / %81.1 / %73.9 | 7.5 / 6.9 / 8.9 |
+| az oyuncu (4) / fazla üretim | Çelik | 9000 / 26000 / 9000 | %79.1 / %77.4 / %72.4 | 7.0 / 6.2 / 8.4 |
+| az oyuncu (4) / fazla üretim | İnşaat demiri | 970 / 3880 / 0 | %71.2 / %70.8 / %70.9 | 27.9 / 51.3 / 59.2 |
+| az oyuncu (4) / fazla üretim | Kömür | 27600 / 84525 / 25875 | %80.3 / %77.3 / %75.8 | 7.7 / 7.4 / 7.9 |
+| yoğun (16) / kıtlık | Arpa | 6600 / 0 / 9900 | %65.4 / — / %71.6 | 13.0 / — / 12.2 |
+| yoğun (16) / kıtlık | Mısır | 7800 / 0 / 10400 | %66.6 / — / %69.8 | 9.5 / — / 15.2 |
+| yoğun (16) / kıtlık | Karma yem | 6325 / 3450 / 6900 | %57.3 / %57 / %55.7 | 6.9 / 24.7 / 15.4 |
+| yoğun (16) / kıtlık | Çiğ süt | 19500 / 15750 / 17700 | %69.6 / %72.8 / %71.2 | 7.4 / 5.8 / 6.9 |
+| yoğun (16) / fazla üretim | Demir cevheri | 78200 / 144900 / 41400 | %49.9 / %46.4 / %55 | 7.2 / 9.0 / 18.9 |
+| yoğun (16) / fazla üretim | Çelik | 17500 / 35000 / 10500 | %70.8 / %76.8 / %69 | 7.4 / 6.6 / 16.5 |
+| yoğun (16) / fazla üretim | İnşaat demiri | 970 / 6790 / 0 | %71.2 / %70.9 / %70.8 | 27.2 / 69.2 / 108.1 |
+| yoğun (16) / fazla üretim | Kömür | 56925 / 108675 / 46575 | %48.7 / %46.6 / %55.5 | 7.3 / 8.6 / 14.7 |
+
+### 11.3 İş kolu kârlılığı (₺/hat-gün, 7 gün; kâr = gelir − girdi − enerji/su/işçilik − bakım − navlun − komisyon + kapanış stoğu maliyetle)
+
+| Senaryo | tarla ürünleri | yem | hayvancılık | süt-gıda | tekstil | maden-metal |
+|---|---|---|---|---|---|---|
+| tek oyuncu (1) / kıtlık | ₺10.621 | ₺3.384 | ₺4.869 | ₺4.103 | ₺8.557 | ₺26.516 |
+| tek oyuncu (1) / fazla üretim | ₺10.513 | ₺5.582 | ₺6.060 | ₺4.919 | ₺8.279 | ₺40.116 |
+| az oyuncu (4) / kıtlık | ₺10.235 | ₺4.105 | ₺4.532 | ₺4.480 | ₺8.065 | ₺27.920 |
+| az oyuncu (4) / fazla üretim | ₺11.065 | ₺6.469 | ₺4.895 | ₺4.107 | ₺8.284 | ₺41.510 |
+| yoğun (16) / kıtlık | ₺7.878 | ₺1.470 | ₺2.659 | ₺1.117 | ₺4.812 | ₺15.736 |
+| yoğun (16) / fazla üretim | ₺8.699 | ₺402 | ₺2.680 | ₺2.055 | ₺4.855 | ₺21.504 |
+
+### 11.4 Darboğaz ve düzeltme: önce / sonra
+
+Bulgu: nihai mal talebi ₺ bütçesine göre belirlendiğinden değerli ve ağır mallarda bütçe tek bir partiyi bile almıyor (85 nihai maldan 21'inde sistem talebi, oyuncu sayısından bağımsız olarak günde 1 partinin altında; ör. sucuk 0,14, dana eti 0,24, konteyner 0,34, havlu 0,71 parti/gün); ilk parti sistem alıcısına sığmıyor, satış süresi uzuyor, hat stok sınırında boşta kalıyor. Düzeltme: `V4_DEMAND_BUDGET.finalMinBatchesPerCity` 0 → 0.6 (şehir başına en az bu kadar parti; iki şehirde ≥ 1,2 parti/gün). Sistem günlük bütçe tavanı ₺7.153.000 → ₺8.751.000; sistem payı küçüldükçe (oyuncu hacmi arttıkça) bu destek de küçülür.
+
+| Ölçü | Önce (0) | Sonra (0.6) |
+|---|---|---|
+| Sistem talebi < 1 parti/gün olan nihai mal | 21 / 85 | 0 / 85 |
+| tek oyuncu (1) / kıtlık: Havlu satış süresi sa / üretim kg/gün / haftalık kâr | 48.7 / 560 / ₺4.894 | 28.1 / 560 / ₺18.409 |
+| tek oyuncu (1) / fazla üretim: Havlu satış süresi sa / üretim kg/gün / haftalık kâr | 48.9 / 560 / ₺4.814 | 28.3 / 560 / ₺18.744 |
+| az oyuncu (4) / kıtlık: Havlu satış süresi sa / üretim kg/gün / haftalık kâr | 48.9 / 560 / ₺4.851 | 28.3 / 560 / ₺19.751 |
+| az oyuncu (4) / fazla üretim: Havlu satış süresi sa / üretim kg/gün / haftalık kâr | 48.9 / 560 / ₺4.810 | 28.3 / 560 / ₺18.503 |
+| yoğun (16) / kıtlık: Havlu satış süresi sa / üretim kg/gün / haftalık kâr | 30.4 / 560 / ₺-955 | 23.5 / 560 / ₺3.523 |
+| yoğun (16) / fazla üretim: Havlu satış süresi sa / üretim kg/gün / haftalık kâr | 38.4 / 560 / ₺-727 | 29.9 / 560 / ₺5.327 |
+| tek oyuncu (1) / kıtlık: Kavrulmuş fındık satış süresi sa / üretim kg/gün / haftalık kâr | 47.0 / 743 / ₺4.344 | 38.6 / 990 / ₺6.088 |
+| tek oyuncu (1) / fazla üretim: Kavrulmuş fındık satış süresi sa / üretim kg/gün / haftalık kâr | 46.1 / 743 / ₺4.266 | 39.0 / 990 / ₺4.215 |
+| az oyuncu (4) / kıtlık: Kavrulmuş fındık satış süresi sa / üretim kg/gün / haftalık kâr | 47.1 / 743 / ₺7.080 | 38.8 / 990 / ₺6.866 |
+| az oyuncu (4) / fazla üretim: Kavrulmuş fındık satış süresi sa / üretim kg/gün / haftalık kâr | 46.7 / 990 / ₺5.414 | 38.2 / 1238 / ₺6.121 |
+| yoğun (16) / kıtlık: Kavrulmuş fındık satış süresi sa / üretim kg/gün / haftalık kâr | 54.2 / 990 / ₺2.135 | 51.5 / 1485 / ₺-391 |
+| yoğun (16) / fazla üretim: Kavrulmuş fındık satış süresi sa / üretim kg/gün / haftalık kâr | 47.8 / 990 / ₺1.306 | 45.8 / 1485 / ₺924 |
+| tek oyuncu (1) / kıtlık: tüm ürünlerde satış süresi sa / dolan emir oranı / sistem net ₺/gün | 8.8 / 0.93 / ₺357.608 | 8.7 / 0.93 / ₺382.489 |
+| tek oyuncu (1) / fazla üretim: tüm ürünlerde satış süresi sa / dolan emir oranı / sistem net ₺/gün | 9.4 / 0.95 / ₺441.455 | 9.3 / 0.95 / ₺467.767 |
+| az oyuncu (4) / kıtlık: tüm ürünlerde satış süresi sa / dolan emir oranı / sistem net ₺/gün | 8.2 / 0.93 / ₺350.776 | 8.1 / 0.93 / ₺378.424 |
+| az oyuncu (4) / fazla üretim: tüm ürünlerde satış süresi sa / dolan emir oranı / sistem net ₺/gün | 9.0 / 0.95 / ₺459.115 | 9.0 / 0.96 / ₺486.777 |
+| yoğun (16) / kıtlık: tüm ürünlerde satış süresi sa / dolan emir oranı / sistem net ₺/gün | 8.3 / 0.92 / ₺510.853 | 8.4 / 0.92 / ₺538.093 |
+| yoğun (16) / fazla üretim: tüm ürünlerde satış süresi sa / dolan emir oranı / sistem net ₺/gün | 11.2 / 0.94 / ₺539.204 | 11.2 / 0.94 / ₺568.067 |
+
+### 11.5 Denetimler
+
+- Tek küçük işlem sistem desteğini kapatmaz: her (sistem şirketi, ürün, alış/satış) için günlük hacmin %10'u (en çok 250 kg) kadar bir oyuncu işleminden sonra destek ≥ %90 ve en az 1 kg: 357/357. Destek, oyuncu payının %80'i kadar küçülür, taban %20. Karşılaştırma: 1000 kg'lık bir oyuncu işlemi 318/357 çifti %90'ın altına, en kötü %22'e indirir (yine hiçbiri kapanmaz: kapanan 0); küçük günlük hacimli ara mallarda bir parti bile sistem desteğini azaltır, tasarım gereği.
+- Sistemden al, sisteme sat (sıfır doygunluk, kalite 2, dolu kamyon navlunu, %1 komisyon, her satış-alış şehri çifti, 77 çift): en iyi tur -37 kuruş/kg (manure: supply_akyayla → industry_akyayla) → zararlı (doğru).
+- Para korunumu (her senaryoda): oyuncu nakit değişimi = sistemden alınan − sisteme ödenen − komisyon − navlun − enerji/su/işçilik − bakım. Sistem harcaması 7 günde en çok ₺61.257.000 (günlük tavan ₺8.751.000); senaryolarda gerçekleşen ₺5.235.931 üst sınır.
+
+## Sonuç
+
+Tüm denetimler geçti: ilk iş kapsamındaki her tarif kârlı ve bağışla/sistem girdisiyle karşılanır, beş sektör de 21 günde kâr eder (en yüksek / en düşük ≤ 2,2×), her tarif zincirde kârlıdır (istisna belgelidir), pazar simülasyonunda (1, 4, 16 oyuncu; kıtlık ve fazla üretim) her iş kolu kâr eder ve para korunur, sistem arbitrajı yok, tek küçük işlem sistem desteğini kapatmaz, spot/sözleşme, tedarikçi ve taşımacı kararları parametreyle çevrilir.

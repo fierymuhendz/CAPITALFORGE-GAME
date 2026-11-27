@@ -52,7 +52,7 @@ export const V4_RECIPES: RecipeDef[] = [
   R("fell_logs_mech", "forest_plantation", "Mekanize kesim", "Mechanized felling", [["seed", 40], ["machine_part", 15]], ["logs", 7500], 180, 10, 140, 10, { research: "mechanized_forestry" }),
   // ── Ahır
   R("milk_cows_compound", "barn", "Karma yemle süt", "Milk on compound feed", [["compound_feed", 600]], ["raw_milk", 1300], 60, 6, 30, 10),
-  R("milk_cows_silage", "barn", "Silaj ve kuru otla süt", "Milk on silage and hay", [["silage", 900], ["hay", 300]], ["raw_milk", 1150], 60, 6, 30, 12),
+  R("milk_cows_silage", "barn", "Silaj ve kuru otla süt", "Milk on silage and hay", [["silage", 550], ["hay", 200]], ["raw_milk", 1150], 60, 6, 30, 12),
   R("collect_manure", "barn", "Altlıktan gübre", "Collect manure", [["straw", 500]], ["manure", 3000], 60, 4, 10, 10),
   R("milk_cows_machine", "barn", "Makineli sağım", "Machine milking", [["compound_feed", 600], ["milking_machine", 4]], ["raw_milk", 1650], 60, 4, 50, 10, { research: "dairy_automation" }),
   // ── Kümes
@@ -75,8 +75,8 @@ export const V4_RECIPES: RecipeDef[] = [
   R("harvest_beeswax", "apiary", "Balmumu toplama", "Collect beeswax", [["sugar", 40]], ["beeswax", 25], 180, 6, 5, 5),
   // ── Yem fabrikası
   R("mix_compound_feed", "feed_mill", "Karma yem karışımı", "Mix compound feed", [["barley", 600], ["corn", 600]], ["compound_feed", 1150], 60, 5, 80, 5),
-  R("mix_compound_feed_cotton", "feed_mill", "Çiğitli karma yem", "Compound feed with cottonseed", [["barley", 600], ["cottonseed", 400], ["bran", 200]], ["compound_feed", 1150], 60, 5, 80, 5),
-  R("mix_compound_feed_beet", "feed_mill", "Pancar posalı karma yem", "Compound feed with beet pulp", [["barley", 700], ["molasses", 150], ["beet_pulp", 350]], ["compound_feed", 1150], 60, 5, 80, 5),
+  R("mix_compound_feed_cotton", "feed_mill", "Çiğitli karma yem", "Compound feed with cottonseed", [["barley", 700], ["cottonseed", 50], ["bran", 80]], ["compound_feed", 1150], 60, 5, 80, 5),
+  R("mix_compound_feed_beet", "feed_mill", "Pancar posalı karma yem", "Compound feed with beet pulp", [["barley", 480], ["molasses", 100], ["beet_pulp", 300]], ["compound_feed", 1150], 60, 5, 80, 5),
   R("mix_poultry_feed", "feed_mill", "Kanatlı yemi", "Mix poultry feed", [["corn", 700], ["soy_meal", 300]], ["poultry_feed", 980], 60, 5, 70, 5),
   R("mix_finishing_feed", "feed_mill", "Besi yemi", "Mix finishing feed", [["corn", 500], ["sunflower_meal", 300], ["feed_premix", 20]], ["cattle_finishing_feed", 800], 60, 5, 70, 5),
   R("make_silage", "feed_mill", "Silaj yapımı", "Make silage", [["corn", 2000]], ["silage", 1900], 60, 4, 40, 20),
@@ -88,7 +88,7 @@ export const V4_RECIPES: RecipeDef[] = [
   R("make_bulgur", "food_plant", "Bulgur kaynatma", "Make bulgur", [["grain", 1000]], ["bulgur", 850], 60, 5, 90, 20),
   R("make_pasta", "food_plant", "Makarna üretimi", "Make pasta", [["flour", 1000], ["eggs", 50]], ["pasta", 1000], 60, 6, 90, 10),
   R("make_corn_starch", "food_plant", "Nişasta çekimi", "Extract corn starch", [["corn", 1500]], ["corn_starch", 900], 60, 5, 90, 30),
-  R("pack_milk_carton", "food_plant", "Kutulu süt dolumu", "Carton-fill milk", [["raw_milk", 1000], ["milk_carton", 40]], ["packaged_milk", 1000], 60, 4, 40, 4),
+  R("pack_milk_carton", "food_plant", "Kutulu süt dolumu", "Carton-fill milk", [["raw_milk", 1000], ["milk_carton", 15]], ["packaged_milk", 1000], 60, 4, 40, 4),
   R("make_chips", "food_plant", "Cips üretimi", "Make potato chips", [["potato", 2000], ["sunflower_oil", 150], ["paper_bag", 20]], ["potato_chips", 600], 60, 6, 120, 20),
   R("roast_hazelnut", "food_plant", "Fındık kavurma", "Roast hazelnuts", [["hazelnut", 500]], ["roasted_hazelnut", 450], 60, 4, 60, 2),
   R("make_yeast", "food_plant", "Maya üretimi", "Make yeast", [["molasses", 500]], ["yeast", 300], 60, 5, 60, 20),
@@ -100,10 +100,10 @@ export const V4_RECIPES: RecipeDef[] = [
   R("churn_butter", "dairy_plant", "Tereyağı yayığı", "Churn butter", [["raw_milk", 2000]], ["butter", 100], 60, 5, 50, 6),
   R("churn_butter_cream", "dairy_plant", "Kremadan tereyağı", "Butter from cream", [["cream", 220]], ["butter", 100], 60, 3, 25, 2),
   R("make_yogurt", "dairy_plant", "Yoğurt mayalama", "Make yogurt", [["raw_milk", 1000]], ["yogurt", 950], 60, 4, 40, 4),
-  R("make_yogurt_sheep", "dairy_plant", "Koyun yoğurdu", "Sheep milk yogurt", [["sheep_milk", 800]], ["yogurt", 950], 60, 4, 40, 4),
+  R("make_yogurt_sheep", "dairy_plant", "Koyun yoğurdu", "Sheep milk yogurt", [["sheep_milk", 540]], ["yogurt", 950], 60, 4, 40, 4),
   R("separate_cream", "dairy_plant", "Krema ayırma", "Separate cream", [["raw_milk", 1000]], ["cream", 120], 60, 3, 30, 3),
   R("make_kashar", "dairy_plant", "Kaşar yapımı", "Make kashar", [["raw_milk", 1500], ["sheep_milk", 500]], ["kashar", 200], 120, 9, 60, 8),
-  R("make_cheese_sheep", "dairy_plant", "Koyun peyniri", "Sheep cheese", [["sheep_milk", 1200], ["salt", 20]], ["cheese", 220], 120, 9, 50, 8),
+  R("make_cheese_sheep", "dairy_plant", "Koyun peyniri", "Sheep cheese", [["sheep_milk", 1000], ["salt", 20]], ["cheese", 230], 120, 9, 50, 8),
   R("make_ice_cream", "dairy_plant", "Dondurma üretimi", "Make ice cream", [["cream", 200], ["sugar", 100], ["raw_milk", 300]], ["ice_cream", 550], 60, 5, 120, 5),
   // ── Fırın
   R("bake_bread", "bakery", "Ekmek fırını", "Bake bread", [["flour", 600], ["yeast", 10], ["salt", 10]], ["bread", 800], 60, 6, 120, 10),
@@ -133,7 +133,7 @@ export const V4_RECIPES: RecipeDef[] = [
   R("make_jam_grape", "cannery", "Üzüm reçeli", "Grape jam", [["grape", 500], ["sugar", 250], ["glass_jar", 80]], ["jam", 800], 60, 5, 80, 10),
   R("make_grape_molasses", "cannery", "Pekmez kaynatma", "Make grape molasses", [["grape", 1500], ["glass_jar", 50]], ["grape_molasses", 400], 120, 6, 120, 10),
   R("jar_honey", "cannery", "Bal dolumu", "Jar honey", [["honey", 300], ["glass_jar", 60]], ["jarred_honey", 350], 60, 3, 10, 2),
-  R("make_pickles_cannery", "cannery", "Biber turşusu", "Pickled peppers", [["pepper", 700], ["salt", 50], ["glass_jar", 100]], ["pickles", 850], 60, 5, 20, 20),
+  R("make_pickles_cannery", "cannery", "Biber turşusu", "Pickled peppers", [["pepper", 650], ["salt", 50], ["glass_jar", 90]], ["pickles", 900], 60, 5, 20, 20),
   // ── İçecek
   R("malt_barley", "beverage_plant", "Arpa maltlama", "Malt barley", [["barley", 1000]], ["malt", 800], 120, 6, 120, 40),
   R("brew_beer", "beverage_plant", "Bira mayalama", "Brew beer", [["malt", 300], ["hops", 15], ["glass_bottle", 200]], ["beer", 1200], 120, 7, 120, 80),
@@ -177,9 +177,9 @@ export const V4_RECIPES: RecipeDef[] = [
   R("saw_lumber_precision", "sawmill", "Hassas biçim", "Precision sawing", [["logs", 2000], ["machine_part", 5]], ["lumber", 1450], 60, 5, 120, 5, { research: "precision_sawing" }),
   // ── Ahşap atölyesi
   R("build_pallet", "wood_workshop", "Palet çakma", "Build pallets", [["lumber", 200], ["fasteners", 3]], ["pallet", 200], 60, 4, 20, 0),
-  R("build_pallet_beam", "wood_workshop", "Kirişten palet", "Pallets from beams", [["timber_beam", 220], ["fasteners", 3]], ["pallet", 200], 60, 4, 20, 0),
+  R("build_pallet_beam", "wood_workshop", "Kirişten palet", "Pallets from beams", [["timber_beam", 210], ["fasteners", 3]], ["pallet", 210], 60, 4, 20, 0),
   R("build_crate", "wood_workshop", "Kasa çakma", "Build crates", [["lumber", 150], ["fasteners", 2]], ["wooden_crate", 150], 60, 4, 20, 0),
-  R("build_crate_ply", "wood_workshop", "Kontrplak kasa", "Plywood crates", [["plywood", 140], ["fasteners", 2]], ["wooden_crate", 150], 60, 3, 20, 0),
+  R("build_crate_ply", "wood_workshop", "Kontrplak kasa", "Plywood crates", [["plywood", 90], ["fasteners", 2]], ["wooden_crate", 160], 60, 3, 20, 0),
   R("glue_plywood", "wood_workshop", "Kontrplak presleme", "Press plywood", [["lumber", 400], ["glue", 20]], ["plywood", 380], 60, 5, 80, 5),
   R("press_particleboard", "wood_workshop", "Yonga levha presleme", "Press particleboard", [["wood_chips", 500], ["sawdust", 200], ["glue", 30]], ["particleboard", 680], 60, 5, 120, 5),
   R("build_furniture", "wood_workshop", "Mobilya imalatı", "Build furniture", [["particleboard", 200], ["lumber", 100], ["fabric", 30], ["fasteners", 5], ["varnish", 5]], ["furniture", 300], 120, 12, 60, 2, { lvl: 2 }),
@@ -226,7 +226,7 @@ export const V4_RECIPES: RecipeDef[] = [
   R("smelt_copper", "smelter", "Bakır izabesi", "Smelt copper", [["copper_ore", 3000], ["coke", 300]], ["copper", 300], 120, 8, 400, 30),
   R("smelt_pig_iron", "smelter", "Yüksek fırın", "Blast furnace", [["iron_ore", 2000], ["coke", 600]], ["pig_iron", 1200], 120, 8, 300, 30),
   // ── Çelikhane (mevcut bina)
-  R("convert_steel", "steel_mill", "Konvertör çeliği", "Converter steel", [["pig_iron", 1100], ["limestone", 100]], ["steel", 1000], 120, 8, 250, 15),
+  R("convert_steel", "steel_mill", "Konvertör çeliği", "Converter steel", [["pig_iron", 480], ["limestone", 100]], ["steel", 1000], 120, 8, 250, 15),
   R("smelt_steel_coke", "steel_mill", "Koklu çelik dökümü", "Coke-fired steel", [["iron_ore", 2000], ["coke", 600], ["limestone", 100]], ["steel", 1150], 180, 10, 320, 20, { research: "metallurgy" }),
   // ── Haddehane
   R("roll_sheet", "rolling_mill", "Sac haddeleme", "Roll sheet", [["steel", 1000]], ["steel_sheet", 950], 60, 6, 200, 20),
@@ -241,9 +241,9 @@ export const V4_RECIPES: RecipeDef[] = [
   R("forge_fasteners", "foundry", "Cıvata dövme", "Forge fasteners", [["wire_rod", 300]], ["fasteners", 280], 60, 5, 90, 2),
   // ── Makine atölyesi
   R("machine_parts", "machine_shop", "Talaşlı imalat", "Machine parts", [["steel", 400], ["lubricant", 5]], ["machine_part", 300], 60, 8, 150, 5),
-  R("machine_parts_cast", "machine_shop", "Dökümden parça", "Parts from castings", [["castings", 350], ["lubricant", 5]], ["machine_part", 300], 60, 6, 110, 5),
+  R("machine_parts_cast", "machine_shop", "Dökümden parça", "Parts from castings", [["castings", 200], ["lubricant", 4]], ["machine_part", 300], 60, 6, 110, 5),
   R("cut_gears", "machine_shop", "Dişli açma", "Cut gears", [["steel", 300], ["lubricant", 3]], ["gear", 220], 60, 7, 120, 3),
-  R("cut_gears_cast", "machine_shop", "Döküm dişli", "Cast gears", [["castings", 260], ["lubricant", 3]], ["gear", 220], 60, 6, 100, 3),
+  R("cut_gears_cast", "machine_shop", "Döküm dişli", "Cast gears", [["castings", 140], ["lubricant", 2]], ["gear", 220], 60, 6, 100, 3),
   R("grind_bearings", "machine_shop", "Rulman taşlama", "Grind bearings", [["steel", 200], ["lubricant", 5]], ["bearing", 150], 60, 7, 120, 3),
   R("forge_tools", "machine_shop", "El aleti dövme", "Forge hand tools", [["steel", 200], ["lumber", 50]], ["hand_tools", 220], 60, 7, 100, 2),
   // ── Elektrik
@@ -268,7 +268,7 @@ export const V4_RECIPES: RecipeDef[] = [
   R("make_lashing_strap", "logistics_hub", "Spanzet yapımı", "Make lashing straps", [["canvas", 100], ["steel_wire", 20]], ["lashing_strap", 115], 60, 4, 20, 1),
   R("build_cold_box", "logistics_hub", "Soğuk zincir kutusu", "Build cold-chain boxes", [["insulation_panel", 200], ["electric_motor", 20]], ["cold_box", 210], 60, 6, 60, 2),
   R("blend_biodiesel", "logistics_hub", "Biyodizel karışımı", "Blend biodiesel", [["sunflower_oil", 800], ["methanol", 100], ["caustic_soda", 10]], ["biodiesel", 850], 60, 5, 120, 10),
-  R("blend_biodiesel_tallow", "logistics_hub", "İç yağından biyodizel", "Biodiesel from tallow", [["tallow", 800], ["methanol", 100], ["caustic_soda", 10]], ["biodiesel", 820], 60, 5, 130, 10),
+  R("blend_biodiesel_tallow", "logistics_hub", "İç yağından biyodizel", "Biodiesel from tallow", [["tallow", 450], ["methanol", 80], ["caustic_soda", 10]], ["biodiesel", 820], 60, 5, 130, 10),
   R("rope_lashing", "logistics_hub", "Halatlı bağlama", "Rope lashing", [["rope", 100], ["steel_wire", 10]], ["lashing_strap", 105], 60, 3, 10, 0),
   // ── Cam
   R("melt_flat_glass", "glassworks", "Düz cam", "Float glass", [["sand", 1000], ["soda_ash", 300], ["limestone", 200]], ["flat_glass", 1300], 120, 8, 500, 20),
@@ -283,7 +283,7 @@ export const V4_RECIPES: RecipeDef[] = [
   R("fire_sanitary", "kiln_works", "Vitrifiye pişirme", "Fire sanitary ware", [["clay", 800], ["sand", 200], ["coal", 80]], ["sanitary_ware", 850], 120, 9, 200, 20),
   R("fire_insulator", "kiln_works", "İzolatör pişirme", "Fire insulators", [["clay", 400], ["sand", 100], ["coal", 50]], ["insulator", 420], 120, 7, 140, 10),
   R("burn_charcoal", "kiln_works", "Kömür yakma", "Burn charcoal", [["logs", 1000]], ["charcoal", 300], 120, 5, 20, 5),
-  R("fire_brick_charcoal", "kiln_works", "Odun kömürüyle tuğla", "Bricks on charcoal", [["clay", 2000], ["charcoal", 120]], ["brick", 1800], 120, 8, 180, 30),
+  R("fire_brick_charcoal", "kiln_works", "Odun kömürüyle tuğla", "Bricks on charcoal", [["clay", 2000], ["charcoal", 120]], ["brick", 1950], 120, 8, 180, 30),
   // ── Çimento
   R("burn_quicklime", "cement_plant", "Kireç yakma", "Burn quicklime", [["limestone", 2000], ["coal", 200]], ["quicklime", 1100], 120, 6, 250, 10),
   R("burn_clinker", "cement_plant", "Klinker fırını", "Clinker kiln", [["limestone", 1800], ["clay", 450], ["coal", 250]], ["clinker", 1500], 120, 8, 450, 20),
@@ -307,11 +307,11 @@ export const V4_RECIPES: RecipeDef[] = [
   R("boil_soap", "chemical_plant", "Sabun kaynatma", "Boil soap", [["tallow", 300], ["caustic_soda", 50]], ["soap", 330], 60, 4, 60, 20),
   R("boil_soap_olive", "chemical_plant", "Zeytinyağlı sabun", "Olive oil soap", [["olive_oil", 250], ["caustic_soda", 50]], ["soap", 300], 60, 4, 60, 20),
   R("cook_glue", "chemical_plant", "Nişasta tutkalı", "Starch glue", [["corn_starch", 300]], ["glue", 320], 60, 3, 50, 30),
-  R("cook_glue_hide", "chemical_plant", "Deri tutkalı", "Hide glue", [["hide", 100]], ["glue", 150], 60, 4, 60, 20),
+  R("cook_glue_hide", "chemical_plant", "Deri tutkalı", "Hide glue", [["hide", 12]], ["glue", 150], 60, 4, 60, 20),
   R("make_dye", "chemical_plant", "Anilin boya", "Aniline dye", [["coal_tar", 100], ["caustic_soda", 10]], ["dye", 90], 60, 4, 80, 10),
   R("cook_varnish", "chemical_plant", "Vernik pişirme", "Cook varnish", [["pine_resin", 200], ["methanol", 50]], ["varnish", 230], 60, 4, 60, 2),
   R("refine_lubricant", "chemical_plant", "Katrandan yağ", "Tar lubricant", [["coal_tar", 300]], ["lubricant", 220], 60, 4, 120, 5),
-  R("refine_lubricant_tallow", "chemical_plant", "İç yağından yağ", "Tallow lubricant", [["tallow", 300], ["caustic_soda", 10]], ["lubricant", 220], 60, 4, 80, 5),
+  R("refine_lubricant_tallow", "chemical_plant", "İç yağından yağ", "Tallow lubricant", [["tallow", 200], ["caustic_soda", 10]], ["lubricant", 220], 60, 4, 80, 5),
   R("distill_methanol", "chemical_plant", "Odun metanolü", "Wood methanol", [["wood_chips", 1000], ["coal", 100]], ["methanol", 250], 60, 5, 200, 20),
   R("mix_detergent", "chemical_plant", "Deterjan karışımı", "Mix detergent", [["soda_ash", 300], ["soap", 100]], ["detergent", 380], 60, 4, 60, 10),
   R("pour_candle", "chemical_plant", "Mum dökümü", "Pour candles", [["beeswax", 100], ["cotton_yarn", 2]], ["candle", 100], 60, 3, 20, 1),

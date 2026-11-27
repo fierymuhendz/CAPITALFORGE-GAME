@@ -5,7 +5,7 @@
  * Para bigint kuruş; yalnızca oranlar (rakip sayısı) tam sayıdır.
  */
 import {
-  SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, BUILDING_TYPES, CITIES, DEFAULT_SETTINGS, PLOTS, PRODUCTS, QUALITY_PRICE_BP, RECIPES, RESEARCH as RESEARCH_DEFS, SYSTEM_PROFILES, VEHICLE_MODELS, roadDistanceKm,
+  SYSTEM_FREIGHT_JOBS_PER_CITY_PER_DAY, BUILDING_TYPES, depositFits, CITIES, DEFAULT_SETTINGS, PLOTS, PRODUCTS, QUALITY_PRICE_BP, RECIPES, RESEARCH as RESEARCH_DEFS, SYSTEM_PROFILES, VEHICLE_MODELS, roadDistanceKm,
   type PlotDef, type RecipeDef,
 } from "@capitalforge/shared";
 import {
@@ -102,8 +102,10 @@ export interface DayResult {
   firstJobCost: bigint; firstJobProfit: bigint; sold: Array<{ cityId: string; kg: number }>;
 }
 
+/** İlk arsa: maden için yalnızca binanın kabul ettiği (depositFits) ve tarifin istediği yatak; diğerlerinde en verimli arsa */
 export function pickPlot(bt: string, cid: string, recipe: RecipeDef): PlotDef | undefined {
-  const plots = PLOTS.filter((p) => p.cityId === cid && p.minLevel === 1 && p.price <= S.startingCash && (bt !== "mine" || p.deposit));
+  const def = BUILDING_TYPES.find((x) => x.id === bt);
+  const plots = PLOTS.filter((p) => p.cityId === cid && p.minLevel === 1 && p.price <= S.startingCash && (!def?.requiresDeposit || depositFits(def, p.deposit?.kind)));
   return recipe.deposit ? plots.find((p) => p.deposit?.kind === recipe.deposit) : plots.sort((a, b) => b.fertilityBp + b.pastureBp - a.fertilityBp - a.pastureBp)[0];
 }
 

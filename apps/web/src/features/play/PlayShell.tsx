@@ -17,6 +17,7 @@ import { CityStage, resolveQuality } from "./CityStage";
 import { PANEL_IDS, PlayProvider, type PanelId } from "./context";
 import { PANELS } from "./panels";
 import { SelectionPanel } from "./Selection";
+import { ProductSheetProvider } from "../catalog/ProductSheet";
 
 function useIsMobile(): boolean {
   const [m, setM] = useState(false);
@@ -117,6 +118,7 @@ export function PlayShell() {
   );
   return (
     <PlayProvider value={ctx}>
+      <ProductSheetProvider>
       <div className="play cf-workspace">
         <a className="skip" href="#panel">{t("common.skipToPanel")}</a>
         {conn === "closed" || conn === "connecting" ? <div className="conn" role="status"><span className="spin btn" style={{ minHeight: 0, border: 0, padding: 0, background: "none" }} aria-hidden="true" />{t("conn.lost")}</div> : null}
@@ -213,6 +215,7 @@ export function PlayShell() {
           </>
         ) : null}
       </div>
+      </ProductSheetProvider>
     </PlayProvider>
   );
 }

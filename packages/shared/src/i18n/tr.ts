@@ -2,6 +2,7 @@ import type { Dict } from "./index";
 import { trGame } from "./tr.game";
 import { trAdmin } from "./tr.admin";
 import { trCity } from "./tr.city";
+import { trCatalog } from "./catalog-design";
 import { trOperations } from "./operations-design";
 import { trDecisions } from "./decisions-design";
 import { trAccounting, trTxKinds } from "./accounting-design";
@@ -11,6 +12,9 @@ export const tr: Dict = {
   ...trAdmin,
   ...trCity,
   ...trOperations,
+  ...trCatalog,
+  deposit: { ...(trGame.deposit as Dict), ...(trCatalog.deposit as Dict) },
+  panels: { ...(trGame.panels as Dict), catalog: "Katalog" },
   ...trAccounting,
   txKind: { ...(trGame.txKind as Dict), ...trTxKinds },
   decide: trDecisions.decide,

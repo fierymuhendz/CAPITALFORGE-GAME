@@ -66,11 +66,14 @@ const CONSUMER_INDUSTRIES = new Set<Industry>(["field_crops", "livestock", "dair
 const CONSUMER_IDS = new Set(["furniture", "paper_towel", "notebook", "charcoal", "tableware", "soap", "detergent", "candle"]);
 
 /** nihai mal: şehir başına günlük tüketim bütçesi (₺) → kg = bütçe / (fiyat × 0,85) */
-export const V4_DEMAND_BUDGET = { consumerTl: 18_000, industrialTl: 15_000, intermediateBatchShareBp: 2500, intermediateBidBp: 7500, supplyBatches: 1.5 } as const;
+export const V4_DEMAND_BUDGET = { consumerTl: 18_000, industrialTl: 15_000, intermediateBatchShareBp: 2500, intermediateBidBp: 7500, supplyBatches: 1.5, finalMinBatchesPerCity: 0.6 } as const;
 
 const round10 = (v: number) => Math.max(20, Math.round(v / 10) * 10);
 
-function buildV4Profiles(): SystemProfile[] {
+export type DemandBudget = { [K in keyof typeof V4_DEMAND_BUDGET]: number };
+
+/** v4 profilleri; `budget` verilmezse katalog değerleri (sim, "önce/sonra" karşılaştırması için başka değer verebilir) */
+export function buildV4Profiles(budget: DemandBudget = V4_DEMAND_BUDGET): SystemProfile[] {
   const byId = new Map(V4_PRODUCTS.map((p) => [p.id, p]));
   const batchOut = (pid: string) => V4_RECIPES.find((r) => r.output.productId === pid && !r.research)?.output.kg ?? 1000;
   const retail = new Map<string, Record<string, number>>();
@@ -85,15 +88,16 @@ function buildV4Profiles(): SystemProfile[] {
     const ind = p.industry!;
     if (p.stage === "final") {
       const consumer = CONSUMER_INDUSTRIES.has(ind) || CONSUMER_IDS.has(p.id);
-      const tl = consumer ? V4_DEMAND_BUDGET.consumerTl : V4_DEMAND_BUDGET.industrialTl;
-      const kg = round10((tl * 100) / (p.basePricePerKg * 0.85));
+      const tl = consumer ? budget.consumerTl : budget.industrialTl;
+      // değerli/ağır mallarda bütçe bir partiyi bile almaz: şehir başına en az `finalMinBatchesPerCity` parti
+      const kg = round10(Math.max((tl * 100) / (p.basePricePerKg * 0.85), budget.finalMinBatchesPerCity * batchOut(p.id)));
       for (const c of INDUSTRY_MARKETS[ind]) add(consumer ? retail : industry, c, p.id, kg);
     } else {
-      add(industry, INTERMEDIATE_OFFICE[ind], p.id, round10((batchOut(p.id) * V4_DEMAND_BUDGET.intermediateBatchShareBp) / 10000));
+      add(industry, INTERMEDIATE_OFFICE[ind], p.id, round10((batchOut(p.id) * budget.intermediateBatchShareBp) / 10000));
     }
   }
   for (const [city, ids] of Object.entries(V4_BASIC_SUPPLY)) {
-    for (const id of ids) if (byId.has(id)) add(supply, city, id, round10(batchOut(id) * V4_DEMAND_BUDGET.supplyBatches));
+    for (const id of ids) if (byId.has(id)) add(supply, city, id, round10(batchOut(id) * budget.supplyBatches));
   }
   const value = (buys: Record<string, number>, bp: number) =>
     Math.round(Object.entries(buys).reduce((a, [pid, kg]) => a + kg * byId.get(pid)!.basePricePerKg * bp / 10000, 0) / 100_000) * 100_000;
