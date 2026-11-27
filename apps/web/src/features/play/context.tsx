@@ -16,7 +16,8 @@ export interface PlayCtx {
   map: Resource<WorldMapDto>;
   selection: CitySelection | null;
   select: (s: CitySelection | null) => void;
-  open: (p: PanelId | null, opts?: { focusCity?: string }) => void;
+  /** `params`: panel içi derin bağlantı (ör. facility, recipe, view). */
+  open: (p: PanelId | null, opts?: { focusCity?: string; params?: Record<string, string> }) => void;
   panel: PanelId | null;
   focusCityId: string | null;
   setFocusCity: (id: string) => void;

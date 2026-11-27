@@ -84,7 +84,7 @@ export async function startProduction(tx: Tx, uow: UnitOfWork, catalog: Catalog,
     companyId: p.companyId, kind: "production", refType: "production_job", refId: jobId, productId: ev.recipe.output.productId, recipeId: ev.recipe.id, cityId: facility.cityId,
     expected: {
       qtyKg: plan.outputKg, cost: total, minutes: plan.minutes, at: job!.endsAt,
-      revenue: est ? BigInt(est.revenue) : null, fees: est ? BigInt(est.fee) : null, profit: est ? BigInt(est.profit) : null,
+      revenue: est ? BigInt(est.revenue) : null, fees: est ? BigInt(est.fee) : null, freight: est ? BigInt(est.freight) : null, profit: est ? BigInt(est.profit) : null,
     },
     at: p.now,
   });

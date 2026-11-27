@@ -3,12 +3,15 @@ import { trGame } from "./tr.game";
 import { trAdmin } from "./tr.admin";
 import { trCity } from "./tr.city";
 import { trOperations } from "./operations-design";
+import { trDecisions } from "./decisions-design";
 
 export const tr: Dict = {
   ...trGame,
   ...trAdmin,
   ...trCity,
   ...trOperations,
+  decide: trDecisions.decide,
+  tabs: { ...(trGame.tabs as Dict), ...trDecisions.tabs },
   workspace: { home: "Genel bakış", map: "Şehir haritası", exchange: "Pazara git" },
   errors: {
     BAD_REQUEST: "Geçersiz istek.",

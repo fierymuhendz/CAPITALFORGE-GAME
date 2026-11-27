@@ -54,6 +54,8 @@ export const ListingReq = z.object({ cityId: id, productId: id, quality, qtyKg, 
 export const BuyOrderReq = z.object({ cityId: id, productId: id, minQuality: quality, qtyKg, maxPricePerKg: pricePerKg, idempotencyKey });
 export const BuyFromListingReq = z.object({ qtyKg, expectedPricePerKg: pricePerKg, deliverToCityId: id.optional(), idempotencyKey });
 export const SellToOrderReq = z.object({ qtyKg, quality, expectedPricePerKg: pricePerKg, idempotencyKey });
+/** Satış için stoğu alıcının şehrine sistem taşımacısı tarifesiyle taşıt (kamyon dolusu başına bir taşıma işi). */
+export const HaulReq = z.object({ originCityId: id, destCityId: id, productId: id, quality, qtyKg, idempotencyKey });
 export const CancelReq = z.object({ idempotencyKey });
 
 export const ContractProposalReq = z

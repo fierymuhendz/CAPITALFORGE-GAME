@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { peekShipIntent, takeShipIntent, type ShipIntent } from "@/lib/intent";
 import { BuyVehicleReq, FreightJobReq, ShipmentReq, type FreightJobDto, type FreightQuoteDto, type PublicCompanyDto, type ShipmentDto, type VehicleDto } from "@capitalforge/shared";
 import { api } from "@/lib/api";
@@ -18,7 +19,8 @@ export function LogisticsPanel() {
   const [intent, setIntent] = useState<ShipIntent | null>(() => peekShipIntent());
   useEffect(() => { takeShipIntent(); }, []);
   const [vehicleId, setVehicleId] = useState("");
-  const [tab, setTab] = useState(intent ? "send" : "fleet");
+  const view = useSearchParams().get("view");
+  const [tab, setTab] = useState(intent ? "send" : view && ["fleet", "send", "board", "post", "ships"].includes(view) ? view : "fleet");
   return (
     <div className="col ops-panel">
       <Tabs label={t("panels.logistics")} value={tab} onChange={setTab} items={[{ id: "fleet", label: t("logistics.fleet") }, { id: "send", label: t("logistics.send") }, { id: "board", label: t("logistics.board") }, { id: "post", label: t("logistics.postJob") }, { id: "ships", label: t("logistics.shipments") }]} />
@@ -155,7 +157,8 @@ function Board() {
   const i = useT();
   const { t } = i;
   const cat = useCat();
-  const [scope, setScope] = useState<"board" | "mine">("board");
+  const scopeParam = useSearchParams().get("scope");
+  const [scope, setScope] = useState<"board" | "mine">(scopeParam === "mine" ? "mine" : "board");
   const res = useList<FreightJobDto>("/freight-jobs", { scope }, ["freight", "shipments"]);
   const { run, busy } = useAction();
   const bestId = useMemo(() => {

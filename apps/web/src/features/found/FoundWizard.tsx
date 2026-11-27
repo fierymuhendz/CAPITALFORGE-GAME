@@ -167,7 +167,7 @@ export function FoundWizard() {
                   </div>
                   {!d.plots.some((p) => p.eligible) ? <EmptyState title={t("found.noEligible")} text={t("found.noEligibleText")} action={<Button onClick={() => goToStep("city")}>{t("found.changeCity")}</Button>} /> : null}
                   {view === "map" ? <PlotGrid plots={d.plots} selected={plotId} onSelect={pickPlot} /> : (
-                    <div className="cards">{d.plots.map((p) => <PlotCard key={p.id} p={p} sector={sector!} selected={plotId === p.id} onClick={() => pickPlot(p.id)} />)}</div>
+                    <div className="cards">{[...d.plots].sort((a, b) => Number(b.eligible) - Number(a.eligible)).map((p) => <PlotCard key={p.id} p={p} sector={sector!} selected={plotId === p.id} onClick={() => pickPlot(p.id)} />)}</div>
                   )}
                   <div ref={detailRef} style={{ scrollMarginBottom: 96 }}>
                     {plot ? <PlotDetail p={plot} sector={sector!} /> : <Notice tone="steel">{t("found.pickPlot")}</Notice>}

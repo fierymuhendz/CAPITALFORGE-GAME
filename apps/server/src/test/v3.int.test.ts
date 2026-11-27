@@ -450,6 +450,38 @@ describe("FreightJobDto: bağlı kalma süresi ve saat başı net", () => {
   });
 });
 
+describe("POST /market/haul (satış için taşıt)", () => {
+  it("kamyon dolusu başına sistem tarifeli iş; stok rezerve, navlun emanette; varışta stok alıcının şehrinde, maliyete navlun eklenir", async () => {
+    const p = await h.player(); const id = await found(h, p, "crop", "yesilova");
+    await grantStock(h, id, "yesilova", "grain", 2, 15_000, 300n);
+    const cash0 = await cashOf(id);
+    const km = roadDistanceKm("yesilova", "korfezkent");
+    const freight = fq(km, 12_000) + fq(km, 3_000);
+    const body = { originCityId: "yesilova", destCityId: "korfezkent", productId: "grain", quality: 2, qtyKg: 15_000, idempotencyKey: h.key() };
+    const res = await p.ok("POST", "/market/haul", body);
+    expect(res.loads).toBe(2);
+    expect(res.jobIds.length).toBe(2);
+    expect(res.freight).toBe(freight.toString());
+    expect(await cashOf(id)).toBe(cash0 - freight);
+    expect(await bal(h, id, "escrow")).toBe(freight);
+    expect((await holding(h, id, "yesilova", "grain", 2)).reserved).toBe(15_000);
+    // tekrar: aynı yanıt, ikinci iş yok
+    const rep = await p.post("/market/haul", body);
+    expect(rep.body).toEqual(res);
+    expect(await cashOf(id)).toBe(cash0 - freight);
+    // aynı şehir reddedilir
+    const same = await p.post("/market/haul", { ...body, destCityId: "yesilova", idempotencyKey: h.key() });
+    expect(same.status).toBe(422);
+    expect(same.body.error.code).toBe("SAME_CITY");
+    await h.advance(10 * HOUR);
+    const hd = await holding(h, id, "korfezkent", "grain", 2);
+    expect(hd.qty).toBe(15_000);
+    expect(hd.cost).toBe(15_000n * 300n + freight);
+    expect(await bal(h, id, "escrow")).toBe(0n);
+    expect(await checkInvariants(h.deps.db)).toEqual([]);
+  });
+});
+
 describe("üretim tahmini ve tahmin ↔ gerçekleşen", () => {
   it("quote.estimate: aynı şehirdeki en iyi alım emri; başlatınca beklenen kayıt, bitince gerçekleşen maliyet", async () => {
     const f = await foundWithFacility(h, "crop", "yesilova");
@@ -458,7 +490,10 @@ describe("üretim tahmini ve tahmin ↔ gerçekleşen", () => {
     expect(q0.estimate).not.toBeNull();
     const fee0 = applyBp(BigInt(q0.estimate.revenue), 100);
     expect(q0.estimate.fee).toBe(fee0.toString());
-    expect(BigInt(q0.estimate.profit)).toBe(BigInt(q0.estimate.revenue) - fee0 - BigInt(q0.cost.total));
+    // alıcı başka şehirdeyse sistem navlunu kâra dahildir
+    if (q0.estimate.cityId === f.cityId) expect(q0.estimate.freight).toBe("0");
+    else expect(BigInt(q0.estimate.freight)).toBeGreaterThan(0n);
+    expect(BigInt(q0.estimate.profit)).toBe(BigInt(q0.estimate.revenue) - fee0 - BigInt(q0.estimate.freight) - BigInt(q0.cost.total));
     expect(q0.estimate.profitPerHour).toBe(((BigInt(q0.estimate.profit) * 60n) / BigInt(q0.minutes)).toString());
 
     // yüksek fiyatlı yerel alım emri öne geçer
@@ -468,6 +503,7 @@ describe("üretim tahmini ve tahmin ↔ gerçekleşen", () => {
     expect(q.estimate.pricePerKg).toBe("9999");
     expect(q.estimate.cityId).toBe(f.cityId);
     expect(q.estimate.revenue).toBe((BigInt(q.output.qtyKg) * 9999n).toString());
+    expect(q.estimate.freight).toBe("0");
 
     const job = await f.p.ok("POST", "/production/start", { facilityId: f.facilityId, recipeId: "grow_fodder", batches: 1, repeat: false, idempotencyKey: h.key() });
     const p1 = (await f.p.ok("GET", "/finance/outcomes")).find((x: { refId: string }) => x.refId === job.id);

@@ -18,6 +18,7 @@ export function InventoryPanel() {
   const res = useData<HoldingDto[]>("/inventory", undefined, ["inventory"]);
   const [city, setCity] = useState<string>("");
   const [sel, setSel] = useState<HoldingDto | null>(null);
+  const sell = (h: HoldingDto) => { setMarketIntent({ productId: h.productId, cityId: h.cityId, side: "sell", quality: h.quality, qtyKg: h.availableKg }); setSel(null); open("market"); };
   const cities = useMemo(() => [...new Set((res.data ?? []).map((h) => h.cityId))], [res.data]);
   const cols: Col<HoldingDto>[] = [
     { key: "p", head: t("inventory.product"), lead: true, cell: (h) => <span className="inventory-product"><span className="inventory-emblem" aria-hidden="true"><span className="trade-swatch" style={{ backgroundColor: cat.productColor(h.productId) }} /><Icon name="box" size={19} /></span><b>{cat.product(h.productId)}</b><span className="trade-quality" aria-label={`${t("common.quality")} ${h.quality}`}>★ {h.quality}</span></span> },
@@ -25,6 +26,7 @@ export function InventoryPanel() {
     { key: "a", head: t("inventory.available"), right: true, cell: (h) => <span className="inventory-available"><b className="num">{i.qty(h.availableKg)}</b><span className="inventory-meter" aria-hidden="true"><span style={{ width: `${h.qtyKg > 0 ? Math.min(100, 100 * h.availableKg / h.qtyKg) : 0}%` }} /></span>{h.reservedKg ? <small>{t("inventory.reserved")} {i.qty(h.reservedKg)}</small> : null}</span> },
     { key: "c", head: t("inventory.city"), cell: (h) => cat.city(h.cityId) },
     { key: "u", head: t("inventory.avgCost"), right: true, cell: (h) => <span className="num">{i.price(h.avgCostPerKg)}</span> },
+    { key: "s", head: "", bare: true, act: true, cell: (h) => h.availableKg > 0 ? <Button size="sm" onClick={(e) => { e.stopPropagation(); sell(h); }}>{t("inventory.sell")}</Button> : null },
   ];
   return (
     <Async res={res}>
@@ -48,7 +50,7 @@ export function InventoryPanel() {
               <div><dt><Icon name="coins" size={16} />{t("inventory.totalCost")}</dt><dd>{i.money(total.cost)}</dd></div>
             </dl>
             <Table cols={cols} rows={rows} rowKey={(h) => `${h.cityId}-${h.productId}-${h.quality}`} onRow={setSel} rowLabel={(h) => `${cat.product(h.productId)} · ${t("common.quality")} ${h.quality} · ${cat.city(h.cityId)}`} />
-            <Detail h={sel} onClose={() => setSel(null)} onSell={(h) => { setMarketIntent({ productId: h.productId, cityId: h.cityId, side: "sell", quality: h.quality }); setSel(null); open("market"); }} />
+            <Detail h={sel} onClose={() => setSel(null)} onSell={sell} />
           </div>
         );
       }}

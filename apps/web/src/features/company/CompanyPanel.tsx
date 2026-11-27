@@ -9,6 +9,9 @@ const STEP_TARGET: Record<string, PanelId> = {
   first_freight: "logistics", take_loan: "finance", upgrade_facility: "facilities", start_research: "research",
 };
 
+/** Ana ekrandaki operasyon panosunun zaten gösterdiği adımlar (boşta tesis, durmuş tesis, satış, borç). */
+export const COVERED_BY_OPS = new Set(["pay_arrears", "fix_stalled", "first_job", "first_sale", "empty_warehouse"]);
+
 export function CompanyPanel({ compact = false }: { compact?: boolean } = {}) {
   const i = useT();
   const { t } = i;
@@ -46,7 +49,7 @@ export function CompanyPanel({ compact = false }: { compact?: boolean } = {}) {
             </div></Card> : null}
 
             <h4>{t("company.nextSteps")}</h4>
-            {d.nextSteps.length ? (compact ? d.nextSteps.slice(0, 3) : d.nextSteps).map((s) => {
+            {d.nextSteps.length ? (compact ? d.nextSteps.filter((s) => !COVERED_BY_OPS.has(s.key)).slice(0, 3) : d.nextSteps).map((s) => {
               const target = STEP_TARGET[s.key] ?? "company";
               const key = `nextSteps.${s.key}`;
               return (

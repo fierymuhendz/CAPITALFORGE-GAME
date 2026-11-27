@@ -134,3 +134,20 @@
 .ops-recipe .trend { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .ops-recipe .trend svg { flex: none; }
 .ops-panel .action-bar { margin-inline: 0; padding-inline: 0; }
+/* Tarif karşılaştırma tablosu */
+.ops-compare tr.click td { padding-block: .6rem; }
+.ops-recipe-name { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.ops-recipe-name .tag { margin-left: auto; }
+.ops-compare tr.sel .ops-radio { border: .19rem solid var(--forge); }
+.ops-input-cell { font-size: .8rem; white-space: nowrap; }
+.ops-compare td.lead { max-width: 260px; }
+/* Tesisler: masaüstünde liste + ayrıntı yan yana */
+.ops-split { display: grid; gap: 1.2rem; min-width: 0; }
+.ops-site.card.sel { border-color: var(--forge); box-shadow: inset 3px 0 0 var(--forge); }
+@media (min-width: 1180px) {
+  .ops-split.has-detail { grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr); align-items: start; }
+  .ops-split.has-detail .ops-back { display: none; }
+  .ops-split.has-detail .ops-split-list .ops-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ops-split-list { position: sticky; top: 0; }
+}
+@media (max-width: 1179px) { .ops-split.has-detail .ops-split-list { display: none; } }

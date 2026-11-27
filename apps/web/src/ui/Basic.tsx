@@ -122,3 +122,9 @@ export function Tag({ children, tone, icon, title }: { children: ReactNode; tone
 export function ActionBar({ children }: { children: ReactNode }) {
   return <div className="action-bar">{children}</div>;
 }
+
+export type StatusKind = "run" | "idle" | "stop" | "road" | "attn" | "build";
+/** Durum: renk + şekil + metin (renk körlüğünde ve gri tonda da ayırt edilir). */
+export function Status({ kind, children }: { kind: StatusKind; children: ReactNode }) {
+  return <span className={`st st-${kind}`}><i aria-hidden="true" />{children}</span>;
+}

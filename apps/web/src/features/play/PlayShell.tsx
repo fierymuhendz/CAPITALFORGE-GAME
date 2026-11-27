@@ -2,15 +2,16 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CompanyDto, WorldMapDto } from "@capitalforge/shared";
+import type { CompanyDto, ShipmentDto, WorldMapDto } from "@capitalforge/shared";
 import { useApp } from "@/lib/app";
-import { useData } from "@/lib/data";
+import { useData, useList } from "@/lib/data";
 import { useGate } from "@/lib/gate";
 import { useT } from "@/lib/i18n";
 import { serverOffsetMs } from "@/lib/clock";
 import { Badge, Button, Icon, Sheet } from "@/ui";
 import type { CitySelection } from "../../scene";
-import { CompanyPanel } from "../company/CompanyPanel";
+import { COVERED_BY_OPS, CompanyPanel } from "../company/CompanyPanel";
+import { OpsBoard } from "../company/OpsBoard";
 import "./workspace.css";
 import { CityStage, resolveQuality } from "./CityStage";
 import { PANEL_IDS, PlayProvider, type PanelId } from "./context";
@@ -32,6 +33,7 @@ function useIsMobile(): boolean {
 const TABS: Array<{ id: PanelId | "city" | "more"; icon: string; key: string }> = [
   { id: "city", icon: "city", key: "tabs.city" },
   { id: "facilities", icon: "factory", key: "tabs.production" },
+  { id: "inventory", icon: "box", key: "tabs.inventory" },
   { id: "market", icon: "chart", key: "tabs.market" },
   { id: "logistics", icon: "truck", key: "tabs.logistics" },
   { id: "more", icon: "more", key: "tabs.more" },
@@ -47,6 +49,8 @@ export function PlayShell() {
   const mobile = useIsMobile();
   const company = useData<CompanyDto>(me?.company ? "/company" : null, undefined, ["company", "facilities", "finance", "inventory", "research", "contracts", "shipments", "freight", "market"]);
   const map = useData<WorldMapDto>(me?.company ? "/world/map" : null, undefined, ["map", "facilities", "shipments", "company"]);
+  const ships = useList<ShipmentDto>(me?.company ? "/shipments" : null, { scope: "mine" }, ["shipments"]);
+  const inTransitJobs = (ships.data ?? []).filter((s) => s.status === "in_transit").length;
   const [selection, setSelection] = useState<CitySelection | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -60,11 +64,12 @@ export function PlayShell() {
   const homeCity = me?.company?.homeCityId ?? null;
   const focusCityId = focus ?? homeCity;
 
-  const open = useCallback((p: PanelId | null, opts?: { focusCity?: string }) => {
+  const open = useCallback((p: PanelId | null, opts?: { focusCity?: string; params?: Record<string, string> }) => {
     if (opts?.focusCity) setFocus(opts.focusCity);
     setSelection(null);
     setMapOnly(false);
-    router.replace(p ? `/play?tab=${p}` : "/play", { scroll: false });
+    const q = new URLSearchParams(p ? { tab: p, ...(opts?.params ?? {}) } : {}).toString();
+    router.replace(q ? `/play?${q}` : "/play", { scroll: false });
   }, [router]);
 
   const select = useCallback((s: CitySelection | null) => setSelection(s), []);
@@ -75,15 +80,16 @@ export function PlayShell() {
   if (!ok || !me?.company || !world) return null;
   const c = company.data ?? me.company;
   const Active = PANELS.find((x) => x.id === (panel ?? "company"))!;
-  const activeTab: string = selection ? "city" : panel === "facilities" || panel === "market" || panel === "logistics" ? panel : panel ? "more" : "city";
+  const activeTab: string = selection ? "city" : panel === "facilities" || panel === "inventory" || panel === "market" || panel === "logistics" ? panel : panel ? "more" : "city";
   const xpPct = c.nextLevelXp ? Math.min(100, Math.round((c.xp / c.nextLevelXp) * 100)) : 100;
 
   const title = selection ? t("play.selection") : t(`panels.${Active.id}`);
   const home = !panel;
+  const lines = company.data ? company.data.facilities.reduce((a, f) => ({ run: a.run + f.jobs.filter((j) => j.status === "running").length, all: a.all + (f.status === "constructing" ? 0 : f.lines) }), { run: 0, all: 0 }) : null;
   const figures = [
     { label: "finance.cash", value: i.money(c.cash), target: "finance" },
-    { label: "panels.facilities", value: company.data ? i.num(company.data.facilities.length) : "…", target: "facilities" },
-    { label: "logistics.fleet", value: company.data ? i.num(company.data.vehicles.length) : "…", target: "logistics" },
+    { label: "decide.ops.linesFigure", value: lines ? `${i.num(lines.run)} / ${i.num(lines.all)}` : "…", target: "facilities" },
+    { label: "decide.ops.inTransitFigure", value: ships.data ? i.num(inTransitJobs) : "…", target: "logistics" },
     { label: "company.profit7d", value: company.data ? i.money(company.data.stats.profit7d) : "…", target: "finance" },
   ] as const;
   const renderMap = () => (
@@ -149,11 +155,14 @@ export function PlayShell() {
                 </div>
                 <div className="cf-city-grid">
                   {renderMap()}
-                  <aside className="cf-decisions" aria-label={selection ? title : t("company.nextSteps")}>
+                  <aside className="cf-decisions" aria-label={selection ? title : t("decide.ops.title")}>
                     {selection ? <>
                       <div className="cf-selection-head"><h2>{title}</h2><Button size="sm" icon variant="ghost" aria-label={t("common.close")} onClick={() => setSelection(null)}><Icon name="x" /></Button></div>
                       <SelectionPanel onClose={() => setSelection(null)} />
-                    </> : <CompanyPanel compact />}
+                    </> : <>
+                      <OpsBoard />
+                      {company.data?.nextSteps.some((s) => !COVERED_BY_OPS.has(s.key)) ? <div className="cf-next"><CompanyPanel compact /></div> : null}
+                    </>}
                   </aside>
                 </div>
               </div>
@@ -182,7 +191,7 @@ export function PlayShell() {
             </nav>
             <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t("tabs.more")} closeLabel={t("common.close")}>
               <div className="list">
-                {PANELS.filter((p) => p.id !== "facilities" && p.id !== "market" && p.id !== "logistics").map((p) => (
+                {PANELS.filter((p) => p.id !== "facilities" && p.id !== "inventory" && p.id !== "market" && p.id !== "logistics").map((p) => (
                   <button key={p.id} type="button" className="li click btn ghost block" style={{ justifyContent: "flex-start" }} onClick={() => { setMoreOpen(false); open(p.id); }}>
                     <Icon name={p.icon} />{t(`panels.${p.id}`)}
                     {p.id === "notifications" && c.unreadNotifications ? <Badge tone="forge">{c.unreadNotifications}</Badge> : null}

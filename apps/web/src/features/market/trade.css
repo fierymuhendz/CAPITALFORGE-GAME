@@ -153,3 +153,14 @@
 .trade-history-limits:has(> :only-child) { justify-content: center; }
 .trade-history-range { display: flex; justify-content: space-between; gap: 8px; }
 .trade-history-range > :last-child { text-align: end; }
+
+/* Satış masası: en iyi teklif kartında kâr ve doğrudan eylem */
+.trade-quote-numbers { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.trade-quote-act { flex: 0 0 auto; }
+.trade-quote-act .btn { min-height: 44px; }
+.trade-return.btn { align-self: flex-start; }
+@container (max-width: 440px) {
+  .trade-quote-act { flex-basis: 100%; }
+  .trade-quote-act .btn { width: 100%; }
+  .trade-quote-numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
