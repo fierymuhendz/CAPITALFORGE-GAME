@@ -485,19 +485,25 @@ async function recurringContracts(deps: Deps, now: Date, sysCos: Map<string, Com
   return n;
 }
 
+const SYSTEM_SYNC_CONCURRENCY = 3;
+
 export async function runSystemCycle(deps: Deps, now: Date): Promise<number> {
   const sysCos = await systemCompanies(deps.db);
   let n = 0;
-  for (const prof of SYSTEM_PROFILES) {
-    const comp = sysCos.get(prof.companyKey);
-    if (!comp) continue;
-    try {
-      await syncProfile(deps, comp, prof, now);
-      n++;
-    } catch (err) {
-      deps.log.error({ err, profile: prof.companyKey }, "sistem şirketi döngüsü başarısız");
+  // Her profil yalnızca kendi şirketinin emir, stok, defter ve basım satırlarını kilitler: profiller birbirinden
+  // bağımsız işlemlerde, sınırlı eşzamanlılıkla eşitlenir (havuzun kalanı istekler için kalır)
+  const queue = SYSTEM_PROFILES.filter((p) => sysCos.has(p.companyKey));
+  const workers = Array.from({ length: Math.min(SYSTEM_SYNC_CONCURRENCY, queue.length) }, async () => {
+    for (let prof = queue.shift(); prof; prof = queue.shift()) {
+      try {
+        await syncProfile(deps, sysCos.get(prof.companyKey)!, prof, now);
+        n++;
+      } catch (err) {
+        deps.log.error({ err, profile: prof.companyKey }, "sistem şirketi döngüsü başarısız");
+      }
     }
-  }
+  });
+  await Promise.all(workers);
   n += await adoptOrphans(deps, now, sysCos);
   n += await freightCycle(deps, now, sysCos);
   n += await recurringContracts(deps, now, sysCos);
