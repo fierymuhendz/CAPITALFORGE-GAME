@@ -25,4 +25,3 @@ export function useCat() {
     };
   }, [world, locale]);
 }
-export type Cat = ReturnType<typeof useCat>;

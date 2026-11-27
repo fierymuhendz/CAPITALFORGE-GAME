@@ -8,9 +8,6 @@ export type PanelId = "company" | "facilities" | "inventory" | "market" | "contr
 
 export const PANEL_IDS: PanelId[] = ["company", "facilities", "inventory", "market", "contracts", "logistics", "finance", "research", "notifications", "account"];
 
-/** Veri panelleri geniş yan panel alır (tablolar). */
-export const WIDE_PANELS: PanelId[] = ["market", "inventory", "contracts", "logistics", "finance"];
-
 export interface PlayCtx {
   company: Resource<CompanyDto>;
   map: Resource<WorldMapDto>;

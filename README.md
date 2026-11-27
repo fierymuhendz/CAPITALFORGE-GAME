@@ -8,7 +8,7 @@
 cp .env.example .env
 docker compose up -d      # PostgreSQL + Redis
 pnpm install
-pnpm dev                  # web: http://localhost:3000, sunucu: ws://localhost:2567
+pnpm dev                  # web: http://localhost:3000, sunucu: http://localhost:2567
 ```
 
 ## Komutlar
@@ -24,7 +24,7 @@ pnpm dev                  # web: http://localhost:3000, sunucu: ws://localhost:2
 
 ```
 apps/web          Next.js istemcisi
-apps/server       Fastify + Colyseus oyun sunucusu, Drizzle şeması, defter (ledger)
+apps/server       Fastify sunucusu (REST + /events WebSocket), Drizzle şeması, defter (ledger)
 packages/shared   zod şemaları, mesaj ve oda adları
 packages/economy  Saf ekonomi formülleri, para yardımcıları, simülasyon
 ```

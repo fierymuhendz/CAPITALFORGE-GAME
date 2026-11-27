@@ -94,15 +94,6 @@ export function SkeletonList({ n = 3, h = 64 }: { n?: number; h?: number }) {
   return <div className="col" aria-busy="true">{Array.from({ length: n }, (_, i) => <Skeleton key={i} h={h} />)}</div>;
 }
 
-export function Section({ title, action, children }: { title: ReactNode; action?: ReactNode; children: ReactNode }) {
-  return (
-    <section className="col tight" style={{ gap: "var(--sp-3)" }}>
-      <div className="row between"><h3 style={{ fontSize: "var(--fs-md)" }}>{title}</h3>{action}</div>
-      {children}
-    </section>
-  );
-}
-
 /** Açılır ayrıntı (bir dokunuşla). Yerel <details>: klavye ve ekran okuyucu uyumlu. */
 export function Disclosure({ summary, children, open }: { summary: ReactNode; children: ReactNode; open?: boolean }) {
   return (

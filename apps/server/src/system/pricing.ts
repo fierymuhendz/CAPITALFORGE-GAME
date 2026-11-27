@@ -4,7 +4,7 @@
  * hiçbir sistem alış fiyatı herhangi bir güncel sistem satış fiyatının %80'ine ulaşamaz.
  */
 import { eq } from "drizzle-orm";
-import { systemAsk, systemBid, systemBidCap } from "@capitalforge/economy";
+import { systemAsk, systemBidCap } from "@capitalforge/economy";
 import type { Catalog } from "../catalog/catalog";
 import type { DbOrTx } from "../db/client";
 import { priceRefs } from "../db/schema";
@@ -25,13 +25,6 @@ export function bidCapFromRefs(refs: Map<string, bigint>, askBp: number): bigint
 
 export async function productBidCap(db: DbOrTx, catalog: Catalog, productId: string): Promise<bigint | null> {
   return bidCapFromRefs(await loadRefs(db, productId), catalog.settings.system.askBp);
-}
-
-/** Kalite 2 tabanlı sistem alış fiyatı (cap uygulanmış) */
-export async function currentSystemBid(db: DbOrTx, catalog: Catalog, productId: string, cityId: string, filledTodayKg: number, dailyKg: number): Promise<bigint> {
-  const refs = await loadRefs(db, productId);
-  const ref = refs.get(cityId) ?? BigInt(catalog.product(productId).basePricePerKg);
-  return systemBid(ref, catalog.settings.system.bidBp, filledTodayKg, dailyKg, bidCapFromRefs(refs, catalog.settings.system.askBp));
 }
 
 /** Sistem alım sözleşmesi fiyat sınırı: en düşük güncel sistem satışının %95'i (kabul anında uygulanır) */

@@ -10,10 +10,7 @@ export const enCity: Dict = {
       upgrading: "upgrading",
     },
     chip: { idle: "Idle", stalled: "Stalled" },
-    mine: "mine",
-    forSale: "plot for sale",
     to: "to",
-    cargo: "cargo",
     chipLabel: "{type}, {status}",
   },
 };

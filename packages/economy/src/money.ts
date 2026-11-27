@@ -28,11 +28,6 @@ export function applyBp(amount: bigint, bp: number | bigint): bigint {
   return mulDiv(amount, toBig(bp), BP);
 }
 
-/** miktar(kg) × birim fiyat(kuruş/kg) */
-export function lineTotal(qtyKg: number, pricePerKg: bigint | number): bigint {
-  return toBig(qtyKg) * toBig(pricePerKg);
-}
-
 /**
  * Ağırlıklı ortalama maliyet ile stoktan çıkış maliyeti.
  * Tümü çıkıyorsa kalan maliyetin tamamı, değilse floor(maliyet × çıkan / miktar).

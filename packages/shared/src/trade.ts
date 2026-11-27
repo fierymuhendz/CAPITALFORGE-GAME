@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import type { Iso, Money } from "./api";
-import { MAX_QTY_KG, id, uuid } from "./schemas";
+import { MAX_QTY_KG, id } from "./schemas";
 
 export const MarketQuery = z.object({ cityId: id, productId: id });
 export const MarketHistoryQuery = z.object({ cityId: id, productId: id, hours: z.coerce.number().int().min(1).max(24 * 30).optional() });
@@ -16,7 +16,6 @@ export const FreightQuoteQuery = z.object({
   kg: z.coerce.number().int().positive().max(MAX_QTY_KG),
   modelId: id.optional(),
 });
-export const IdParam = z.object({ id: uuid });
 
 /** GET /market/history */
 export interface PriceHistoryDto {

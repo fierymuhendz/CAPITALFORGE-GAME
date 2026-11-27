@@ -203,7 +203,7 @@ Ekran görüntüleri: `docs/screenshots/e2e-desktop-en-f2-market-flour.png`, `e2
 - Sonuç özeti her çalıştırmada `ACCEPTANCE_RESULTS` satırı olarak yazdırılır; tabloların sayıları bu satırdan alınmıştır.
 - Bölüm 2 yaklaşık 2 dakika, tüm `pnpm test:int` yaklaşık 4 dakika sürer.
 
-Tam ekran görüntüsü seti (192 adet) depoya alınmadı; depoda her akıştan temsilî görüntüler var (`docs/screenshots/e2e-*`).
+Bu bölümde adı geçen ekran görüntüleri (`docs/screenshots/`) ve ham sonuçlar (`e2e/ui/out/`) eskidiği için depodan kaldırıldı; aynı betikler yeniden çalıştırıldığında bu klasörlere yeniden yazılır. Eski dosyalar git geçmişinde durur.
 
 # v3 kabul testi sonuçları (sunucu düzeyi)
 

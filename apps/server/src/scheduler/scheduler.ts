@@ -22,10 +22,6 @@ export function registerTask(t: Task): void {
   tasks.push(t);
 }
 
-export function listTasks(): string[] {
-  return tasks.map((t) => t.name);
-}
-
 /** Tüm görevleri bir kez çalıştırır (aralığı dolanları). force=true aralığı yok sayar. */
 export async function runDue(deps: Deps, now: Date = deps.clock.now(), force = false): Promise<Record<string, number>> {
   const out: Record<string, number> = {};

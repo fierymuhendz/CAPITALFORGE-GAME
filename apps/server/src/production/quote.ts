@@ -3,7 +3,7 @@ import { minutesToMs } from "../catalog/pace";
 import { and, eq, gt, ne } from "drizzle-orm";
 import type { z } from "zod";
 import { SYSTEM_PROFILES, roadDistanceKm, type ProductionQuoteDto, type ProductionQuoteReq } from "@capitalforge/shared";
-import { applyBp, systemAsk, systemBid, systemBidCap, unitCostPerKg } from "@capitalforge/economy";
+import { applyBp, minBig, systemAsk, systemBid, systemBidCap, unitCostPerKg } from "@capitalforge/economy";
 import type { Catalog } from "../catalog/catalog";
 import type { Db, DbOrTx } from "../db/client";
 import { companies, facilities, marketOrders, priceRefs } from "../db/schema";
@@ -31,7 +31,7 @@ export async function bestBuyers(db: DbOrTx, catalog: Catalog, companyId: string
   const ref = (cityId: string) => refs.find((r) => r.cityId === cityId)?.refPricePerKg ?? BigInt(catalog.product(productId).basePricePerKg);
   const s = catalog.settings.system;
   const asks = SYSTEM_PROFILES.filter((p) => (p.sells[productId] ?? 0) > 0).map((p) => systemAsk(ref(p.cityId), s.askBp, 0, 1));
-  const cap = asks.length ? systemBidCap(asks.reduce((a, b) => (b < a ? b : a))) : null;
+  const cap = asks.length ? systemBidCap(minBig(...asks)) : null;
   const seenSystem = new Set(out.filter((b) => b.isSystem).map((b) => `${b.cityId}|${b.companyName}`));
   for (const p of SYSTEM_PROFILES) {
     if ((p.buys[productId] ?? 0) <= 0 || seenSystem.has(`${p.cityId}|${p.name.tr}`)) continue;

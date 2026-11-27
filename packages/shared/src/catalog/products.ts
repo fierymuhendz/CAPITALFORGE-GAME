@@ -16,5 +16,3 @@ export const PRODUCTS: ProductDef[] = [
 
 /** Kalite çarpanı (bp): kalite 1..5 */
 export const QUALITY_PRICE_BP = [0, 8500, 10000, 10900, 11700, 12500] as const;
-export const MIN_QUALITY = 1;
-export const MAX_QUALITY = 5;
