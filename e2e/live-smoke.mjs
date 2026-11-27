@@ -57,6 +57,14 @@ await step("sağlık: /api/health", async () => {
   return r.json;
 });
 
+await step("sağlık: /ws/health ve /", async () => {
+  const ws = await fetch(`${BASE}/ws/health`);
+  if (ws.status !== 200) throw new Error(`/ws/health HTTP ${ws.status}`);
+  const home = await fetch(`${BASE}/`);
+  if (home.status !== 200) throw new Error(`/ HTTP ${home.status}`);
+  return { ws: ws.status, home: home.status };
+});
+
 await step("kayıt veya giriş", async () => {
   const reg = await api("POST", "/auth/register", { username: USER, password: PASSWORD, locale: "tr" });
   if (reg.status === 200 || reg.status === 201) return "yeni hesap açıldı";
@@ -98,10 +106,39 @@ await step("ilk iş: teklif ve başlatma (boşsa)", async () => {
   if (!f) throw new Error("tarla bulunamadı");
   if (f.jobs?.some((j) => j.status === "running")) return "zaten çalışan iş var";
   const body = { facilityId: f.id, recipeId: "grow_fodder", batches: 1 };
-  const q = must(await api("POST", "/production/quote", body), 200);
+  let q = must(await api("POST", "/production/quote", body), 200);
+  // Doğrulama şirketi her çalıştırmada yeniden kullanılır: hediye tohum biterse eksik tohum pazardan (en ucuz ilan) alınır
+  const miss = (q.blockers ?? []).find((b) => b.code === "INSUFFICIENT_STOCK" && b.productId === "seed");
+  let bought = null;
+  if (miss) {
+    const mk = must(await api("GET", `/market?cityId=${f.cityId}&productId=seed`), 200);
+    const l = (mk.listings ?? []).filter((x) => !x.mine && x.remainingKg >= miss.missingKg).sort((a, b) => Number(a.pricePerKg) - Number(b.pricePerKg))[0];
+    if (!l) throw new Error(`tohum eksik (${miss.missingKg} kg) ve ${f.cityId} pazarında ilan yok`);
+    must(await api("POST", `/market/listings/${l.id}/buy`, { qtyKg: miss.missingKg, expectedPricePerKg: l.pricePerKg, idempotencyKey: key() }), 200, 201);
+    bought = `${miss.missingKg} kg tohum alındı`;
+    q = must(await api("POST", "/production/quote", body), 200);
+  }
   const s = await api("POST", "/production/start", { ...body, repeat: false, idempotencyKey: key() });
   must(s, 200, 201);
-  return { minutes: q.minutes, totalCost: q.totalCost ?? q.cost?.total };
+  return { minutes: q.minutes, totalCost: q.totalCost ?? q.cost?.total, bought };
+});
+
+await step("v4 katalog: ürün, bina, reçete, araştırma sayıları ve örnekler", async () => {
+  const w = must(await api("GET", "/world"), 200);
+  const has = (list, id) => list.some((x) => x.id === id);
+  const need = [["products", "compound_feed"], ["products", "workwear"], ["products", "shipping_packaging"], ["products", "maintenance_kit"],
+    ["buildingTypes", "feed_mill"], ["buildingTypes", "garment_factory"], ["buildingTypes", "quarry"], ["recipes", "mix_compound_feed"],
+    ["recipes", "milk_cows_compound"], ["research", "soil_science"]];
+  for (const [k, id] of need) if (!has(w[k] ?? [], id)) throw new Error(`${k} içinde ${id} yok`);
+  const counts = { products: w.products.length, buildingTypes: w.buildingTypes.length, recipes: w.recipes.length, research: w.research.length };
+  if (counts.products < 200 || counts.buildingTypes < 45 || counts.recipes < 260 || counts.research < 60) throw new Error(`katalog sayıları eksik: ${JSON.stringify(counts)}`);
+  return counts;
+});
+
+await step("v4 pazar: istatistik ve şehir karşılaştırması", async () => {
+  const st = must(await api("GET", "/market/stats?productId=compound_feed&cityId=akyayla"), 200);
+  const cmp = must(await api("GET", "/market/compare?productId=compound_feed&qtyKg=1000"), 200);
+  return { refPrice: st.refPricePerKg, priceBasis: st.priceBasis, p2pShareBp: st.p2pShareBp, cities: cmp.rows?.length, bestCityId: cmp.bestCityId };
 });
 
 await step("harita: /world/map", async () => {

@@ -4,9 +4,9 @@ import type { CompanyDto, WorldMapDto } from "@capitalforge/shared";
 import type { CitySelection } from "../../scene";
 import type { Resource } from "@/lib/data";
 
-export type PanelId = "company" | "facilities" | "inventory" | "market" | "contracts" | "logistics" | "finance" | "research" | "notifications" | "account";
+export type PanelId = "company" | "facilities" | "inventory" | "market" | "catalog" | "contracts" | "logistics" | "finance" | "research" | "notifications" | "account";
 
-export const PANEL_IDS: PanelId[] = ["company", "facilities", "inventory", "market", "contracts", "logistics", "finance", "research", "notifications", "account"];
+export const PANEL_IDS: PanelId[] = ["company", "facilities", "inventory", "market", "catalog", "contracts", "logistics", "finance", "research", "notifications", "account"];
 
 /** Veri panelleri geniş yan panel alır (tablolar). */
 export const WIDE_PANELS: PanelId[] = ["market", "inventory", "contracts", "logistics", "finance"];

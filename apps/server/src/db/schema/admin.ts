@@ -59,5 +59,10 @@ export const alerts = cf.table(
     dedupeKey: text("dedupe_key").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("alerts_dedupe_uq").on(t.dedupeKey), index("alerts_kind_idx").on(t.kind, t.createdAt)],
+  (t) => [
+    uniqueIndex("alerts_dedupe_uq").on(t.dedupeKey),
+    index("alerts_kind_idx").on(t.kind, t.createdAt),
+    // fiyat anomalisi uyarılı işlemleri pazar istatistiğinden dışlamak için
+    index("alerts_trade_idx").on(sql`(${t.details}->>'tradeId')`).where(sql`${t.kind} = 'price_anomaly'`),
+  ],
 );

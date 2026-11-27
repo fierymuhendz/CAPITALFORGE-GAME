@@ -32,28 +32,46 @@ export async function updatePriceRefs(deps: Deps, now: Date): Promise<number> {
     .innerJoin(companies, eq(companies.id, systemDaily.companyId))
     .where(eq(systemDaily.day, dayKey(now)));
   const refs = await deps.db.select().from(priceRefs);
-  let n = 0;
+  // 200+ ürün × 5 şehir: işlemler, sistem alımları ve profiller bir kez gruplanır; yazımlar toplu yapılır
+  const trBy = new Map<string, typeof tr>();
+  for (const t of tr) {
+    const k = `${t.productId}|${t.cityId}`;
+    const a = trBy.get(k);
+    if (a) a.push(t); else trBy.set(k, [t]);
+  }
+  const boughtBy = new Map<string, number>();
+  for (const s of sysRows) if (s.key) boughtBy.set(`${s.key}|${s.productId}`, (boughtBy.get(`${s.key}|${s.productId}`) ?? 0) + s.bought);
+  const updates: Array<{ productId: string; cityId: string; drift: number; ref: bigint }> = [];
+  const history: Array<typeof priceHistory.$inferInsert> = [];
+  for (const r of refs) {
+    const city = cat.cities.get(r.cityId);
+    const prod = cat.products.get(r.productId);
+    if (!city || !prod) continue;
+    const { vwap, vol } = referenceVwap(trBy.get(`${r.productId}|${r.cityId}`) ?? []);
+    const baseRef = refPrice(prod.basePricePerKg, city.priceBp[prod.id] ?? 10000, 10000);
+    const ratioBp = vwap === null ? null : Number((vwap * 10000n) / baseRef);
+    // sistem doygunluğu: bugün sistem alıcılarının doldurduğu / nominal günlük alım (bp)
+    const profs = SYSTEM_PROFILES.filter((p) => p.cityId === r.cityId && (p.buys[r.productId] ?? 0) > 0);
+    const nominal = profs.reduce((a, p) => a + (p.buys[r.productId] ?? 0), 0);
+    const bought = profs.reduce((a, p) => a + (boughtBy.get(`${p.companyKey}|${r.productId}`) ?? 0), 0);
+    const sat = nominal > 0 ? Math.min(10000, Math.round((bought * 10000) / nominal)) : 0;
+    const drift = nextDriftBp(r.driftBp, ratioBp, sat);
+    const ref = refPrice(prod.basePricePerKg, city.priceBp[prod.id] ?? 10000, drift);
+    updates.push({ productId: r.productId, cityId: r.cityId, drift, ref });
+    history.push({ productId: r.productId, cityId: r.cityId, at: bucket, refPricePerKg: ref, vwapPerKg: vwap, volumeKg: vol });
+  }
+  const CHUNK = 500;
   await deps.db.transaction(async (tx) => {
-    for (const r of refs) {
-      const city = cat.cities.get(r.cityId);
-      const prod = cat.products.get(r.productId);
-      if (!city || !prod) continue;
-      const mine = tr.filter((t) => t.productId === r.productId && t.cityId === r.cityId);
-      const { vwap, vol } = referenceVwap(mine);
-      const baseRef = refPrice(prod.basePricePerKg, city.priceBp[prod.id] ?? 10000, 10000);
-      const ratioBp = vwap === null ? null : Number((vwap * 10000n) / baseRef);
-      // sistem doygunluğu: bugün sistem alıcılarının doldurduğu / nominal günlük alım (bp)
-      const profs = SYSTEM_PROFILES.filter((p) => p.cityId === r.cityId && (p.buys[r.productId] ?? 0) > 0);
-      const nominal = profs.reduce((a, p) => a + (p.buys[r.productId] ?? 0), 0);
-      const bought = sysRows.filter((s) => s.productId === r.productId && profs.some((p) => p.companyKey === s.key)).reduce((a, s) => a + s.bought, 0);
-      const sat = nominal > 0 ? Math.min(10000, Math.round((bought * 10000) / nominal)) : 0;
-      const drift = nextDriftBp(r.driftBp, ratioBp, sat);
-      const ref = refPrice(prod.basePricePerKg, city.priceBp[prod.id] ?? 10000, drift);
-      await tx.update(priceRefs).set({ driftBp: drift, refPricePerKg: ref, updatedAt: now }).where(and(eq(priceRefs.productId, r.productId), eq(priceRefs.cityId, r.cityId)));
-      await tx.insert(priceHistory).values({ productId: r.productId, cityId: r.cityId, at: bucket, refPricePerKg: ref, vwapPerKg: vwap, volumeKg: vol });
-      n++;
+    for (let i = 0; i < updates.length; i += CHUNK) {
+      const rows = updates.slice(i, i + CHUNK).map((u) => sql`(${u.productId}::text, ${u.cityId}::text, ${u.drift}::int, ${u.ref.toString()}::bigint)`);
+      await tx.execute(sql`
+        UPDATE cf.price_refs AS p SET drift_bp = v.drift, ref_price_per_kg = v.ref, updated_at = ${now.toISOString()}::timestamptz
+        FROM (VALUES ${sql.join(rows, sql`, `)}) AS v(pid, cid, drift, ref)
+        WHERE p.product_id = v.pid AND p.city_id = v.cid`);
     }
+    for (let i = 0; i < history.length; i += CHUNK) await tx.insert(priceHistory).values(history.slice(i, i + CHUNK));
   });
+  const n = updates.length;
   return n;
 }
 

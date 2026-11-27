@@ -5,7 +5,7 @@
 import type {
   BuildingTypeDef, CityDef, ProductDef, RecipeDef, ResearchDef, Settings, VehicleModelDef,
 } from "@capitalforge/shared";
-import { DEFAULT_SETTINGS } from "@capitalforge/shared";
+import { DEFAULT_SETTINGS, V4_LEGACY_BUILDING_EXTRAS } from "@capitalforge/shared";
 import type { Db } from "../db/client";
 import { catalogItems, settings as settingsTable } from "../db/schema";
 import { fail } from "../errors";
@@ -25,7 +25,13 @@ export class Catalog {
   async reload(db: Db): Promise<void> {
     const rows = await db.select().from(catalogItems);
     const maps = { city: new Map(), product: new Map(), building_type: new Map(), recipe: new Map(), research: new Map(), vehicle_model: new Map() } as Record<string, Map<string, unknown>>;
-    for (const r of rows) maps[r.kind]?.set(r.id, { ...(r.data as object), id: r.id, version: r.version });
+    for (const r of rows) {
+      // Yönetici düzenlediği için v4 revizyonu atlanan eski bina satırları: eksik alanlar (ör. maden yatak listesi) varsayılanla tamamlanır
+      const extras = r.kind === "building_type" ? V4_LEGACY_BUILDING_EXTRAS[r.id] : undefined;
+      const data = r.data as Record<string, unknown>;
+      const filled = extras ? { ...Object.fromEntries(Object.entries(extras).filter(([k]) => data[k] === undefined)), ...data } : data;
+      maps[r.kind]?.set(r.id, { ...filled, id: r.id, version: r.version });
+    }
     this.cities = maps.city as Map<string, Versioned<CityDef>>;
     this.products = maps.product as Map<string, Versioned<ProductDef>>;
     this.buildingTypes = maps.building_type as Map<string, Versioned<BuildingTypeDef>>;

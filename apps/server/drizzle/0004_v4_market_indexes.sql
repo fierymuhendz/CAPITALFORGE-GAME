@@ -1,0 +1,2 @@
+CREATE INDEX "ledger_tx_reverses_idx" ON "cf"."ledger_transactions" USING btree ("reverses_id") WHERE "cf"."ledger_transactions"."reverses_id" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX "alerts_trade_idx" ON "cf"."alerts" USING btree (("details"->>'tradeId')) WHERE "cf"."alerts"."kind" = 'price_anomaly';

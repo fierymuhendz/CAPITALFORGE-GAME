@@ -8,3 +8,7 @@ export * from "./vehicles";
 export * from "./plots";
 export * from "./settings";
 export * from "./demand";
+export * from "./v4-products";
+export * from "./v4-buildings";
+export * from "./v4-recipes";
+export * from "./v4-research";

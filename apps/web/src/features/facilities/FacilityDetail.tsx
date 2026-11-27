@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
-import type { FacilityDto, ProductionJobDto, ProductionQuoteDto, WorldDto } from "@capitalforge/shared";
+import type { FacilityDto, ProductionJobDto, ProductionQuoteDto } from "@capitalforge/shared";
 import { useAction } from "@/lib/action";
 import { useCat } from "@/lib/catalog";
 import { useInvalidateTick } from "@/lib/data";
@@ -10,17 +10,10 @@ import { setMarketIntent } from "@/lib/intent";
 import { usePlay } from "../play/context";
 import "./operations.css";
 import { useT } from "@/lib/i18n";
-import { ActionBar, Badge, Button, Card, Countdown, Disclosure, Icon, KV, Notice, Stat, Stepper, SystemBadge, Table, Tag, TimeProgress, Trend, type Col } from "@/ui";
-
-type RecipeDto = WorldDto["recipes"][number];
-
-/** Tahminin hangi alıcıya, navlunla mı yapıldığı. */
-function SaleWhere({ est, cityId }: { est: NonNullable<ProductionQuoteDto["estimate"]>; cityId: string }) {
-  const i = useT();
-  const cat = useCat();
-  if (est.cityId === cityId) return <span className="xs muted">{i.t("decide.recipes.sellHere")}</span>;
-  return <span className="xs muted">{i.t("decide.recipes.sellAt", { city: cat.city(est.cityId) })} · {i.t("decide.recipes.freightIncl", { a: i.money(est.freight, true) })}</span>;
-}
+import { ActionBar, Badge, Button, Card, Countdown, Disclosure, Icon, KV, Notice, Stat, Stepper, SystemBadge, Tag, TimeProgress, Trend } from "@/ui";
+import { ProductLink } from "../catalog/ProductSheet";
+import { useMine } from "../catalog/model";
+import { LockedRecipes, RecipeBrowser, SaleWhere, lockOf, type QuoteState } from "./RecipeBrowser";
 
 function JobRow({ job, onStop, busy }: { job: ProductionJobDto; onStop: (id: string) => void; busy: boolean }) {
   const i = useT();
@@ -40,8 +33,6 @@ function JobRow({ job, onStop, busy }: { job: ProductionJobDto; onStop: (id: str
   );
 }
 
-type QuoteState = { q: ProductionQuoteDto } | { err: string };
-
 /** Tek tesis: durum, çalışan işler, tarif kartları (tahmini kâr), seçili tarifin özeti ve başlat, yükseltmeler (kapalı). */
 export function FacilityDetail({ f, initialRecipe }: { f: FacilityDto; initialRecipe?: string | null }) {
   return <FacilityWorkbench key={f.id} f={f} initialRecipe={initialRecipe ?? null} />;
@@ -54,7 +45,10 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
   const cat = useCat();
   const { run, busy } = useAction();
   const w = cat.world;
-  const recipes = w.recipes.filter((r) => f.recipes.includes(r.id));
+  const mine = useMine();
+  const allRecipes = w.recipes.filter((r) => f.recipes.includes(r.id));
+  const recipes = allRecipes.filter((r) => !lockOf(r, f, mine));
+  const lockedRecipes = allRecipes.filter((r) => lockOf(r, f, mine));
   const [recipeId, setRecipeId] = useState(initialRecipe && recipes.some((r) => r.id === initialRecipe) ? initialRecipe : recipes[0]?.id ?? "");
   const [batches, setBatches] = useState(1);
   const [repeat, setRepeat] = useState(false);
@@ -94,31 +88,6 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
   };
   const profitOf = (id: string) => { const st = quotes[id]; return st && "q" in st && st.q.estimate ? BigInt(st.q.estimate.profitPerHour) : null; };
   const bestId = recipes.reduce<string | null>((b, r) => { const p = profitOf(r.id); return p !== null && p > 0n && (b === null || p > profitOf(b)!) ? r.id : b; }, null);
-  const compareCols: Col<RecipeDto>[] = [
-    { key: "p", head: t("decide.recipes.product"), lead: true, bare: true, cell: (r) => {
-      const locked = r.minBuildingLevel > f.level;
-      return <span className="ops-recipe-name"><i className="ops-radio" aria-hidden="true" /><span className="trade-swatch" style={{ backgroundColor: cat.productColor(r.output.productId) }} aria-hidden="true" /><span className="col tight" style={{ gap: 0, minWidth: 0 }}><b>{cat.product(r.output.productId)}</b><span className="xs muted2">{cat.recipe(r.id)}</span>{locked ? <span className="xs warn">{t("decide.recipes.locked", { n: r.minBuildingLevel })}</span> : null}</span>{r.id === bestId ? <Tag tone="forge" icon="star">{t("offers.best")}</Tag> : null}</span>;
-    } },
-    { key: "i", head: t("decide.recipes.inputs"), cell: (r) => {
-      const st = quotes[r.id]; const rq = st && "q" in st ? st.q : null;
-      if (!rq) return st ? <span className="xs warn">{t("decide.recipes.cantStart")}</span> : <span className="muted">…</span>;
-      if (!rq.inputs.length) return <span className="xs muted2">{t("decide.recipes.noInputs")}</span>;
-      return <span className="col tight" style={{ gap: 2 }}>{rq.inputs.map((x) => {
-        const short = x.requiredKg - x.availableKg;
-        return <span key={x.productId} className="ops-input-cell"><span className="nm">{cat.product(x.productId)}</span> <span className="num">{i.qty(Math.min(x.availableKg, 1e12))} / {i.qty(x.requiredKg)}</span>{short > 0 ? <b className="bad xs"> · {t("decide.recipes.missing", { q: i.qty(short) })}</b> : <span className="good xs" aria-label={t("decide.recipes.ready")}> ✓</span>}</span>;
-      })}</span>;
-    } },
-    { key: "d", head: t("decide.recipes.duration"), right: true, nowrap: true, cell: (r) => { const st = quotes[r.id]; return st && "q" in st ? <span className="num">{i.dur(st.q.minutes)}</span> : <span className="muted">—</span>; } },
-    { key: "o", head: t("decide.recipes.output"), right: true, nowrap: true, cell: (r) => { const st = quotes[r.id]; return st && "q" in st ? <span className="num">{i.qty(st.q.output.qtyKg)} <span className="muted xs">★{st.q.output.quality}</span></span> : <span className="muted">—</span>; } },
-    { key: "c", head: t("decide.recipes.cost"), right: true, nowrap: true, cell: (r) => { const st = quotes[r.id]; return st && "q" in st ? <span className="num">{i.money(st.q.cost.total)}</span> : <span className="muted">—</span>; } },
-    { key: "k", head: t("decide.recipes.profit"), right: true, nowrap: true, cell: (r) => {
-      const st = quotes[r.id]; const e = st && "q" in st ? st.q.estimate : null;
-      if (!st || !("q" in st)) return <span className="muted">—</span>;
-      if (!e) return <span className="muted xs">{t("facility.noEstimate")}</span>;
-      return <span className="col tight" style={{ alignItems: "inherit", gap: 0 }}><Trend value={e.profit} text={i.signed(e.profit)} /><SaleWhere est={e} cityId={f.cityId} /></span>;
-    } },
-    { key: "h", head: t("decide.recipes.perHour"), right: true, nowrap: true, cell: (r) => { const st = quotes[r.id]; const e = st && "q" in st ? st.q.estimate : null; return e ? <span className="num">{i.signed(e.profitPerHour)}</span> : <span className="muted">—</span>; } },
-  ];
   type Blocker = ProductionQuoteDto["blockers"][number];
   const blockerText = (b: Blocker) => b.productId && b.missingKg
     ? t("flow.missingShort", { q: i.qty(b.missingKg), product: cat.product(b.productId) })
@@ -175,8 +144,7 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
                 <div className="row"><span className="small muted2">{t("facility.batches")}</span><Stepper label={t("facility.batches")} value={batches} onChange={setBatches} min={1} max={maxB} /></div>
                 <button type="button" className="chip" aria-pressed={repeat} onClick={() => setRepeat(!repeat)} title={t("facility.repeatOpt")}>↻ {t("facility.repeatToggle")}</button>
               </div>
-              <Table<RecipeDto> className="ops-compare" cols={compareCols} rows={recipes} rowKey={(r) => r.id} onRow={(r) => setRecipeId(r.id)} rowSelected={(r) => r.id === recipeId}
-                rowLabel={(r) => `${cat.product(r.output.productId)} · ${cat.recipe(r.id)}`} rowClass={(r) => (r.id === bestId ? "best" : "")} />
+              <RecipeBrowser f={f} recipes={allRecipes} quotes={quotes} recipeId={recipeId} onSelect={setRecipeId} bestId={bestId} mine={mine} onBuyMissing={buyMissing} />
               <span className="xs muted">{t("decide.recipes.estNote")}</span>
 
               {sel && "err" in sel ? <Notice tone="bad">{sel.err}</Notice> : null}
@@ -188,7 +156,7 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
                     {q.inputs.map((x) => {
                       const short = x.availableKg < x.requiredKg;
                       return <div className="ops-input" key={x.productId}>
-                        <div className="ops-input-name"><Icon name={short ? "alert" : "check"} size={16} /><b>{cat.product(x.productId)}</b></div>
+                        <div className="ops-input-name"><Icon name={short ? "alert" : "check"} size={16} /><b><ProductLink id={x.productId} /></b></div>
                         <dl><div><dt>{t("operations.required")}</dt><dd>{i.qty(x.requiredKg)}</dd></div><div><dt>{t("inventory.available")}</dt><dd className={short ? "warn" : "good"}>{i.qty(x.availableKg)}</dd></div></dl>
                         {short ? <Button className="ops-supply" size="sm" variant="primary" onClick={() => buyMissing(x.productId, x.requiredKg - x.availableKg)}><Icon name="chart" size={15} />{t("decide.recipes.buyMissing", { q: i.qty(x.requiredKg - x.availableKg), product: cat.product(x.productId) })}</Button> : null}
                       </div>;
@@ -217,7 +185,7 @@ function FacilityWorkbench({ f, initialRecipe }: { f: FacilityDto; initialRecipe
                 <Button variant="primary" loading={busy} disabled={!q?.canStart} aria-describedby={q && !q.canStart ? `why-${f.id}` : undefined} onClick={() => void start()}>{t("facility.start")}</Button>
               </ActionBar>
             </>
-          ) : ready && freeLines === 0 ? <span className="muted small">{t("facility.allBusy")}</span> : null}
+          ) : ready && freeLines === 0 ? <><span className="muted small">{t("facility.allBusy")}</span><LockedRecipes f={f} recipes={lockedRecipes} mine={mine} /></> : null}
         </>
       ) : null}
 

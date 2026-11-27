@@ -33,3 +33,8 @@ export const PAL = {
   treeDark: "#435f43",
   rock: "#838878",
 } as const;
+
+/** Yatak türü renkleri (3D arsa işareti, 2D harita ve efsane aynı değerleri kullanır) */
+export const DEPOSIT_COLOR: Record<string, string> = {
+  iron: "#8a5a48", coal: "#2e2e2e", copper: "#d9822b", limestone: "#e6e0cf", clay: "#b5694a", sand: "#e3cf8e", salt: "#f4f6f4",
+};

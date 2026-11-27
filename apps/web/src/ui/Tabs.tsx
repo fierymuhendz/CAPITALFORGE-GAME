@@ -4,10 +4,16 @@ import type { KeyboardEvent, ReactNode } from "react";
 export interface TabItem { id: string; label: ReactNode; badge?: number }
 
 export function Tabs({ items, value, onChange, label }: { items: TabItem[]; value: string; onChange: (id: string) => void; label?: string }) {
-  const kd = (e: KeyboardEvent) => {
+  const kd = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = items.findIndex((x) => x.id === value);
-    if (e.key === "ArrowRight") onChange(items[(i + 1) % items.length]!.id);
-    if (e.key === "ArrowLeft") onChange(items[(i - 1 + items.length) % items.length]!.id);
+    const n = items.length;
+    const to = e.key === "ArrowRight" ? (i + 1) % n : e.key === "ArrowLeft" ? (i - 1 + n) % n : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : -1;
+    if (to < 0) return;
+    e.preventDefault();
+    const host = e.currentTarget;
+    onChange(items[to]!.id);
+    // odak da yeni sekmeye taşınır (roving tabindex)
+    requestAnimationFrame(() => host.querySelectorAll<HTMLElement>('[role="tab"]')[to]?.focus());
   };
   return (
     <div className="tabs" role="tablist" aria-label={label} onKeyDown={kd}>

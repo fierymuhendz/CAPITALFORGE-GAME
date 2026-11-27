@@ -8,8 +8,12 @@ import type { VehicleMapDto, WorldDto } from "@capitalforge/shared";
 export const WORLD_SCALE = 0.1;
 /** arsa hücre boyu (dünya birimi) */
 export const CELL = 1.5;
-/** şehir zemininin yarı genişliği */
-export const PAD_HALF = 3.35;
+/** arsa ızgarası: gx/gz -1..4 (iç 4×4 + dış halka) = 6×6 hücre */
+export const GRID_MIN = -1;
+export const GRID_MAX = 4;
+export const GRID_N = GRID_MAX - GRID_MIN + 1;
+/** şehir zemininin yarı genişliği (6 hücre = 9 birim + kenar payı) */
+export const PAD_HALF = (GRID_N * CELL) / 2 + 0.15;
 export const HIGHWAY_WIDTH = 0.5;
 export const LANE_OFFSET = 0.11;
 
@@ -29,6 +33,16 @@ export function cityCenters(world: Pick<WorldDto, "cities">): CityCenters {
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
   for (const c of world.cities) out.set(c.id, { x: (c.map.x - cx) * WORLD_SCALE, z: (c.map.z - cz) * WORLD_SCALE });
   return out;
+}
+
+/** Izgara içinde mi (gx/gz -1..4) */
+export function inGrid(gx: number, gz: number): boolean {
+  return gx >= GRID_MIN && gx <= GRID_MAX && gz >= GRID_MIN && gz <= GRID_MAX;
+}
+
+/** Şehir başına 0..35 sıra numarası */
+export function gridIndex(gx: number, gz: number): number {
+  return (gz - GRID_MIN) * GRID_N + (gx - GRID_MIN);
 }
 
 /** Arsa yerel konumu (şehir merkezine göre) */

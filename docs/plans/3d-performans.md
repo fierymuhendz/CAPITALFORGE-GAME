@@ -40,3 +40,11 @@ Kalite değiştirme döngüsü (6 kez) sonrası geometri sayısı sabit (49), s�
 
 - 3D tuval klavyeyle gezilemez; klavye ve ekran okuyucu için 2D harita (button rolü, aria-label) kullanılır.
 - Gerçek mobil cihazda ölçüm yapılmadı; sayılar yazılım rasterleştirici ile alındı.
+
+## v4: 45 bina türü, 6x6 ızgara (180 arsa)
+
+- Silüet bina tanımındaki `archetype` alanından gelir (`WorldDto.buildingTypes`); ilk 6 tür (field, barn, mine, food_plant, steel_mill, garage) tür kimliğiyle çizilir ve görünümü değişmedi. `BUILDING_TYPE_IDS` kaldırıldı, yerine `LEGACY_TYPE_IDS`.
+- Yeni arketipler: quarry, mill, kiln, warehouse, greenhouse, orchard, forest, workshop (factory = food_plant geometrisi). Geometri önbelleği anahtarı `arketip:iş kolu rengi:seviye:aksan`; aynı arketip ve iş kolundaki türler tek geometriyi paylaşır, yani 45 tür en çok (arketip x iş kolu x seviye) kadar geometri üretir, çizim çağrısı yine bina başına 1.
+- Dış halka: arsa hücresi 6x6 = 36/şehir, `InstancedMesh` arsa zemini 180 örnek (tek çağrı). Şehir zemini PAD_HALF 4,65. Yatak işaretleri (boş arsada) mevcut süs birleştirmesine girer, ek çağrı yok.
+- Ölçüm (yazılım rasterleştirici, düşük kalite, Demirdağ odağı, 180 arsa): 140 çizim çağrısı, 44 700 üçgen, 75 geometri; 60 sn boyunca uygulamadan kaynaklanan konsol hatası yok.
+- Kamera: ülke görünümü ve şehir odağı çerçevesi PAD_HALF'e bağlı, 6x6 hücreye göre otomatik büyür.

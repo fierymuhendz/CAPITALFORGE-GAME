@@ -6,7 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { and, desc, eq, inArray, ne, or } from "drizzle-orm";
 import {
   BoardScopeQuery, BuyFromListingReq, BuyOrderReq, BuyVehicleReq, CancelReq, ContractProposalReq, DeliverReq, FreightJobReq, FreightQuoteQuery,
-  AcceptFreightReq, HaulReq, ListingReq, MarketHistoryQuery, MarketQuery, MineScopeQuery, OffersQuery, SellToOrderReq, ShipmentReq,
+  MarketCompareQuery, MarketStatsQuery, AcceptFreightReq, HaulReq, ListingReq, MarketHistoryQuery, MarketQuery, MineScopeQuery, OffersQuery, SellToOrderReq, ShipmentReq,
 } from "@capitalforge/shared";
 import { z } from "zod";
 import { contracts, freightJobs, marketOrders, shipmentCargo, shipments, vehicles } from "../../db/schema";
@@ -21,6 +21,7 @@ import { haulForSale } from "../../market/haul";
 import { offers } from "../../market/offers";
 import { contractCompare } from "../../contracts/compare";
 import { marketOverview, marketView, priceHistoryView } from "../../market/views";
+import { marketCompare, marketStats } from "../../market/stats";
 import { updatePriceRefs } from "../../market/prices";
 import {
   acceptContract, cancelContract, closeInstallments, contractDetail, contractDtos, declineContract, deliverManual, expireProposals, openWindows,
@@ -56,6 +57,14 @@ export function register(app: FastifyInstance, deps: Deps): void {
       cat.product(body.productId);
       return priceHistoryView(deps.db, body.cityId, body.productId, body.hours ?? 72, now);
     },
+  });
+  route(app, deps, {
+    method: "GET", url: "/market/stats", auth: "none", body: MarketStatsQuery, rateLimitPerMin: 30, rateKey: "mstat",
+    handler: async ({ body, company, now }) => marketStats(deps.db, cat, body, company?.id ?? null, now),
+  });
+  route(app, deps, {
+    method: "GET", url: "/market/compare", auth: "none", body: MarketCompareQuery, rateLimitPerMin: 20, rateKey: "mcmp",
+    handler: async ({ body, company, now }) => marketCompare(deps.db, cat, body, company, now),
   });
   route(app, deps, {
     method: "POST", url: "/market/listings", auth: "company", kind: "mutation", body: ListingReq,

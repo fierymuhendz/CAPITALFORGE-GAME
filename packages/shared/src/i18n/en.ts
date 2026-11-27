@@ -2,6 +2,7 @@ import type { Dict } from "./index";
 import { enGame } from "./en.game";
 import { enAdmin } from "./en.admin";
 import { enCity } from "./en.city";
+import { enCatalog } from "./catalog-design";
 import { enOperations } from "./operations-design";
 import { enDecisions } from "./decisions-design";
 import { enAccounting, enTxKinds } from "./accounting-design";
@@ -11,6 +12,9 @@ export const en: Dict = {
   ...enAdmin,
   ...enCity,
   ...enOperations,
+  ...enCatalog,
+  deposit: { ...(enGame.deposit as Dict), ...(enCatalog.deposit as Dict) },
+  panels: { ...(enGame.panels as Dict), catalog: "Catalog" },
   ...enAccounting,
   txKind: { ...(enGame.txKind as Dict), ...enTxKinds },
   decide: enDecisions.decide,
@@ -67,6 +71,8 @@ export const en: Dict = {
     LOAN_NOT_ACTIVE: "The loan is not active.",
     RESEARCH_BUSY: "Only one research project can run at a time. Start the next one when the current one finishes.",
     RESEARCH_MAXED: "Research is at its highest level.",
+    PREREQUISITE_MISSING: "Finish the prerequisite research first.",
+    RESEARCH_REQUIRED: "This recipe needs research you have not finished yet.",
     TRADE_COOLDOWN: "New accounts must wait briefly before trading.",
     TIME_TRAVEL_DISABLED: "Time travel is only available in test environments.",
     COMPANY_COOLDOWN: "You closed a company recently; wait for the cooldown before founding a new one.",

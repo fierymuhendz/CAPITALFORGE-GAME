@@ -44,6 +44,15 @@ export function systemBidCap(minBaseAskAcrossCities: bigint): bigint {
   return applyBp(minBaseAskAcrossCities, 8000);
 }
 
+/**
+ * Oyuncular arası son 24 saat işlem hacmine göre oyuncu payı (bp): pp / (pp + nominal günlük), en çok 10000.
+ * Sunucudaki `playerShareBp` ile aynı formül (aynı bağlantı grubu işlemleri pp'ye girmez).
+ */
+export function playerShareBp(playerToPlayerKg: number, nominalDailyKg: number): number {
+  const pp = Math.max(0, playerToPlayerKg);
+  return pp + nominalDailyKg > 0 ? Math.min(10000, Math.floor((pp * 10000) / (pp + nominalDailyKg))) : 0;
+}
+
 /** Oyuncu payına göre sistem bütçe/kapasite çarpanı (bp): 10000 − pay × damp, en az 2000 */
 export function systemShareFactorBp(playerShareBp: number, shareDampBp: number): number {
   return Math.max(2000, 10000 - Math.round((playerShareBp * shareDampBp) / 10000));

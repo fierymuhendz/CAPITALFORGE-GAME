@@ -7,6 +7,7 @@ import { useData } from "@/lib/data";
 import { sellParams, setMarketIntent } from "@/lib/intent";
 import { useT } from "@/lib/i18n";
 import { Async, Button, EmptyState, Icon, KV, Sheet, SkeletonList, Table, type Col } from "@/ui";
+import { ProductLink } from "../catalog/ProductSheet";
 import { usePlay } from "../play/context";
 
 import "../market/trade.css";
@@ -81,6 +82,7 @@ function Detail({ h, onClose, onSell }: { h: HoldingDto | null; onClose: () => v
       footer={h ? <Button variant="primary" onClick={() => onSell(h)}>{t("inventory.sell")}</Button> : undefined}>
       {h ? (
         <div className="col">
+          <KV k={t("inventory.product")} v={<ProductLink id={h.productId} />} />
           <KV k={t("inventory.qty")} v={i.qty(h.qtyKg)} />
           <KV k={t("inventory.available")} v={i.qty(h.availableKg)} />
           <KV k={t("inventory.totalCost")} v={i.money(h.costTotal)} />

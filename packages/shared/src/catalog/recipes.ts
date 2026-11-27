@@ -1,7 +1,8 @@
 import type { RecipeDef } from "./types";
+import { V4_RECIPES } from "./v4-recipes";
 
 /** Taban değerler, seviye 1, tek parti. Miktarlar kg. */
-export const RECIPES: RecipeDef[] = [
+export const LEGACY_RECIPES: RecipeDef[] = [
   {
     id: "grow_fodder", buildingType: "field", name: { tr: "Yem bitkisi ekimi", en: "Grow feed crops" },
     inputs: [{ productId: "seed", kg: 200 }], output: { productId: "fodder", kg: 2400 },
@@ -48,3 +49,5 @@ export const RECIPES: RecipeDef[] = [
     minutes: 180, laborHours: 10, energyKwh: 350, waterM3: 20, minBuildingLevel: 1,
   },
 ];
+
+export const RECIPES: RecipeDef[] = [...LEGACY_RECIPES, ...V4_RECIPES];

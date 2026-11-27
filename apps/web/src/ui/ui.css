@@ -317,3 +317,37 @@ a.brand { color: inherit; text-decoration: none; }
   .tbl.cards-sm tr.sel td:first-child { box-shadow: none; }
   .ops-input-cell { white-space: normal; }
 }
+
+/* ---- Katalog bileşenleri: aşama işareti, iş kolu etiketi, süzgeç, ürün seçici ---- */
+.stage-mark { flex: 0 0 12px; width: 12px; height: 12px; color: var(--text-2); }
+.tag.ind { background: var(--surface-3); color: var(--text); gap: 6px; }
+.tag.ind > i, .ind-sw { display: inline-block; flex: 0 0 9px; width: 9px; height: 9px; border-radius: 2px; background: var(--c); border: 1px solid color-mix(in srgb, var(--text) 30%, transparent); }
+.cf-filter { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cf-filter-bar { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+.cf-filter-bar .input { flex: 1 1 200px; width: auto; }
+.cf-filter-count { margin: 0; }
+.cf-filter-groups { max-height: min(46dvh, 420px); overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.cf-filter-groups[hidden] { display: none; }
+.cf-filter-group { border: 0; padding: 0; margin: 0; min-width: 0; }
+.cf-filter-group legend { padding: 0; margin-bottom: 6px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); }
+.cf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cf-chips .chip { white-space: normal; text-align: left; }
+@media (max-width: 980px) { .cf-chips .chip { min-height: var(--tap); } }
+.picker { position: relative; }
+.picker-box { position: relative; }
+.picker-box .input { padding-inline-end: 40px; }
+.picker-box .input.lead { padding-inline-start: 30px; }
+.picker-lead { position: absolute; inset-inline-start: 11px; top: 0; bottom: 0; display: flex; align-items: center; pointer-events: none; }
+.picker-chev { position: absolute; inset-inline-end: 0; top: 0; width: 40px; height: 100%; border: 0; background: none; color: var(--text-2); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.picker-list { position: absolute; z-index: 30; inset-inline: 0; top: calc(100% + 4px); max-height: min(360px, 52dvh); overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+.picker-opt { display: flex; align-items: center; gap: 8px; min-height: var(--tap); padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; }
+.picker-opt.hi { background: var(--surface-3); }
+.picker-opt[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--forge); }
+.picker-name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.picker-extra { color: var(--text-2); font-size: var(--fs-xs); }
+.picker-empty { padding: var(--sp-3); color: var(--text-2); font-size: var(--fs-sm); }
+.tbl tr.sys td { color: var(--text-2); }
+.tbl tr.mine td { background: var(--steel-soft); }
+.tbl tr.mine td:first-child { box-shadow: inset 3px 0 0 var(--steel); }
+.link-btn { appearance: none; background: none; border: 0; padding: 0; min-height: 0; font: inherit; font-weight: 600; color: var(--steel); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; text-align: start; }
+.link-btn:hover { color: var(--text); }

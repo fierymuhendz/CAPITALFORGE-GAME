@@ -1,6 +1,7 @@
-import type { ResearchDef } from "./types";
+import type { ResearchBranch, ResearchDef } from "./types";
+import { V4_RESEARCH } from "./v4-research";
 
-export const RESEARCH: ResearchDef[] = [
+export const LEGACY_RESEARCH: ResearchDef[] = [
   {
     id: "agronomy", name: { tr: "Agronomi", en: "Agronomy" },
     description: { tr: "Tarla verimi seviye başına +%8", en: "Field yield +8% per level" },
@@ -36,4 +37,15 @@ export const RESEARCH: ResearchDef[] = [
     description: { tr: "Araç hızı seviye başına +%6", en: "Vehicle speed +6% per level" },
     maxLevel: 3, baseCost: 2_500_000, baseMinutes: 180, effect: { kind: "speed", bpPerLevel: 600 },
   },
+];
+
+/** Mevcut 7 araştırmanın dalı (canlıda revizyonla eklenir) */
+export const LEGACY_RESEARCH_BRANCH: Record<string, ResearchBranch> = {
+  agronomy: "field_crops", herd_health: "livestock", drilling: "mining_metal", lean_process: "general",
+  quality_control: "general", eco_driving: "logistics", route_planning: "logistics",
+};
+
+export const RESEARCH: ResearchDef[] = [
+  ...LEGACY_RESEARCH.map((r) => ({ ...r, branch: LEGACY_RESEARCH_BRANCH[r.id] })),
+  ...V4_RESEARCH,
 ];

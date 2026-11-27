@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { eq, inArray, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import {
-  QUALITY_PRICE_BP, ROAD_LIST, SYSTEM_PROFILES, roadDistanceKm, sector as sectorSchema,
+  INDUSTRIES, QUALITY_PRICE_BP, ROAD_LIST, depositFits, SYSTEM_PROFILES, roadDistanceKm, sector as sectorSchema,
   type OnboardingDto, type PlotDto, type VehicleMapDto, type WorldDto, type WorldMapDto, type FacilityMapDto,
 } from "@capitalforge/shared";
 import { planProduction, systemBid } from "@capitalforge/economy";
@@ -32,14 +32,23 @@ export function worldDto(cat: Catalog, now: Date): WorldDto {
       laborNote: c.labor.note, laborAvailability: c.labor.availability, sectorYieldBp: c.sectorYieldBp,
     })),
     roads: ROAD_LIST.map(([a, b, km]) => ({ a, b, km })),
-    products: [...cat.products.values()].map((p) => ({ id: p.id, name: p.name, category: p.category, color: p.color, basePricePerKg: m(p.basePricePerKg) })),
+    products: [...cat.products.values()].map((p) => ({ id: p.id, name: p.name, category: p.category, color: p.color, basePricePerKg: m(p.basePricePerKg), industry: p.industry ?? null, stage: p.stage ?? null })),
     buildingTypes: [...cat.buildingTypes.values()].map((b) => ({
       id: b.id, sector: b.sector, name: b.name, buildCost: m(b.buildCost), buildSteelKg: b.buildSteelKg, buildMinutes: paceDuration(cat, b.buildMinutes),
       levels: b.levels.map((l) => ({ ...l, upgradeMinutes: paceDuration(cat, l.upgradeMinutes), upkeepPerDay: m(l.upkeepPerDay), upgradeCost: m(l.upgradeCost) })),
       qualityUpgradeCosts: b.qualityUpgradeCosts.map(m), vehicleSlots: b.vehicleSlots, requiresDeposit: b.requiresDeposit,
+      deposits: b.deposits ?? null, industry: b.industry ?? null, archetype: b.archetype ?? null, tier: b.tier ?? 1, minCompanyLevel: b.minCompanyLevel ?? 1, description: b.description ?? null,
     })),
     recipes: [...cat.recipes.values()].map((r) => ({ ...r, minutes: paceDuration(cat, r.minutes) })),
-    research: [...cat.research.values()].map((r) => ({ id: r.id, name: r.name, description: r.description, maxLevel: r.maxLevel, baseCost: m(r.baseCost), baseMinutes: paceDuration(cat, r.baseMinutes), effect: r.effect })),
+    research: [...cat.research.values()].map((r) => ({
+      id: r.id, name: r.name, description: r.description, maxLevel: r.maxLevel, baseCost: m(r.baseCost), baseMinutes: paceDuration(cat, r.baseMinutes), effect: r.effect,
+      branch: r.branch ?? null, prerequisites: r.prerequisites ?? [],
+    })),
+    systemDemand: SYSTEM_PROFILES.flatMap((p) => [
+      ...Object.entries(p.buys).map(([productId, dailyKg]) => ({ productId, cityId: p.cityId, side: "buy" as const, dailyKg, companyName: p.name })),
+      ...Object.entries(p.sells).map(([productId, dailyKg]) => ({ productId, cityId: p.cityId, side: "sell" as const, dailyKg, companyName: p.name })),
+    ]).filter((d) => cat.products.has(d.productId) && cat.cities.has(d.cityId)),
+    industries: [...INDUSTRIES],
     vehicleModels: [...cat.vehicleModels.values()].map((v) => ({ ...v, fuelPerKm: m(v.fuelPerKm), price: m(v.price), upkeepPerDay: m(v.upkeepPerDay) })),
     levelXp: [...s.levelXp],
     marketFeeBp: s.marketFeeBp,
@@ -191,7 +200,7 @@ async function onboarding(deps: Deps, cityId: string, sector: z.infer<typeof sec
     if (p.owner) reasons.push("PLOT_TAKEN");
     if (p.minLevel > 1) reasons.push("LEVEL_TOO_LOW");
     if (BigInt(p.price) > cash) reasons.push("INSUFFICIENT_FUNDS");
-    if (bt.requiresDeposit && !p.deposit) reasons.push("DEPOSIT_REQUIRED");
+    if (!depositFits(bt, p.deposit?.kind)) reasons.push("DEPOSIT_REQUIRED");
     return { ...p, eligible: reasons.length === 0, reasons, nearestSupply, nearestBuyers };
   });
 

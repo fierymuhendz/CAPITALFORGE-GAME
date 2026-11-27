@@ -7,8 +7,9 @@ import { useApp } from "@/lib/app";
 import { useCat } from "@/lib/catalog";
 import { useData } from "@/lib/data";
 import { useT } from "@/lib/i18n";
-import { ActionBar, Badge, Button, Card, Countdown, EmptyState, KV, Notice, SkeletonList, TimeProgress } from "@/ui";
+import { ActionBar, Badge, Button, Countdown, EmptyState, KV, Notice, SkeletonList, TimeProgress } from "@/ui";
 import { FacilityDetail } from "../facilities/FacilityDetail";
+import { BuildPicker } from "./BuildPicker";
 import { usePlay } from "./context";
 
 export function SelectionPanel({ onClose }: { onClose: () => void }) {
@@ -92,15 +93,6 @@ function PlotInfo({ plot, onDone }: { plot: PlotDto; onDone: () => void }) {
   const steelHere = (inv.data ?? []).filter((h) => h.productId === "steel" && h.cityId === plot.cityId).reduce((a, h) => a + h.availableKg, 0);
   const levelOk = c.level >= plot.minLevel;
   const cashOk = BigInt(c.cash) >= BigInt(plot.price);
-  const options = cat.world.buildingTypes.map((b) => {
-    const reasons: string[] = [];
-    if (b.requiresDeposit && !plot.deposit) reasons.push(t("found.reason.DEPOSIT_REQUIRED"));
-    if (!levelOk) reasons.push(t("errors.LEVEL_TOO_LOW"));
-    if (!cashOk) reasons.push(t("errors.INSUFFICIENT_FUNDS"));
-    if (inv.data && steelHere < b.buildSteelKg) reasons.push(t("errors.INSUFFICIENT_STEEL"));
-    return { b, reasons };
-  });
-  const sel = options.find((o) => o.b.id === choice);
   return (
     <div className="col">
       {title}
@@ -110,19 +102,9 @@ function PlotInfo({ plot, onDone }: { plot: PlotDto; onDone: () => void }) {
       {facts}
       <h4>{t("play.buildWhat")}</h4>
       {inv.loading ? <SkeletonList n={2} h={56} /> : null}
-      <div className="col tight">
-        {options.map(({ b, reasons }) => (
-          <Card key={b.id} tight onClick={() => setChoice(b.id)} selected={choice === b.id}>
-            <div className="col tight">
-              <div className="row between"><b>{i.name(b.name)}</b><span className="num small">{i.money(b.buildCost)}</span></div>
-              <span className="small muted2">{cat.product("steel")}: {i.qty(b.buildSteelKg)} · {i.dur(b.buildMinutes)}</span>
-              {reasons.length ? <span className="small warn">⚠ {reasons.join(" · ")}</span> : <span className="small good">✓ {t("play.canBuild")}</span>}
-            </div>
-          </Card>
-        ))}
-      </div>
+      <BuildPicker plot={plot} companyLevel={c.level} cash={c.cash} steelHere={inv.data ? steelHere : null} choice={choice} onChoose={setChoice} />
       <ActionBar>
-        <Button variant="primary" size="lg" loading={busy} disabled={!sel} onClick={() => void run(() => api.post(`/plots/${plot.id}/buy`, { buildingType: sel!.b.id }), { ok: "play.bought" }).then((r) => { if (r) onDone(); })}>{t("play.buy")}</Button>
+        <Button variant="primary" size="lg" loading={busy} disabled={!choice} onClick={() => void run(() => api.post(`/plots/${plot.id}/buy`, { buildingType: choice }), { ok: "play.bought" }).then((r) => { if (r) onDone(); })}>{t("play.buy")}</Button>
       </ActionBar>
     </div>
   );

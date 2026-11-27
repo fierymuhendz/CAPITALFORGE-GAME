@@ -29,6 +29,21 @@
   --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.45);
   --shadow-3: 0 -12px 40px rgba(0, 0, 0, 0.5);
   --glow: 0 0 0 3px rgba(255, 106, 26, 0.35);
+  /* iş kolu renkleri (yalnızca vurgu; anlam her zaman etiket/ikonla birlikte) */
+  --ind-field_crops: #e0b84f;
+  --ind-feed: #9fcc4f;
+  --ind-livestock: #ef8f7a;
+  --ind-dairy_food: #7fa6f5;
+  --ind-textile: #ef8cc8;
+  --ind-forestry: #5fbf74;
+  --ind-packaging: #d9a46a;
+  --ind-mining_metal: #a9b6c4;
+  --ind-glass_ceramic: #5fd3c0;
+  --ind-construction: #c2b29c;
+  --ind-machinery: #9a94f5;
+  --ind-logistics: #5cc4e8;
+  --ind-chemicals: #c48af0;
+  --ind-general: #b4bfcc;
 }
 
 :root[data-theme="light"] {
@@ -60,6 +75,20 @@
   --shadow-2: 0 8px 28px rgba(30, 20, 5, 0.16);
   --shadow-3: 0 -12px 40px rgba(30, 20, 5, 0.2);
   --glow: 0 0 0 3px rgba(207, 77, 7, 0.3);
+  --ind-field_crops: #8a6400;
+  --ind-feed: #4a7510;
+  --ind-livestock: #a63a28;
+  --ind-dairy_food: #2b5cc0;
+  --ind-textile: #a22d72;
+  --ind-forestry: #23703a;
+  --ind-packaging: #8a5520;
+  --ind-mining_metal: #4b5866;
+  --ind-glass_ceramic: #0b6e60;
+  --ind-construction: #6b5c48;
+  --ind-machinery: #4b3fc0;
+  --ind-logistics: #0a6886;
+  --ind-chemicals: #7a32b0;
+  --ind-general: #3f4854;
 }
 
 :root {

@@ -2,6 +2,7 @@ import type { Dict } from "./index";
 import { trGame } from "./tr.game";
 import { trAdmin } from "./tr.admin";
 import { trCity } from "./tr.city";
+import { trCatalog } from "./catalog-design";
 import { trOperations } from "./operations-design";
 import { trDecisions } from "./decisions-design";
 import { trAccounting, trTxKinds } from "./accounting-design";
@@ -11,6 +12,9 @@ export const tr: Dict = {
   ...trAdmin,
   ...trCity,
   ...trOperations,
+  ...trCatalog,
+  deposit: { ...(trGame.deposit as Dict), ...(trCatalog.deposit as Dict) },
+  panels: { ...(trGame.panels as Dict), catalog: "Katalog" },
   ...trAccounting,
   txKind: { ...(trGame.txKind as Dict), ...trTxKinds },
   decide: trDecisions.decide,
@@ -67,6 +71,8 @@ export const tr: Dict = {
     LOAN_NOT_ACTIVE: "Kredi aktif değil.",
     RESEARCH_BUSY: "Aynı anda tek araştırma yürütülebilir; süren araştırma bitince yenisini başlatın.",
     RESEARCH_MAXED: "Araştırma en yüksek seviyede.",
+    PREREQUISITE_MISSING: "Önce önkoşul araştırmasını tamamlayın.",
+    RESEARCH_REQUIRED: "Bu reçete için gereken araştırma tamamlanmadı.",
     TRADE_COOLDOWN: "Yeni hesaplar kısa bir süre ticaret yapamaz.",
     TIME_TRAVEL_DISABLED: "Zaman ilerletme yalnızca test ortamında.",
     COMPANY_COOLDOWN: "Şirketinizi yakın zamanda kapattınız; yeniden kurmak için bekleme süresi dolmalı.",

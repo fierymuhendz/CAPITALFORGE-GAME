@@ -42,6 +42,38 @@ export async function researchLevels(db: DbOrTx, companyId: string): Promise<Map
   return new Map(rows.map((r) => [r.researchId, r.level]));
 }
 
+export interface ResearchProductionBonus {
+  yieldBp: number; efficiencyBp: number; energyBp: number; inputSavingBp: number; durationBp: number; extraBatches: number; qualityLevels: number;
+}
+
+/**
+ * Şirketin araştırma seviyelerinden bir bina türüne düşen üretim etkileri (saf).
+ * Sektör geneli (yield/efficiency/quality) ve bina türüne özgü (building_*, energy, input_saving, duration, capacity) etkiler toplanır.
+ */
+export function researchBonusesFor(catalog: Catalog, levels: Map<string, number>, buildingType: string, sector: string): ResearchProductionBonus {
+  const out: ResearchProductionBonus = { yieldBp: 0, efficiencyBp: 0, energyBp: 0, inputSavingBp: 0, durationBp: 0, extraBatches: 0, qualityLevels: 0 };
+  for (const def of catalog.research.values()) {
+    const lv = levels.get(def.id) ?? 0;
+    if (lv <= 0) continue;
+    const e = def.effect;
+    const mine = "buildingTypes" in e && e.buildingTypes.includes(buildingType);
+    switch (e.kind) {
+      case "yield": if (e.sector === sector) out.yieldBp += lv * e.bpPerLevel; break;
+      case "efficiency": if (e.sector === sector) out.efficiencyBp += lv * e.bpPerLevel; break;
+      case "quality": out.qualityLevels += lv * e.perLevel; break;
+      case "building_yield": if (mine) out.yieldBp += lv * e.bpPerLevel; break;
+      case "building_efficiency": if (mine) out.efficiencyBp += lv * e.bpPerLevel; break;
+      case "energy": if (mine) out.energyBp += lv * e.bpPerLevel; break;
+      case "input_saving": if (mine) out.inputSavingBp += lv * e.bpPerLevel; break;
+      case "duration": if (mine) out.durationBp += lv * e.bpPerLevel; break;
+      case "capacity": if (mine) out.extraBatches += lv * e.batchesPerLevel; break;
+      case "building_quality": if (mine) out.qualityLevels += lv * e.perLevel; break;
+      default: break;
+    }
+  }
+  return out;
+}
+
 export async function evaluateProduction(
   db: DbOrTx, catalog: Catalog, companyId: string, facility: FacilityRow, recipeId: string, batches: number, lock: boolean,
 ): Promise<Evaluation> {
@@ -53,9 +85,13 @@ export async function evaluateProduction(
 
   if (facility.state !== "ready") blockers.push({ code: "BUILDING_NOT_READY" });
   if (recipe.buildingType !== facility.type || recipe.minBuildingLevel > facility.level) blockers.push({ code: "RECIPE_NOT_ALLOWED" });
+  const levels = await researchLevels(db, companyId);
+  if (recipe.research && (levels.get(recipe.research.researchId) ?? 0) < recipe.research.level) blockers.push({ code: "RESEARCH_REQUIRED", missing: recipe.research.researchId });
   const plot = (await db.select().from(plots).where(eq(plots.id, facility.plotId)).limit(1))[0];
   if (recipe.deposit && plot?.depositKind !== recipe.deposit) blockers.push({ code: "DEPOSIT_MISMATCH" });
-  if (batches > ld.maxBatches) blockers.push({ code: "BATCHES_EXCEED_CAPACITY" });
+  const rb = researchBonusesFor(catalog, levels, facility.type, bt.sector);
+  const maxBatches = ld.maxBatches + rb.extraBatches;
+  if (batches > maxBatches) blockers.push({ code: "BATCHES_EXCEED_CAPACITY" });
   const running = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(productionJobs)
@@ -71,22 +107,11 @@ export async function evaluateProduction(
           : 10000;
   const cityYieldBp = sector === "crop" || sector === "livestock" ? 10000 : city.sectorYieldBp[sector] ?? 10000;
 
-  let researchYieldBp = 0;
-  let researchEfficiencyBp = 0;
-  let researchQualityLevels = 0;
-  const levels = await researchLevels(db, companyId);
-  for (const def of catalog.research.values()) {
-    const lv = levels.get(def.id) ?? 0;
-    if (lv <= 0) continue;
-    const e = def.effect;
-    if (e.kind === "yield" && e.sector === sector) researchYieldBp += lv * e.bpPerLevel;
-    else if (e.kind === "efficiency" && e.sector === sector) researchEfficiencyBp += lv * e.bpPerLevel;
-    else if (e.kind === "quality") researchQualityLevels += lv * e.perLevel;
-  }
+  const { yieldBp: researchYieldBp, efficiencyBp: researchEfficiencyBp, qualityLevels: researchQualityLevels } = rb;
 
   // Girdi lotları
   const inputs: InputEval[] = [];
-  const savingBp = Math.min(3000, ld.inputSavingBp ?? 0);
+  const savingBp = Math.min(3000, (ld.inputSavingBp ?? 0) + rb.inputSavingBp);
   const needs = new Map(requiredInputs(recipe, batches, savingBp).map((r) => [r.productId, r.kg]));
   for (const inp of recipe.inputs) {
     const need = needs.get(inp.productId) ?? inp.kg * batches;
@@ -98,6 +123,7 @@ export async function evaluateProduction(
     batches, plotYieldBp, cityYieldBp, researchYieldBp, researchEfficiencyBp,
     facilityQualityLevel: facility.qualityLevel + (ld.qualityBonus ?? 0), researchQualityLevels,
     levelYieldBp: ld.yieldBp ?? 0, levelEfficiencyBp: ld.efficiencyBp ?? 0, levelInputSavingBp: savingBp, laborAvailabilityBp: city.labor.availability,
+    researchEnergyBp: rb.energyBp, researchDurationBp: rb.durationBp,
     inputLots: inputs.flatMap((i) => i.lots.map((l) => ({ productId: i.productId, kg: l.kg, quality: l.quality }))),
     prices: { energyPerKwh: BigInt(city.energyPrice), waterPerM3: BigInt(city.waterPrice), wagePerHour: BigInt(city.wage) },
   });
@@ -112,7 +138,7 @@ export async function evaluateProduction(
   const cash = bal.cash ?? 0n;
   if (cash < operatingCost) blockers.push({ code: "INSUFFICIENT_FUNDS", missing: (operatingCost - cash).toString() });
 
-  const order = ["BUILDING_NOT_READY", "RECIPE_NOT_ALLOWED", "DEPOSIT_MISMATCH", "BATCHES_EXCEED_CAPACITY", "NO_FREE_LINE", "ARREARS_OUTSTANDING", "INSUFFICIENT_STOCK", "INSUFFICIENT_FUNDS"];
+  const order = ["BUILDING_NOT_READY", "RECIPE_NOT_ALLOWED", "RESEARCH_REQUIRED", "DEPOSIT_MISMATCH", "BATCHES_EXCEED_CAPACITY", "NO_FREE_LINE", "ARREARS_OUTSTANDING", "INSUFFICIENT_STOCK", "INSUFFICIENT_FUNDS"];
   blockers.sort((a, b) => order.indexOf(a.code) - order.indexOf(b.code));
   return { plan, inputs, inputsCost, operatingCost, total: inputsCost + operatingCost, blockers, recipe };
 }

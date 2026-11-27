@@ -5,6 +5,7 @@ import { CompanyPanel } from "../company/CompanyPanel";
 import { FacilitiesPanel } from "../facilities/FacilitiesPanel";
 import { InventoryPanel } from "../inventory/InventoryPanel";
 import { MarketPanel } from "../market/MarketPanel";
+import { CatalogPanel } from "../catalog/CatalogPanel";
 import { ContractsPanel } from "../contracts/ContractsPanel";
 import { LogisticsPanel } from "../logistics/LogisticsPanel";
 import { FinancePanel } from "../finance/FinancePanel";
@@ -17,6 +18,7 @@ export const PANELS: Array<{ id: PanelId; icon: string; Comp: ComponentType }> =
   { id: "facilities", icon: "factory", Comp: FacilitiesPanel },
   { id: "inventory", icon: "box", Comp: InventoryPanel },
   { id: "market", icon: "chart", Comp: MarketPanel },
+  { id: "catalog", icon: "book", Comp: CatalogPanel },
   { id: "contracts", icon: "doc", Comp: ContractsPanel },
   { id: "logistics", icon: "truck", Comp: LogisticsPanel },
   { id: "finance", icon: "wallet", Comp: FinancePanel },

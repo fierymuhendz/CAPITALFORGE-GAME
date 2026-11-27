@@ -8,7 +8,7 @@ import { serverNow } from "@/lib/clock";
 import { useList } from "@/lib/data";
 import { isoToLocalInput, localInputToIso } from "@/lib/numbers";
 import { useT } from "@/lib/i18n";
-import { ActionBar, Button, Field, IntInput, Notice, PriceInput, QtyInput, SelectField, Seg, TextField } from "@/ui";
+import { ActionBar, Button, Field, IntInput, Notice, PriceInput, ProductPicker, QtyInput, SelectField, Seg, TextField } from "@/ui";
 
 export function NewOffer({ onDone }: { onDone: () => void }) {
   const i = useT();
@@ -51,7 +51,7 @@ export function NewOffer({ onDone }: { onDone: () => void }) {
           {q.trim().length >= 2 && !cp && found.data && !found.data.length ? <p className="muted small">{t("contracts.noCompany")}</p> : null}
         </div>
       ) : null}
-      <SelectField label={t("inventory.product")} value={productId} onChange={setProduct} options={w.products.map((p) => ({ id: p.id, label: i.name(p.name) }))} />
+      <ProductPicker label={t("inventory.product")} value={productId} onChange={setProduct} products={w.products} />
       <SelectField label={t("market.minQuality")} value={String(minQuality)} onChange={(v) => setMinQ(Number(v))} options={[1, 2, 3, 4, 5].map((x) => ({ id: String(x), label: `★${x}` }))} />
       <QtyInput label={t("contracts.qtyPer")} value={qty} onChange={setQty} />
       <PriceInput label={t("market.price")} value={price} onChange={setPrice} />

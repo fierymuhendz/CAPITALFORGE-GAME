@@ -5,6 +5,7 @@ import type { DbOrTx } from "../db/client";
 import { facilities, productionJobs } from "../db/schema";
 import { m } from "../lib/serialize";
 import { jobDto, type JobRow } from "../production/dto";
+import { researchBonusesFor, researchLevels } from "../production/eval";
 
 export type FacilityRow = typeof facilities.$inferSelect;
 
@@ -16,13 +17,14 @@ export function facilityStatus(f: FacilityRow, running: number, now: Date): Faci
   return f.stalledReason ? "stalled" : "idle";
 }
 
-export function facilityDto(catalog: Catalog, f: FacilityRow, jobs: JobRow[], now: Date): FacilityDto {
+export function facilityDto(catalog: Catalog, f: FacilityRow, jobs: JobRow[], now: Date, levels?: Map<string, number>): FacilityDto {
   const ld = catalog.levelDef(f.type, f.level);
+  const extra = levels ? researchBonusesFor(catalog, levels, f.type, catalog.buildingType(f.type).sector).extraBatches : 0;
   const running = jobs.filter((j) => j.status === "running").length;
   return {
     id: f.id, plotId: f.plotId, cityId: f.cityId, type: f.type, level: f.level, qualityLevel: f.qualityLevel,
     status: facilityStatus(f, running, now),
-    lines: ld.lines, maxBatches: ld.maxBatches, upkeepPerDay: m(ld.upkeepPerDay),
+    lines: ld.lines, maxBatches: ld.maxBatches + extra, upkeepPerDay: m(ld.upkeepPerDay),
     constructionEndsAt: f.state === "constructing" ? f.constructionEndsAt?.toISOString() ?? null : null,
     upgrade: f.upgradeKind && f.upgradeTarget && f.upgradeEndsAt ? { kind: f.upgradeKind, target: f.upgradeTarget, endsAt: f.upgradeEndsAt.toISOString() } : null,
     jobs: jobs.map(jobDto),
@@ -47,9 +49,10 @@ export async function loadFacilities(db: DbOrTx, catalog: Catalog, companyId: st
     .where(and(inArray(productionJobs.facilityId, ids), eq(productionJobs.status, "completed")))
     .orderBy(desc(productionJobs.completedAt))
     .limit(30);
+  const levels = await researchLevels(db, companyId);
   return fs.map((f) => {
     const mine = running.filter((j) => j.facilityId === f.id);
     const done = recent.filter((j) => j.facilityId === f.id).slice(0, 3);
-    return facilityDto(catalog, f, [...mine, ...done], now);
+    return facilityDto(catalog, f, [...mine, ...done], now, levels);
   });
 }

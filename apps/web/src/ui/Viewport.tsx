@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Ekran klavyesi ve gerçek görünür yükseklik: `--app-h` (visualViewport) ve klavye açıkken `html[data-kbd]`.
@@ -23,4 +23,17 @@ export function ViewportVars() {
     return () => { vv.removeEventListener("resize", f); delete de.dataset.kbd; de.style.removeProperty("--app-h"); };
   }, []);
   return null;
+}
+
+/** Dar ekran (telefon/dikey tablet): ayrıntılar tam ekran Sheet, geniş ekranda sağ sütun. İlk boyamada false (sunucu çıktısıyla uyumlu). */
+export function useNarrow(max = 980): boolean {
+  const [n, setN] = useState(false);
+  useEffect(() => {
+    const q = window.matchMedia(`(max-width: ${max}px)`);
+    const f = () => setN(q.matches);
+    f();
+    q.addEventListener("change", f);
+    return () => q.removeEventListener("change", f);
+  }, [max]);
+  return n;
 }
